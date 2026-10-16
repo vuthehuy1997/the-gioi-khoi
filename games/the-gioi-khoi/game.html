@@ -11,17 +11,26 @@
 <div id="stage">
   <canvas id="cv" aria-label="Thế giới khối"></canvas>
   <div id="hud" hidden>
+    <div id="flash"></div>
     <div id="crosshair">+</div>
-    <div id="bars"><span id="hp"></span></div>
+    <div id="dig" hidden><i></i></div>
+    <div id="bossbar" hidden><div id="boss-name"></div><div class="bar"><i id="boss-fill"></i></div></div>
+    <div id="hp"></div>
     <div id="hotbar"></div>
     <div id="region"></div>
+    <div id="roomcode"></div>
+    <div id="quests"></div>
     <div id="toast"></div>
+    <div id="panel" class="panel" hidden></div>
+    <div id="death" hidden><h2>Bạn đã gục ngã</h2><button id="btn-respawn">Hồi sinh</button></div>
+    <div id="pause" hidden><h2>Tạm dừng</h2><button id="btn-resume">Tiếp tục</button> <button id="btn-save">Lưu thế giới</button> <button id="btn-export">Xuất file</button> <button id="btn-leave">Lưu và thoát</button><p id="pause-msg"></p></div>
   </div>
   <div id="menu">
     <h1>Thế Giới Khối</h1>
     <p>Đào, xây, đánh quái, hạ boss cùng bạn bè.</p>
     <input id="name" maxlength="16" placeholder="Tên của bạn" autocomplete="off">
-    <div class="row"><button id="btn-solo">Chơi một mình</button></div>
+    <div class="row"><button id="btn-solo">Chơi một mình</button><button id="btn-new" title="Bắt đầu thế giới mới, bỏ bản lưu cũ">Thế giới mới</button></div>
+    <div class="row"><label class="file">Nhập file thế giới <input id="file-import" type="file" accept=".gz,.tgk"></label></div>
     <div class="row"><button id="btn-host">Tạo phòng</button>
       <input id="code" maxlength="6" placeholder="Mã phòng" autocomplete="off"><button id="btn-join">Vào phòng</button></div>
     <p id="err" role="alert"></p>

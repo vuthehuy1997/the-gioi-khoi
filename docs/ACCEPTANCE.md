@@ -23,8 +23,8 @@ Yêu cầu gốc: game thế giới khối nhiều người chơi trên web, "nh
 | G1 | Lưu/nạp thế giới và người chơi (IndexedDB), xuất/nhập file | `test_save_load_*` | ✅ |
 | H1 | Trình kiểm tra nội dung: không tham chiếu hỏng, vật phẩm không nguồn, hội thoại cụt | `test_content_valid` | ✅ |
 | H2 | Ngân sách hiệu năng: sinh + dựng 6×6 chunk, một tick với 40 quái | `test_perf_*` | ✅ |
-| H3 | Kịch bản trọn vẹn 2 trình duyệt: vào phòng, đào, đánh quái, nhận nhiệm vụ, hạ boss | `test_e2e_two_players` | ☐ |
-| H4 | Không lỗi console; bộ test mạng M1 vẫn đạt | toàn bộ `tests/` | ☐ |
+| H3 | Kịch bản trọn vẹn 2 trình duyệt: vào phòng, đào, đánh quái, nhận nhiệm vụ, hạ boss | `test_e2e_two_players` | ✅ |
+| H4 | Không lỗi console; bộ test mạng M1 vẫn đạt | toàn bộ `tests/` | ✅ |
 | I1 | Trang công khai trên GitHub Pages tải được và chạy được bản mới | kiểm tra sau khi đẩy | ☐ |
 
 Ngoài phạm vi v1 (đã chốt trong spec): PvP, mobile/cảm ứng, chống gian lận, tài khoản, server chạy liên tục, redstone, nhạc nền.

@@ -1,7 +1,8 @@
 // Vật phẩm. block: tên block đặt được. tool: { type, tier, speed } (tốc độ đào nhân lên). dmg: sát thương vũ khí. heal: hồi máu khi ăn.
 // Dữ liệu thuần; tên hiển thị tiếng Việt nằm ở name.
 const blk = (name, vi) => [name, { name: vi, block: name }];
-const tool = (name, type, tier, speed, dmg) => [name, { name, tool: { type, tier, speed }, dmg, stack: 1 }];
+const TIER = { 1: 'gỗ', 2: 'đá', 3: 'tinh thể', 4: 'ngọc' }, KIND = { pick: 'Cuốc', axe: 'Rìu', shovel: 'Xẻng', sword: 'Kiếm' };
+const tool = (name, type, tier, speed, dmg) => [name, { name: `${KIND[type]} ${TIER[tier]}`, tool: { type, tier, speed }, dmg, stack: 1 }];
 
 export const ITEMS = Object.fromEntries([
   blk('stone', 'Đá'), blk('dirt', 'Đất'), blk('sand', 'Cát'), blk('snow', 'Tuyết'), blk('log', 'Thân gỗ'), blk('leaves', 'Lá'),

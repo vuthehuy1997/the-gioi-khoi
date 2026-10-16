@@ -206,17 +206,18 @@ def test_physics_water_slows_and_allows_swimming(pg):
 
 @test
 def test_render_screenshot(pg, browser, base):
-    pg.goto(root(base) + 'games/the-gioi-khoi/game.html?debug&seed=777&r=4'); pg.wait_for_timeout(300)
-    pg.wait_for_function("window.pending === 0", timeout=20000)
-    pg.click('#btn-solo'); pg.evaluate("renderNow()")
+    pg.goto(root(base) + 'games/the-gioi-khoi/game.html?debug&seed=777&r=4&net=memory'); pg.wait_for_timeout(300)
+    pg.click('#btn-new')
+    pg.wait_for_function("window.__g && window.__g.S && window.__g.pending === 0", timeout=30000)
+    pg.evaluate("__g.renderNow()")
     r = pg.evaluate("""() => {
-      const src = scene.renderer.domElement, c = document.createElement('canvas'); c.width = 200; c.height = 112;
-      const ctx = c.getContext('2d'); scene.render(); ctx.drawImage(src, 0, 0, 200, 112);
+      const g = window.__g, src = g.scene.renderer.domElement, c = document.createElement('canvas'); c.width = 200; c.height = 112;
+      const ctx = c.getContext('2d'); g.scene.render(); ctx.drawImage(src, 0, 0, 200, 112);
       const d = ctx.getImageData(0, 0, 200, 112).data, colors = new Set(); let nonBg = 0;
       for (let i = 0; i < d.length; i += 4) { colors.add((d[i] >> 4) + ',' + (d[i+1] >> 4) + ',' + (d[i+2] >> 4)); }
       const bg = [d[0], d[1], d[2]];
       for (let i = 0; i < d.length; i += 4) if (Math.abs(d[i]-bg[0]) + Math.abs(d[i+1]-bg[1]) + Math.abs(d[i+2]-bg[2]) > 30) nonBg++;
-      return { colors: colors.size, nonBg: nonBg / (d.length / 4), chunks: scene.chunkCount(), calls: scene.renderer.info.render.calls, tris: scene.renderer.info.render.triangles };
+      return { colors: colors.size, nonBg: nonBg / (d.length / 4), chunks: g.scene.chunkCount(), tris: g.scene.renderer.info.render.triangles };
     }""")
     pg.screenshot(path='/tmp/claude-464201200/-data-yuu-ai-data-yuu-self-c/ffbac0c7-dba7-4885-b0fa-42f49ea80379/scratchpad/shot_a4.png')
     assert r['chunks'] >= 81 and r['tris'] > 1000, r
@@ -998,6 +999,138 @@ def test_perf_structures_and_welcome_size(pg):
       return { build, welcomeKB: JSON.stringify({ delta: g.world.exportDelta(), flags: g.flags }).length / 1024 };
     """)
     assert r['build'] < 2000 and r['welcomeKB'] < 400, r
+
+
+# ---------------------------------------------------------------- H3: hai người chơi trọn vẹn qua giao diện
+
+def _e2e_two_players(pg, browser, base):
+    url = root(base) + 'games/the-gioi-khoi/game.html?debug&seed=777&r=4&net=memory'
+    errs = []
+    def watch(page, name):
+        page.on('console', lambda m: errs.append(f'{name}: {m.text}') if m.type == 'error' else None)
+        page.on('pageerror', lambda e: errs.append(f'{name}: {e}'))
+    A = pg; watch(A, 'A')
+    B = pg.context.new_page(); watch(B, 'B')
+    A.goto(url + '&uid=ua'); B.goto(url + '&uid=ub'); A.wait_for_timeout(300)
+
+    # --- 1. A tạo phòng, B vào bằng mã
+    A.fill('#name', 'An'); A.click('#btn-host')
+    A.wait_for_function("window.__g && window.__g.S && window.__g.pending === 0", timeout=30000)
+    code = A.inner_text('#roomcode').replace('Phòng', '').strip()
+    assert len(code) == 5, code
+    B.fill('#name', 'Bình'); B.fill('#code', code.lower()); B.click('#btn-join')
+    B.wait_for_function("window.__g && window.__g.S && window.__g.pending === 0", timeout=30000)
+    A.wait_for_function("__g.game.players.size === 2")
+    a_uid, b_uid = A.evaluate("__g.S.uid"), B.evaluate("__g.S.uid")
+
+    tp = lambda uid, x, y, z: A.evaluate("""([uid, x, y, z]) => { const g = __g.game, p = g.player(uid); p.x = x; p.y = y; p.z = z; p.lastState = g.time;
+        g.emit(uid, { t: 'teleport', x, y, z }); }""", [uid, x, y, z])
+    npc = lambda id: A.evaluate("(id) => { const e = [...__g.game.ents.values()].find(e => e.kind === 'npc' && e.npc === id); return { x: e.x, y: e.y, z: e.z, id: e.id }; }", id)
+
+    # --- 2. A đào block, B thấy; A đặt block, B thấy
+    n = npc('truong-lang')
+    tp(a_uid, n['x'] - 5, n['y'], n['z'] + 5); tp(b_uid, n['x'] + 5, n['y'], n['z'] + 5)
+    A.wait_for_timeout(600)
+    cell = A.evaluate("""() => { const l = __g.local, w = __g.S.world; const x = Math.floor(l.x) + 1, z = Math.floor(l.z), y = w.surfaceY(x, z); return { x, y, z, id: w.get(x, y, z) }; }""")
+    A.evaluate("([x, y, z]) => __g.lookAt(x + 0.5, y + 0.5, z + 0.5)", [cell['x'], cell['y'], cell['z']])
+    A.mouse.move(550, 300); A.mouse.down()
+    A.wait_for_function("([x, y, z]) => __g.S.world.get(x, y, z) === 0", arg=[cell['x'], cell['y'], cell['z']], timeout=8000)
+    A.mouse.up()
+    B.wait_for_function("([x, y, z]) => __g.S.world.get(x, y, z) === 0", arg=[cell['x'], cell['y'], cell['z']], timeout=8000)
+    A.wait_for_function("__g.S.you.inv.some(s => s && s.id === 'dirt')")
+    assert 'Đất' in A.inner_text('#hotbar')
+    A.keyboard.press('Digit1')
+    A.evaluate("([x, y, z]) => __g.lookAt(x + 0.5, y + 0.2, z + 0.5)", [cell['x'], cell['y'], cell['z']])
+    A.mouse.down(button='right'); A.mouse.up(button='right')
+    B.wait_for_function("([x, y, z]) => __g.S.world.get(x, y, z) === 2", arg=[cell['x'], cell['y'], cell['z']], timeout=8000)
+
+    # --- 3. A đánh quái, quái biến mất ở cả hai, A nhặt đồ rơi
+    A.evaluate("""(uid) => { const g = __g.game; g.giveItem(uid, 'gem_sword', 1); }""", a_uid)
+    A.wait_for_function("__g.S.you.inv.some(s => s && s.id === 'gem_sword')")
+    slot = A.evaluate("__g.S.you.inv.findIndex(s => s && s.id === 'gem_sword')")
+    A.keyboard.press(f'Digit{slot + 1}') if slot < 9 else None
+    A.wait_for_function("(i) => __g.S.you.sel === i", arg=slot)
+    mob_id = A.evaluate("""() => { const g = __g.game, l = __g.local; const mod = window.__mods; return null; }""")
+    mob = A.evaluate("""async () => { const { spawnMob } = await import('/games/the-gioi-khoi/sim/mobs.js'); const g = __g.game, l = __g.local;
+        const m = spawnMob(g, 'xac-song', l.x + 2.5, l.y, l.z); m.frozen = true; return { id: m.id }; }""")
+    A.wait_for_function("(id) => __g.interp.es.some(e => e.id === id)", arg=mob['id'])
+    B.wait_for_function("(id) => __g.interp.es.some(e => e.id === id)", arg=mob['id'])
+    A.wait_for_timeout(300)
+    A.evaluate("(id) => { const e = __g.interp.es.find(e => e.id === id); __g.lookAt(e.x, e.y + 0.9, e.z); }", mob['id'])
+    A.mouse.down()
+    A.wait_for_function("(id) => !__g.game.ents.has(id)", arg=mob['id'], timeout=8000)
+    A.mouse.up()
+    B.wait_for_function("(id) => !__g.interp.es.some(e => e.id === id)", arg=mob['id'], timeout=8000)
+    A.evaluate("""(uid) => { const g = __g.game, p = g.player(uid); for (const e of g.ents.values()) if (e.kind === 'item') { e.x = p.x; e.z = p.z; e.y = p.y + 0.3; e.born = -99; } }""", a_uid)
+    A.wait_for_function("__g.S.you.inv.some(s => s && s.id === 'xu')", timeout=8000)
+
+    # --- 4. Nhiệm vụ qua hội thoại thật
+    tp(a_uid, n['x'] + 1.5, n['y'], n['z']); A.wait_for_timeout(500)
+    A.evaluate("(id) => { const e = __g.interp.es.find(e => e.id === id); __g.lookAt(e.x, e.y + 1.2, e.z); }", n['id'])
+    A.mouse.down(button='right'); A.mouse.up(button='right')
+    A.wait_for_selector('#panel:not([hidden])')
+    assert 'Chào lữ khách' in A.inner_text('#panel')
+    A.click('#panel button.choice:has-text("việc để làm")')
+    A.click('#panel button.choice:has-text("Chào làng")')
+    A.wait_for_function("__g.game.questState('%s', 'chao-lang') === 'active'" % a_uid)
+    A.click('#panel button.choice:has-text("Được")'); A.wait_for_selector('#panel', state='hidden')
+    A.wait_for_function("document.getElementById('quests').innerText.includes('Chào làng')")
+    A.evaluate("(uid) => { __g.game.giveItem(uid, 'log', 5); __g.game.giveItem(uid, 'workbench', 1); }", a_uid)
+    A.wait_for_function("document.getElementById('quests').innerText.includes('về báo')", timeout=8000)
+    A.evaluate("(id) => { const e = __g.interp.es.find(e => e.id === id); __g.lookAt(e.x, e.y + 1.2, e.z); }", n['id'])
+    A.mouse.down(button='right'); A.mouse.up(button='right')
+    A.wait_for_selector('#panel button.choice:has-text("trả nhiệm vụ")')
+    A.click('#panel button.choice:has-text("trả nhiệm vụ")')
+    A.click('#panel button.choice:has-text("Trả: Chào làng")')
+    A.wait_for_function("__g.game.questState('%s', 'chao-lang') === 'done'" % a_uid)
+    A.click('#panel button.choice:has-text("Cảm ơn")'); A.wait_for_selector('#panel', state='hidden')
+    A.wait_for_function("__g.S.you.inv.some(s => s && s.id === 'wood_sword')", timeout=8000)
+
+    # --- 5. Kho đồ và chế tạo qua giao diện (E)
+    A.evaluate("(uid) => { __g.game.giveItem(uid, 'planks', 8); __g.game.giveItem(uid, 'stick', 4); }", a_uid)
+    A.wait_for_function("__g.S.you.inv.some(s => s && s.id === 'planks')")
+    A.keyboard.press('KeyE'); A.wait_for_selector('#panel:not([hidden])')
+    assert 'Kho đồ' in A.inner_text('#panel')
+    A.click('#panel .rec:has-text("Bàn chế tạo") button')
+    A.wait_for_function("__g.S.you.inv.some(s => s && s.id === 'workbench')", timeout=8000)
+    A.keyboard.press('Escape'); A.wait_for_selector('#panel', state='hidden')
+
+    # --- 6. Boss ở đấu trường: cả hai cùng thấy, hạ boss
+    site = A.evaluate("__g.game.flags.sites.arena['thu-linh-soi']")
+    tp(a_uid, site['x'] + 0.5 + 4, site['y'] + 1, site['z'] + 0.5); tp(b_uid, site['x'] + 0.5 - 4, site['y'] + 1, site['z'] + 0.5)
+    A.wait_for_function("[...__g.game.ents.values()].some(e => e.kind === 'boss')", timeout=8000)
+    boss_id = A.evaluate("[...__g.game.ents.values()].find(e => e.kind === 'boss').id")
+    A.wait_for_function("(id) => __g.interp.es.some(e => e.id === id)", arg=boss_id)
+    B.wait_for_function("(id) => __g.interp.es.some(e => e.id === id)", arg=boss_id)
+    B.wait_for_function("!document.getElementById('bossbar').hidden")
+    assert 'Thủ Lĩnh Sói' in B.inner_text('#bossbar')
+    A.evaluate("(id) => { const b = __g.game.ents.get(id); b.hp = 5; b.frozen = true; const p = __g.game.player('%s'); p.hp = 9999; p.maxHp = 9999; }" % a_uid, boss_id)
+    A.wait_for_function("(id) => __g.game.ents.get(id) && __g.game.ents.get(id).hp <= 5", arg=boss_id)
+    A.evaluate("(id) => { const b = __g.game.ents.get(id); const p = __g.game.player('%s'); p.x = b.x + 2.5; p.z = b.z; p.y = b.y; __g.game.emit('%s', { t: 'teleport', x: p.x, y: p.y, z: p.z }); }" % (a_uid, a_uid), boss_id)
+    A.wait_for_timeout(500)
+    A.evaluate("(id) => { const e = __g.interp.es.find(e => e.id === id); __g.lookAt(e.x, e.y + 0.8, e.z); }", boss_id)
+    A.mouse.down()
+    A.wait_for_function("(id) => !__g.game.ents.has(id)", arg=boss_id, timeout=10000)
+    A.mouse.up()
+    B.wait_for_function("__g.S.flags['boss:thu-linh-soi'] === true", timeout=8000)
+    B.wait_for_function("document.getElementById('bossbar').hidden", timeout=8000)
+    assert A.evaluate("__g.game.flags['boss:thu-linh-soi']")
+
+    # --- 7. B rời phòng, A còn một mình
+    B.evaluate("__g.S.leave()")
+    A.wait_for_function("__g.game.players.size === 1", timeout=8000)
+    assert not errs, errs
+
+
+@test
+def test_e2e_two_players(pg, browser, base):
+    import traceback
+    try:
+        _e2e_two_players(pg, browser, base)
+    except Exception as e:
+        for f in traceback.extract_tb(e.__traceback__):
+            if f.filename.endswith('test_game.py') and f.name == '_e2e_two_players': print(f'      > dòng {f.lineno}: {f.line}')
+        raise
 
 
 if __name__ == '__main__':

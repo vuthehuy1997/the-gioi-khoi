@@ -40,6 +40,7 @@ export function interact(g, p, a) {
 
 export function choose(g, p, a) {
   if (!p.dlg) return { ok: false, reason: 'no-dialog' };
+  if (a.i === -1) { end(g, p); return { ok: true }; }
   const npc = NPCS[p.dlg.npc], node = npc.nodes[p.dlg.node], c = node.choices[a.i];
   if (!c || !cond(g, p, p.dlg.npc, c.if)) return { ok: false, reason: 'bad-choice' };
   const e = g.ents.get(p.dlg.entId);

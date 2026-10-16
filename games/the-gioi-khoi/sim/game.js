@@ -15,6 +15,7 @@ import { stepBosses, stepArenas, bossDef } from './boss.js';
 import { buildStructures, ensureNpcs } from './structures.js';
 import { BOSSES } from '../content/bosses.js';
 import { REGIONS } from '../content/regions.js';
+import { breakTimeFor, canHarvest, nearBench } from './rules.js';
 
 export const REACH = 6.5, EYE = 1.62, MAX_HP = 20, RESPAWN_S = 3;
 
@@ -82,10 +83,8 @@ export class Game {
 
   // Thời gian (giây) đào một block bằng vật đang cầm.
   breakTime(uid, x, y, z) {
-    const p = this.player(uid), def = BLOCKS[this.world.get(x, y, z)], h = this.held(p);
-    if (!def || def.hardness < 0) return Infinity;
-    const speed = h && h.tool && h.tool.type === def.tool ? h.tool.speed : 1;
-    return def.hardness / speed;
+    const p = this.player(uid), s = p.inv[p.sel];
+    return breakTimeFor(this.world.get(x, y, z), s ? s.id : null);
   }
 
   inReach(p, x, y, z) {
@@ -118,6 +117,7 @@ export class Game {
       case 'break': return this.actBreak(p, a);
       case 'place': return this.actPlace(p, a);
       case 'craft': return this.actCraft(p, a);
+      case 'swap': return this.actSwap(p, a);
       case 'hit': return combat.actHit(this, p, a);
       case 'use': return combat.actUse(this, p);
       case 'respawn': return combat.actRespawn(this, p);
@@ -143,11 +143,10 @@ export class Game {
     const id = this.world.get(a.x, a.y, a.z), def = BLOCKS[id], need = this.breakTime(p.uid, a.x, a.y, a.z);
     if (!def || need === Infinity) return { ok: false, reason: 'unbreakable' };
     if (this.time - d.t0 < need * 0.8) return { ok: false, reason: 'too-fast' };
-    const h = this.held(p);
-    const canHarvest = def.tier === 0 || (h && h.tool && h.tool.type === def.tool && h.tool.tier >= def.tier);
+    const hs = p.inv[p.sel];
     this.setBlock(a.x, a.y, a.z, B.AIR);
     p.dig = null;
-    if (canHarvest && def.drop) this.collect(p, def.drop, 1, a.x + 0.5, a.y + 0.5, a.z + 0.5);
+    if (canHarvest(id, hs ? hs.id : null) && def.drop) this.collect(p, def.drop, 1, a.x + 0.5, a.y + 0.5, a.z + 0.5);
     this.onBlockBroken?.(p, id);
     return { ok: true };
   }
@@ -184,11 +183,13 @@ export class Game {
     return { ok: true };
   }
 
-  nearBench(p) {
-    for (let dy = -2; dy <= 2; dy++) for (let dz = -4; dz <= 4; dz++) for (let dx = -4; dx <= 4; dx++) {
-      if (this.world.get(Math.floor(p.x) + dx, Math.floor(p.y) + dy, Math.floor(p.z) + dz) === B.WORKBENCH) return true;
-    }
-    return false;
+  nearBench(p) { return nearBench(this.world, p.x, p.y, p.z); }
+
+  actSwap(p, a) {
+    const ok = i => Number.isInteger(i) && i >= 0 && i < p.inv.length;
+    if (!ok(a.a) || !ok(a.b)) return { ok: false, reason: 'bad-slot' };
+    [p.inv[a.a], p.inv[a.b]] = [p.inv[a.b], p.inv[a.a]]; this.touch(p);
+    return { ok: true };
   }
 
   actCraft(p, a) {
