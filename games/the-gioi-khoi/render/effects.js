@@ -47,7 +47,9 @@ export function createEffects(sc) {
       } else crack.visible = false;
     },
     // tile: chỉ số ô atlas để lấy màu; n hạt
+    density: 1,
     burst(x, y, z, tile, n = 14, speed = 2.6) {
+      n = Math.max(1, Math.round(n * this.density));
       const c = Array.isArray(tile) ? tile : (tileColors[tile] || [0.6, 0.6, 0.6]);
       for (let i = 0; i < n; i++) {
         const k = head++ % N, j = k * 3, v = 0.75 + Math.random() * 0.5;

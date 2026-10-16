@@ -18,6 +18,7 @@ import { createEffects } from './render/effects.js';
 import { stepCameraFx, newCameraFx, createHand } from './render/camerafx.js';
 import { governRadius } from './render/governor.js';
 import { createIcons } from './ui/icons.js';
+import { PRESETS, presetOf, defaultPreset } from './render/quality.js';
 import { sfx } from './sfx.js';
 import { createHud, setIconProvider } from './ui/hud.js';
 import { createPanels } from './ui/panels.js';
@@ -26,7 +27,7 @@ import { REGIONS } from './content/regions.js';
 import { MOBS } from './content/mobs.js';
 import { BOSSES } from './content/bosses.js';
 import { ITEMS } from './content/items.js';
-import { BLOCKS, B } from './world/blocks.js';
+import { BLOCKS, B, BLOCK_BY_NAME } from './world/blocks.js';
 import { saveWorld, loadWorld, exportWorld, importWorld } from './save.js';
 
 const params = new URLSearchParams(location.search);
@@ -45,6 +46,7 @@ const scene = createScene($('cv'), { aa: params.get('aa') !== '0' && (devicePixe
 const hud = createHud();
 const sky = createSky(scene), fx = createEffects(scene), hand = createHand(scene), camFx = newCameraFx();
 const icons = createIcons(scene.atlasCanvas); setIconProvider(id => icons.get(id));
+let quality = store.get('tgk-quality') || defaultPreset({ cores: navigator.hardwareConcurrency || 4, memory: navigator.deviceMemory || 4 });
 const gov = { slow: 0, fast: 0 }, rawDts = []; let maxRadius = 6, wasOnGround = true, stepDist = 0, digSoundT = 0, loadingPhase = true;
 let S = null, game = null, local = null, view = null, ents = null, panels = null;
 let pending = 1, paused = false, wasLocked = false, lastHit = 0, dig = null, digCooldown = 0, lastSel = -1;
@@ -64,6 +66,15 @@ async function newOrSavedGame(fresh) {
   if (!fresh) { try { save = await loadWorld('main'); } catch (e) { save = null; } }
   if (save) return Game.fromSave(save);
   const g = new Game({ seed: randomSeed() }); g.buildStructures(); return g;
+}
+
+function applyQuality(key, setRadius = true) {
+  quality = key; store.set('tgk-quality', key);
+  const q = presetOf(key);
+  if (setRadius && view) { view.setRadius(q.radius); maxRadius = q.radius; }
+  scene.renderer.setPixelRatio(Math.min(devicePixelRatio || 1, q.pixelRatio)); scene.resize();
+  sky.clouds.visible = q.clouds; fx.density = q.particles;
+  for (const k of Object.keys(PRESETS)) { const b = $('q-' + k); if (b) b.classList.toggle('on', k === key); }
 }
 
 function setBusy(b) { for (const id of ['btn-solo', 'btn-new', 'btn-host', 'btn-join']) $(id).disabled = b; }
@@ -94,7 +105,7 @@ async function begin(session) {
   const p0 = S.pos || (game && game.player(uid));
   local = makePlayer(p0.x, p0.y, p0.z); local.yaw = 0; local.pitch = -0.1;
   view = new ChunkView(S.world, scene, { radius: Number(params.get('r')) || 6 });
-  maxRadius = view.radius;
+  applyQuality(quality, !params.get('r'));
   ents = createEntityView(scene);
   panels = createPanels({ act: a => S.act(a), onClose: () => { if (S && !S.you.dead) lockPointer(); } });
   S.on('ev', handleEvent);
@@ -116,7 +127,22 @@ function onSnap(snap) { buf.push({ t: performance.now(), snap }); if (buf.length
 
 const FAIL_TEXT = { poor: 'Không đủ xu.', 'inventory-full': 'Kho đồ đã đầy.', reach: 'Ở quá xa.', 'not-sold': 'Cửa hàng không bán món này.', 'not-bought': 'Cửa hàng không thu món này.',
   missing: 'Bạn không có đủ món này.', full: 'Máu đã đầy.', 'cannot-craft': 'Chưa đủ nguyên liệu hoặc cần đứng gần bàn chế tạo.', blocked: 'Có vật cản ở đó.', floating: 'Cần đặt cạnh một block khác.', 'too-soon': 'Chưa thể hồi sinh ngay.', far: 'Ở quá xa NPC.' };
+// Cập nhật lạc quan cho khách: thấy kết quả ngay, hoàn tác nếu host từ chối (không phải chờ một vòng mạng).
+let pendingEdits = [];
+function optimistic(x, y, z, id) {
+  if (game || !S) return;                                   // host/chơi một mình đã là nguồn sự thật
+  const prev = S.world.get(x, y, z);
+  if (prev === id) return;
+  const now = performance.now();
+  pendingEdits = pendingEdits.filter(p => now - p.t < 4000);
+  pendingEdits.push({ x, y, z, prev, t: now });
+  S.world.set(x, y, z, id);
+}
+function confirmEdit(x, y, z) { pendingEdits = pendingEdits.filter(p => !(p.x === x && p.y === y && p.z === z)); }
+function revertEdit() { const p = pendingEdits.shift(); if (p) S.world.set(p.x, p.y, p.z, p.prev); }
+
 function onFail(ev) {
+  if (ev.a === 'break' || ev.a === 'place') revertEdit();
   if (ev.a === 'break' || ev.a === 'dig') { dig = null; hud.setProgress(null); digCooldown = 0.2; if (ev.reason === 'reach') hud.toast('Ở quá xa.', 800); return; }
   if (FAIL_TEXT[ev.reason]) hud.toast(FAIL_TEXT[ev.reason], 1800);
 }
@@ -148,6 +174,7 @@ function handleEvent(ev) {
     case 'boss-defeated': sfx.play('victory'); hud.toast(`${ev.name} đã bị hạ!`, 5000); break;
     case 'pickup': sfx.play('pickup'); hud.toast(`+${ev.n} ${ITEMS[ev.item].name}`, 1200); break;
     case 'fail': onFail(ev); break;
+    case 'block': confirmEdit(ev.x, ev.y, ev.z); break;
     case 'hit': { const e = interp.es.find(x => x.id === ev.id); if (e) { fx.burst(e.x, e.y + 0.8, e.z, [0.9, 0.12, 0.1], 8, 2.2); if (Math.hypot(e.x - local.x, e.z - local.z) < 20) sfx.play('hit'); } break; }
     case 'telegraph': { const b = interp.es.find(e => e.id === ev.id); ents.telegraph(ev.x, b ? b.y : local.y, ev.z, ev.r, ev.time); break; }
   }
@@ -160,6 +187,7 @@ addEventListener('keydown', e => {
   if (e.target.tagName === 'INPUT') return;
   keys.add(e.code);
   if (!S) return;
+  if (e.code === 'F3') { e.preventDefault(); const d = $('debug'); d.hidden = !d.hidden; return; }
   if (e.code === 'Escape') { if (panels.isOpen) panels.close(); else if (!paused && !S.you.dead) setPause(true); else if (paused) setPause(false); return; }
   if (inUi() && e.code !== 'KeyE') return;
   if (e.code === 'KeyE') { if (panels.kind === 'inventory') panels.close(); else if (!inUi()) { document.exitPointerLock?.(); panels.openInventory({ you: S.you, nearBench: nearBench(S.world, local.x, local.y, local.z) }); } return; }
@@ -193,6 +221,7 @@ function setPause(on) {
   if (on) { document.exitPointerLock?.(); mouse.left = false; dig = null; hud.setProgress(null); } else lockPointer();
 }
 $('btn-resume').onclick = () => setPause(false);
+for (const k of Object.keys(PRESETS)) $('q-' + k).onclick = () => { applyQuality(k); rawDts.length = 0; };
 $('btn-save').onclick = async () => { await saveWorld('main', game.toSave()); $('pause-msg').textContent = 'Đã lưu.'; };
 $('btn-export').onclick = async () => {
   const blob = await exportWorld(game.toSave()), a = document.createElement('a');
@@ -236,7 +265,11 @@ function useItem() {
   const o = eyeOf(), d = dirOf(), blk = S.world.raycast(o, d, 6), en = pickEntity(o, d, 5);
   if (en && en.e.kind === 'npc' && (!blk || en.t < blk.dist)) { S.act({ t: 'interact', id: en.e.id }); return; }
   const h = heldId() && ITEMS[heldId()];
-  if (h && h.block && blk) { S.act({ t: 'place', x: blk.pos.x + blk.normal.x, y: blk.pos.y + blk.normal.y, z: blk.pos.z + blk.normal.z }); return; }
+  if (h && h.block && blk) {
+    const px = blk.pos.x + blk.normal.x, py = blk.pos.y + blk.normal.y, pz = blk.pos.z + blk.normal.z;
+    S.act({ t: 'place', x: px, y: py, z: pz }); hand.swing();
+    optimistic(px, py, pz, BLOCK_BY_NAME[h.block].id); return;
+  }
   if (h && h.heal) S.act({ t: 'use' });
 }
 
@@ -259,7 +292,7 @@ function mining(dt, now) {
   if (!dig || dig.x !== blk.pos.x || dig.y !== blk.pos.y || dig.z !== blk.pos.z) { dig = { ...blk.pos, t0: now }; S.act({ t: 'dig', ...blk.pos }); }
   const prog = (now - dig.t0) / need;
   hud.setProgress(prog);
-  if (prog >= 1) { S.act({ t: 'break', x: dig.x, y: dig.y, z: dig.z }); dig = null; digCooldown = 0.12; hud.setProgress(null); }
+  if (prog >= 1) { S.act({ t: 'break', x: dig.x, y: dig.y, z: dig.z }); optimistic(dig.x, dig.y, dig.z, 0); dig = null; digCooldown = 0.12; hud.setProgress(null); }
 }
 
 // ---------------------------------------------------------------- vòng lặp
@@ -273,7 +306,15 @@ function interpolate(now) {
   interp = { ps: lerpList(a.snap.ps, b.snap.ps, 'uid'), es: lerpList(a.snap.es, b.snap.es, 'id') };
 }
 
-let last = performance.now(), nowS = 0, lastVy = 0;
+let last = performance.now(), nowS = 0, lastVy = 0, dbgT = 0;
+function debugText() {
+  const i = scene.renderer.info, avg = rawDts.length ? rawDts.reduce((a, b) => a + b, 0) / rawDts.length * 1000 : 0;
+  return [`FPS ${avg ? (1000 / avg).toFixed(0) : '-'}  (khung ${avg.toFixed(1)} ms, JS ${perf.n ? (perf.sum / perf.n).toFixed(1) : '-'} ms)`,
+    `XYZ ${local.x.toFixed(1)} ${local.y.toFixed(1)} ${local.z.toFixed(1)}  vùng ${S.world.regionAt(local.x, local.z)}`,
+    `Chunk mesh ${scene.chunkCount()}  tầm nhìn ${view.radius}/${maxRadius}  chờ ${pending}  chất lượng ${quality}`,
+    `Tam giác ${i.render.triangles}  lệnh vẽ ${i.render.calls}  hạt ${fx.particleCount}  thực thể ${ents.count()}`,
+    S.room ? `Mạng: ${S.room.players.length} người` : 'Chơi một mình'].join('\n');
+}
 // Số đo chi phí JS mỗi khung (cho test hiệu năng và bộ điều chỉnh chất lượng).
 const perf = { n: 0, sum: 0, max: 0, ring: new Float32Array(240), i: 0, reset() { this.n = 0; this.sum = 0; this.max = 0; this.ring.fill(0); this.i = 0; },
   add(ms) { this.n++; this.sum += ms; if (ms > this.max) this.max = ms; this.ring[this.i++ % 240] = ms; },
@@ -319,6 +360,7 @@ function frameBody(dt) {
   sky.update(scene.camera.position, S.time, light, r.sky, r.fog);
   fx.update(dt);
   scene.render();
+  if (!$('debug').hidden) { dbgT -= dt; if (dbgT <= 0) { dbgT = 0.25; $('debug').textContent = debugText(); } }
 }
 
 function loop(now) {
@@ -343,6 +385,7 @@ requestAnimationFrame(loop);
 if (debugOn()) {
   window.__g = {
     get S() { return S; }, get game() { return game; }, get local() { return local; }, get view() { return view; }, scene, hud, get panels() { return panels; }, get ents() { return ents; },
+    optimistic, handleEvent, get pendingEdits() { return pendingEdits; }, applyQuality, get quality() { return quality; },
     get pending() { return pending; }, perf, sky, fx, hand, camFx, sfx, icons, gov, get interp() { return interp; }, mouse, keys,
     renderNow: () => frame(0.0001),
     lookAt(x, y, z) { const dx = x - local.x, dy = y - (local.y + 1.62), dz = z - local.z; local.yaw = Math.atan2(-dx, -dz); local.pitch = Math.atan2(dy, Math.hypot(dx, dz)); },

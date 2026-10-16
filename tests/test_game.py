@@ -1334,6 +1334,38 @@ def test_audio_icons_and_underwater_tint(pg, browser, base):
     assert r['icons']['distinct'] == 3 and r['icons']['cached'] and r['icons']['isImg'] and r['hotbarImgs'] >= 1 and r['water'], r
 
 
+@test
+def test_quality_presets_debug_overlay_and_optimistic_edits(pg, browser, base):
+    url = root(base) + 'games/the-gioi-khoi/game.html?debug&seed=777&net=memory&aa=0'
+    A = pg; B = pg.context.new_page()
+    A.goto(url + '&uid=ua'); B.goto(url + '&uid=ub'); A.wait_for_timeout(300)
+    A.fill('#name', 'An'); A.click('#btn-host')
+    A.wait_for_function("window.__g && window.__g.S && window.__g.pending === 0", timeout=30000)
+    code = A.inner_text('#roomcode').replace('Phòng', '').strip()
+    B.fill('#name', 'Bình'); B.fill('#code', code); B.click('#btn-join')
+    B.wait_for_function("window.__g && window.__g.S && window.__g.pending === 0", timeout=30000)
+    # chất lượng: Thấp giảm tầm nhìn, ẩn mây, giảm độ phân giải; Cao tăng lại
+    A.evaluate("__g.applyQuality('low')")
+    low = A.evaluate("({ r: __g.view.radius, clouds: __g.sky.clouds.visible, pr: __g.scene.renderer.getPixelRatio(), q: __g.quality })")
+    A.evaluate("__g.applyQuality('high')")
+    high = A.evaluate("({ r: __g.view.radius, clouds: __g.sky.clouds.visible })")
+    assert low['r'] == 3 and not low['clouds'] and low['pr'] <= 0.75 and low['q'] == 'low' and high['r'] == 8 and high['clouds'], (low, high)
+    A.evaluate("__g.applyQuality('medium')")
+    # F3: bảng thông số
+    A.keyboard.press('F3')
+    A.wait_for_function("!document.getElementById('debug').hidden && document.getElementById('debug').textContent.includes('Tam giác')")
+    txt = A.inner_text('#debug'); assert 'FPS' in txt and 'XYZ' in txt and 'Mạng: 2 người' in txt, txt
+    A.keyboard.press('F3'); A.wait_for_function("document.getElementById('debug').hidden")
+    # khách: đào lạc quan thấy ngay, bị từ chối thì hoàn tác
+    cell = B.evaluate("""() => { const l = __g.local, w = __g.S.world; const x = Math.floor(l.x) + 1, z = Math.floor(l.z), y = w.surfaceY(x, z); return { x, y, z, id: w.get(x, y, z) }; }""")
+    arg = [cell['x'], cell['y'], cell['z']]
+    now = B.evaluate("([x, y, z]) => { __g.optimistic(x, y, z, 0); return __g.S.world.get(x, y, z); }", arg)
+    assert now == 0 and A.evaluate("([x, y, z]) => __g.game.world.get(x, y, z)", arg) == cell['id']      # khách thấy ngay, host chưa đổi
+    B.evaluate("() => __g.handleEvent({ t: 'fail', a: 'break', reason: 'reach' })")
+    assert B.evaluate("([x, y, z]) => __g.S.world.get(x, y, z)", arg) == cell['id']                         # bị từ chối: trả lại
+    assert B.evaluate("__g.pendingEdits.length") == 0
+
+
 
 def _e2e_two_players(pg, browser, base):
     url = root(base) + 'games/the-gioi-khoi/game.html?debug&seed=777&r=4&net=memory'

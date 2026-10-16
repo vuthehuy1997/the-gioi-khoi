@@ -36,3 +36,17 @@ Giới hạn đã biết: kết nối thật giữa thiết bị khác mạng ch
 Hồi sinh bị gói vị trí cũ kéo ngược về chỗ chết (thêm số thứ tự dịch chuyển `seq`); nhiệm vụ boss/“đến vùng” không bị kẹt khi boss đã chết hoặc nhận ngay trong vùng; tab host chạy nền vẫn bắt kịp 2 giây mô phỏng và báo lý do thất bại cho người chơi; người đang gục được lưu ở điểm hồi sinh; nối lại sau khi rớt mạng thế chỗ kết nối cũ; chơi một mình dừng khi tạm dừng; host giữ chunk quanh người chơi khác; vật phẩm rơi không chặn đặt block; quái không bị dọn sạch khi mọi người đang gục; giới hạn tần suất gói vị trí; uid lạ (`constructor`) không làm hỏng việc vào phòng.
 
 Các mục nhỏ còn hoãn: xoá delta khi block trở về nguyên bản (gói chào lớn dần), giới hạn 40 hành động/giây có thể làm rơi một lệnh đào khi lăn chuột rất nhanh, ô đang cầm trên máy khách trễ một nhịp so với host khi vừa đổi công cụ giữa lúc đào.
+
+## Chất lượng và hiệu năng (vòng cải tiến sau phản hồi "lag và chất lượng kém")
+
+| # | Tiêu chí | Test | Trạng thái |
+|---|---|---|---|
+| J1 | Sinh/dựng chunk ngoài luồng chính: di chuyển nhanh JS < 6 ms/khung, p95 < 16 ms, không quá 2 long task | `test_perf_streaming_frame_cost` | ✅ |
+| J2 | AO + ánh sáng trời trong mesh | `test_visual_vertex_ao_*` | ✅ |
+| J3 | Trời, mặt trời/trăng, sao, mây đổi theo giờ | `test_visual_sky_*` | ✅ |
+| J4 | Khung chọn, vết nứt, hạt khi đào | `test_visual_selection_*` | ✅ |
+| J5 | Địa hình có đồi và hồ; cỏ, hoa, bụi khô | `test_visual_plants_and_terrain_relief` | ✅ |
+| J6 | Hoạt hoạ thực thể, nháy đỏ, bóng | `test_visual_entities_*` | ✅ |
+| J7 | FOV/nhún/nghiêng camera, bộ điều chỉnh tầm nhìn | `test_visual_camera_fx_*` | ✅ |
+| J8 | Âm thanh, icon, dưới nước | `test_audio_icons_and_underwater_tint` | ✅ |
+| J9 | Mức chất lượng, F3, cập nhật lạc quan cho khách | `test_quality_presets_*` | ✅ |

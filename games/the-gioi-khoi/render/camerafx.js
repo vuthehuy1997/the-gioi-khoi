@@ -17,8 +17,8 @@ export const newCameraFx = () => ({ fov: BASE_FOV, bob: 0, bobAmp: 0, tilt: 0 })
 
 export function createHand(sc) {
   const T = sc.THREE, g = new T.Group();
-  const arm = new T.Mesh(new T.BoxGeometry(0.13, 0.13, 0.5), new T.MeshBasicMaterial({ color: '#e8c39e' }));
-  arm.position.set(0.18, -0.18, -0.15); arm.rotation.set(0.1, 0.1, 0);
+  const arm = new T.Mesh(new T.BoxGeometry(0.1, 0.1, 0.42), new T.MeshBasicMaterial({ color: '#e8c39e' }));
+  arm.position.set(0.2, -0.24, -0.1); arm.rotation.set(0.1, 0.1, 0);
   const item = new T.Mesh(new T.PlaneGeometry(0.5, 0.5), new T.MeshBasicMaterial({ transparent: true, side: T.DoubleSide, depthTest: false }));
   item.position.set(0.1, 0.02, -0.55); item.rotation.set(0, -0.35, 0.25); item.visible = false;
   g.add(arm, item);

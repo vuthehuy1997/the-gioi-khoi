@@ -63,7 +63,7 @@ export function createSky(sc) {
       const k = [skyHex, fogHex, light.toFixed(2), warm.toFixed(2)].join('|');
       if (k !== key) {
         key = k;
-        top.set(skyHex).multiplyScalar(0.8).lerp(tmpA.set('#2a5fb8'), 0.35).multiplyScalar(Math.max(0.06, light));
+        top.set(skyHex).multiplyScalar(0.8).lerp(tmpA.set('#2a5fb8'), 0.35).multiplyScalar(Math.max(0.06, light)).lerp(tmpB.set('#050a24'), Math.min(1, (1 - light) * 1.1));
         hor.set(fogHex).lerp(tmpB.set('#ff9a5a'), warm * 0.55).multiplyScalar(Math.max(0.1, light));
         const pos = dg.attributes.position, col = dg.attributes.color;
         for (let i = 0; i < pos.count; i++) { const t = Math.max(0, Math.min(1, pos.getY(i) / R)), f = Math.pow(t, 0.55); col.setXYZ(i, lerp(hor.r, top.r, f), lerp(hor.g, top.g, f), lerp(hor.b, top.b, f)); }
