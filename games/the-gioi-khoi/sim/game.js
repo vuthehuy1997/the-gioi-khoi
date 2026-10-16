@@ -9,6 +9,12 @@ import { makePlayer, stepPlayer } from './physics.js';
 import { makeRng } from './rng.js';
 import { stepMobs, spawnTick } from './mobs.js';
 import * as combat from './combat.js';
+import * as quests from './quests.js';
+import * as dialogue from './dialogue.js';
+import { stepBosses, stepArenas, bossDef } from './boss.js';
+import { buildStructures, ensureNpcs } from './structures.js';
+import { BOSSES } from '../content/bosses.js';
+import { REGIONS } from '../content/regions.js';
 
 export const REACH = 6.5, EYE = 1.62, MAX_HP = 20, RESPAWN_S = 3;
 
@@ -93,6 +99,10 @@ export class Game {
       case 'hit': return combat.actHit(this, p, a);
       case 'use': return combat.actUse(this, p);
       case 'respawn': return combat.actRespawn(this, p);
+      case 'interact': return dialogue.interact(this, p, a);
+      case 'dlg': return dialogue.choose(this, p, a);
+      case 'buy': return dialogue.buy(this, p, a);
+      case 'sell': return dialogue.sell(this, p, a);
       default: return this.actExtra ? this.actExtra(p, a) : { ok: false, reason: 'unknown' };
     }
   }
@@ -182,9 +192,64 @@ export class Game {
   hurtPlayer(p, dmg, src) { combat.hurtPlayer(this, typeof p === 'string' ? this.player(p) : p, dmg, src); }
   damageEntity(e, dmg, src) { return combat.damageEntity(this, e, dmg, src); }
 
+  // ---- công trình, nhiệm vụ, boss ----
+  buildStructures() { buildStructures(this); }
+  ensureNpcs() { ensureNpcs(this); }
+  bossDef(e) { return bossDef(e); }
+  acceptQuest(uid, id) { return quests.accept(this, this.player(uid), id); }
+  questState(uid, id) { return quests.questState(this, this.player(uid), id); }
+  questProgress(uid, id) { return quests.progress(this, this.player(uid), id); }
+  questSummary(uid) { return quests.summary(this, this.player(uid)); }
+
+  nearbyPlayers(e, r) { return [...this.players.values()].filter(p => !p.dead && Math.hypot(p.x - e.x, p.z - e.z) <= r); }
+
+  onKill(e, src) {
+    if (e.kind === 'mob') for (const p of this.nearbyPlayers(e, 24)) quests.creditKill(this, p, e.type);
+    if (e.kind === 'boss') {
+      const d = BOSSES[e.type];
+      this.flags[d.flag] = true;
+      for (const m of e.minions || []) this.ents.delete(m);
+      this.emit(null, { t: 'boss-defeated', id: e.id, type: e.type, name: d.name });
+      const near = this.nearbyPlayers(e, (e.arena ? e.arena.r : d.radius) + 10);
+      this.onBossDefeated(e.type, near);
+      if (d.unlocks) { const r = REGIONS.find(x => x.id === d.unlocks); this.emit(null, { t: 'toast', text: `${d.name} đã bị hạ. ${r ? r.name : d.unlocks} giờ an toàn.` }); }
+    }
+  }
+
+  onBossDefeated(bossId, players) { for (const p of players) { quests.creditBoss(this, p, bossId); this.touch(p); } }
+
+  regionTick(dt) {
+    for (const p of this.players.values()) {
+      if (p.dead) continue;
+      const r = REGIONS.find(x => x.id === this.world.regionAt(p.x, p.z));
+      if (p.region !== r.id) { p.region = r.id; this.emit(p.uid, { t: 'region', id: r.id, name: r.name }); quests.creditRegion(this, p, r.id); this.touch(p); }
+      if (r.requires && !this.flags[r.requires]) {
+        p.hazT = (p.hazT || 0) + dt;
+        if (p.hazT >= 2) {
+          p.hazT -= 2; this.hurtPlayer(p, 1, null);
+          if (this.time - (p.warnAt || -99) > 20) { p.warnAt = this.time; const b = Object.values(BOSSES).find(x => x.flag === r.requires); this.emit(p.uid, { t: 'toast', text: `Khí độc ở ${r.name} đang gặm mòn bạn. Hãy hạ ${b ? b.name : 'boss'} để vào vùng này an toàn.` }); }
+        }
+      } else p.hazT = 0;
+    }
+  }
+
+  questTick(dt) {
+    this.qAcc = (this.qAcc || 0) + dt;
+    if (this.qAcc < 0.5) return;
+    this.qAcc = 0;
+    for (const p of this.players.values()) {
+      const sig = JSON.stringify(quests.summary(this, p));
+      if (sig !== p.qsig) { p.qsig = sig; this.emit(p.uid, { t: 'quests', list: quests.summary(this, p) }); }
+    }
+  }
+
   tick(dt) {
     this.time += dt; this.tickNo++;
     stepMobs(this, dt);
+    stepBosses(this, dt);
+    stepArenas(this, dt);
+    this.regionTick(dt);
+    this.questTick(dt);
     if (this.spawning) spawnTick(this, dt);
     combat.updateItems(this, dt);
     combat.updateProjectiles(this, dt);

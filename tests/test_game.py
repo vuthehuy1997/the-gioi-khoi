@@ -355,6 +355,7 @@ const { spawnMob } = await imp('sim/mobs.js');
 // Sân phẳng bằng đá ở nơi xa (không cây), mặt sân ở y=30, trần thoáng.
 const mkArena = (opts = {}) => {
   const g = new Game({ seed: 777, spawning: false, ...opts }); const p = g.addPlayer('u1', 'T');
+  g.flags['boss:thu-linh-soi'] = true; g.flags['boss:bo-cap-chua'] = true;      // mở các vùng, không bị khí độc
   const cx = 2000, cz = 2000, y0 = 30;
   for (let dx = -20; dx <= 20; dx++) for (let dz = -20; dz <= 20; dz++) { g.world.set(cx + dx, y0, cz + dz, 1); for (let dy = 1; dy <= 8; dy++) g.world.set(cx + dx, y0 + dy, cz + dz, 0); }
   p.x = cx + 0.5; p.y = y0 + 1; p.z = cz + 0.5;
@@ -519,6 +520,288 @@ def test_combat_player_death_respawn_regen_and_food(pg):
     assert r['hurt'] == 12 and r['ate'] and r['afterEat'] == 17 and r['meatLeft'] == 1, r
     assert r['dead'] and not r['blocked'] and not r['earlyRespawn'] and r['respawn'] and r['hpBack'] == 20 and r['alive'], r
     assert r['noRegen'] == r['low'] and r['regen'] > r['low'], r
+
+
+# ---------------------------------------------------------------- E: boss
+
+BOSS_JS = ARENA_JS + """
+const { BOSSES } = await imp('content/bosses.js');
+const { spawnBoss } = await imp('sim/boss.js');
+const mkBossFight = (id, dist = 5) => {
+  const A = mkArena(); const { g, p, cx, cz, y0 } = A;
+  p.hp = p.maxHp = 9999;
+  const b = spawnBoss(g, id, cx + 0.5 + dist, y0 + 1, cz + 0.5);
+  return { ...A, b };
+};
+const types = (g) => { const o = {}; for (const e of g.ents.values()) o[e.kind] = (o[e.kind] || 0) + 1; return o; };
+"""
+
+
+@test
+def test_boss_content_is_multiphase(pg):
+    r = ev(pg, r"""
+      const { BOSSES } = await imp('content/bosses.js');
+      const list = Object.values(BOSSES);
+      return { count: list.length, phases: list.map(b => b.phases.length), moveTypes: [...new Set(list.flatMap(b => Object.values(b.moves).map(m => m.type)))].sort(),
+               ordered: list.every(b => b.phases.every((ph, i) => i === 0 || ph.from < b.phases[i - 1].from)) };
+    """)
+    assert r['count'] >= 2 and all(n >= 3 for n in r['phases']) and r['ordered'], r
+    assert {'melee', 'leap', 'summon', 'volley', 'slam'} <= set(r['moveTypes']), r
+
+
+@test
+def test_boss_melee_leap_summon_phases(pg):
+    r = ev(pg, BOSS_JS + r"""
+      const { g, p, b } = mkBossFight('thu-linh-soi');
+      const hp0 = p.hp; run(g, 10); const lost1 = hp0 - p.hp;
+      const phase0 = b.phase;
+      b.hp = b.maxHp * 0.45; run(g, 0.2); const phase1 = b.phase;
+      run(g, 14); const summoned = [...g.ents.values()].filter(e => e.kind === 'mob' && e.type === 'soi-xam').length;
+      b.hp = b.maxHp * 0.15; run(g, 0.2); const phase2 = b.phase;
+      return { lost1, phase0, phase1, phase2, summoned, dmgMul: b.dmgMul, speedMul: b.speedMul, bossAlive: g.ents.has(b.id) };
+    """)
+    assert r['lost1'] > 5 and r['phase0'] == 0 and r['phase1'] == 1 and r['phase2'] == 2, r
+    assert r['summoned'] >= 2 and r['dmgMul'] >= 1.4 and r['speedMul'] >= 1.5 and r['bossAlive'], r
+
+
+@test
+def test_boss_volley_and_slam(pg):
+    r = ev(pg, BOSS_JS + r"""
+      const { g, p, b } = mkBossFight('bo-cap-chua', 7);
+      b.hp = b.maxHp * 0.5;                                              // pha 2: có quake
+      let sawProj = 0, sawTele = false;
+      for (let t = 0; t < 20; t += 0.05) { g.tick(0.05); sawProj = Math.max(sawProj, [...g.ents.values()].filter(e => e.kind === 'proj').length); if (g.drain().some(x => x.ev.t === 'telegraph')) sawTele = true; p.x = b.x - 7; p.z = b.z; }
+      return { sawProj, sawTele, lost: 9999 - p.hp };
+    """)
+    assert r['sawProj'] >= 3 and r['sawTele'] and r['lost'] > 8, r
+
+
+@test
+def test_boss_defeat_sets_flag_rewards_and_unlocks(pg):
+    r = ev(pg, BOSS_JS + r"""
+      const { g, p, b } = mkBossFight('thu-linh-soi');
+      p.inv.fill(null); p.inv[0] = { id: 'gem_sword', n: 1 }; p.sel = 0;
+      b.frozen = true; g.flags['boss:thu-linh-soi'] = false; const before = !!g.flags['boss:thu-linh-soi'];
+      let hits = 0; for (let i = 0; i < 60 && g.ents.has(b.id); i++) { run(g, 0.5); if (g.act('u1', { t: 'hit', id: b.id }).ok) hits++; }
+      const evs = g.drain().map(e => e.ev.t);
+      const drops = [...g.ents.values()].filter(e => e.kind === 'item').map(e => e.item);
+      return { before, dead: !g.ents.has(b.id), flag: !!g.flags['boss:thu-linh-soi'], evs: evs.includes('boss-defeated'), drops, hits };
+    """)
+    assert not r['before'] and r['dead'] and r['flag'] and r['evs'] and 'wolf_heart' in r['drops'], r
+
+
+@test
+def test_boss_scaling_with_players_in_arena(pg):
+    r = ev(pg, BOSS_JS + r"""
+      const { g, p, cx, cz, y0, b } = mkBossFight('thu-linh-soi');
+      b.frozen = true; run(g, 0.2);
+      const hp1 = b.maxHp, d1 = b.scaleDmg;
+      for (const id of ['u2', 'u3']) { const q = g.addPlayer(id, id); q.x = cx + 0.5 + 2; q.z = cz + 0.5; q.y = y0 + 1; }
+      run(g, 0.2);
+      const hp3 = b.maxHp, d3 = b.scaleDmg, ratio = b.hp / b.maxHp;
+      g.removePlayer('u3'); g.removePlayer('u2'); run(g, 0.2);
+      return { hp1, hp3, d1, d3, ratio, back: b.maxHp };
+    """)
+    assert r['hp1'] == 300 and abs(r['hp3'] - 660) < 1 and abs(r['ratio'] - 1) < 0.01, r
+    assert r['d1'] == 1 and abs(r['d3'] - 1.3) < 0.01 and r['back'] == 300, r
+
+
+@test
+def test_boss_arena_activation_reset_and_one_time(pg):
+    r = ev(pg, GAME_JS + r"""
+      const { BOSSES } = await imp('content/bosses.js');
+      const t0 = performance.now();
+      const g = new Game({ seed: 777, spawning: false }); const p = g.addPlayer('u1', 'T'); p.hp = p.maxHp = 9999;
+      g.buildStructures();
+      const buildMs = performance.now() - t0;
+      const site = g.flags.sites.arena['thu-linh-soi'];
+      const far = () => { p.x = site.x + 200; p.z = site.z + 200; p.y = 40; g.tick(1); };
+      const near = () => { p.x = site.x + 0.5; p.z = site.z + 0.5; p.y = site.y + 1; g.tick(1); };
+      far(); const none = [...g.ents.values()].filter(e => e.kind === 'boss').length;
+      near(); const bosses1 = [...g.ents.values()].filter(e => e.kind === 'boss');
+      const b = bosses1[0]; b.hp = 10;
+      far(); g.tick(6); const reset = [...g.ents.values()].filter(e => e.kind === 'boss').length;
+      near(); const again = [...g.ents.values()].find(e => e.kind === 'boss'); const full = again && again.hp === again.maxHp;
+      g.flags['boss:thu-linh-soi'] = true; g.ents.delete(again.id);
+      far(); near(); const after = [...g.ents.values()].filter(e => e.kind === 'boss').length;
+      // sân đấu phẳng và thoáng
+      const y = site.y; let flat = true, clear = true;
+      for (let dx = -10; dx <= 10; dx += 5) for (let dz = -10; dz <= 10; dz += 5) { if (g.world.get(site.x + dx, y, site.z + dz) === 0) flat = false; for (let dy = 1; dy <= 5; dy++) if (g.world.get(site.x + dx, y + dy, site.z + dz) !== 0) clear = false; }
+      return { none, spawned: bosses1.length, region: g.world.regionAt(site.x, site.z), reset, full, after, flat, clear, buildMs, sites: Object.keys(g.flags.sites.arena).sort() };
+    """)
+    assert r['none'] == 0 and r['spawned'] == 1 and r['region'] == 'rung-suong' and r['reset'] == 0 and r['full'] and r['after'] == 0, r
+    assert r['flat'] and r['clear'] and r['sites'] == ['bang-de', 'bo-cap-chua', 'thu-linh-soi'], r
+    assert r['buildMs'] < 15000, r
+
+
+@test
+def test_locked_region_hurts_until_boss_defeated(pg):
+    r = ev(pg, GAME_JS + r"""
+      const { regionAt } = await imp('world/regions.js');
+      const g = new Game({ seed: 777, spawning: false }); const p = g.addPlayer('u1', 'T');
+      let spot = null; for (let x = -3000; x <= 3000 && !spot; x += 40) for (let z = -3000; z <= 3000 && !spot; z += 40) if (regionAt(777, x, z) === 'sa-mac-lua' && g.world.surfaceY(x, z) > 21) spot = { x, z };
+      g.world.keepAround([spot], 2);
+      p.x = spot.x + 0.5; p.z = spot.z + 0.5; p.y = g.world.surfaceY(spot.x, spot.z) + 1; p.vy = 0;
+      for (let t = 0; t < 10; t += 0.05) { g.tick(0.05); p.y = g.world.surfaceY(spot.x, spot.z) + 1; }
+      const hurt = p.hp; const toasts = g.drain().filter(e => e.ev.t === 'toast').length;
+      g.flags['boss:thu-linh-soi'] = true; p.hp = 20; p.lastHurt = 99999;
+      for (let t = 0; t < 10; t += 0.05) { g.tick(0.05); p.y = g.world.surfaceY(spot.x, spot.z) + 1; }
+      return { hurt, toasts, after: p.hp };
+    """)
+    assert r['hurt'] < 20 and r['toasts'] >= 1 and r['after'] == 20, r
+
+
+# ---------------------------------------------------------------- F: NPC, hội thoại, cửa hàng, nhiệm vụ
+
+NPC_JS = GAME_JS + """
+const { NPCS } = await imp('content/npcs.js');
+const mkTown = () => {
+  const g = new Game({ seed: 777, spawning: false }); const p = g.addPlayer('u1', 'T'); g.buildStructures();
+  const npc = (id) => [...g.ents.values()].find(e => e.kind === 'npc' && e.npc === id);
+  const goto = (id) => { const n = npc(id); p.x = n.x + 1.2; p.z = n.z; p.y = n.y; return n; };
+  const view = () => { const evs = g.drain().filter(x => x.to === 'u1' || x.to === null).map(x => x.ev); return evs.filter(e => e.t === 'dialog' || e.t === 'dialog-end' || e.t === 'shop'); };
+  const say = (i) => { const r = g.act('u1', { t: 'dlg', i }); return { r, v: view() }; };
+  const talk = (id) => { const n = goto(id); const r = g.act('u1', { t: 'interact', id: n.id }); return { r, v: view() }; };
+  return { g, p, npc, goto, view, say, talk };
+};
+"""
+
+
+@test
+def test_npcs_exist_with_dialogue_graphs(pg):
+    r = ev(pg, NPC_JS + r"""
+      const T = mkTown();
+      const ids = [...T.g.ents.values()].filter(e => e.kind === 'npc').map(e => e.npc).sort();
+      const t = T.talk('truong-lang');
+      const ev0 = t.v.find(e => e.t === 'dialog');
+      // xa quá thì không nói chuyện được
+      T.p.x += 30; const far = T.g.act('u1', { t: 'interact', id: T.npc('truong-lang').id });
+      return { count: Object.keys(NPCS).length, ids, ok: t.r.ok, text: ev0 && ev0.text, choices: ev0 && ev0.choices.map(c => c.text), far: far.ok };
+    """)
+    assert r['count'] >= 3 and set(r['ids']) == {'truong-lang', 'tho-ren', 'thuong-nhan', 'an-si'} and r['ok'], r
+    assert 'Chào lữ khách' in r['text'] and len(r['choices']) >= 3 and not r['far'], r
+    assert not any('Trả nhiệm vụ' in c for c in r['choices']), r          # chưa có nhiệm vụ sẵn sàng thì ẩn lựa chọn trả
+
+
+@test
+def test_quest_chain_chao_lang_then_hunt(pg):
+    r = ev(pg, NPC_JS + r"""
+      const T = mkTown(); const { g, p } = T;
+      T.talk('truong-lang'); T.say(0);                                         // Cho tôi một việc
+      const jobs = T.view; 
+      const r1 = T.say(0);                                                      // Nhận Chào làng
+      const state1 = p.quests.active['chao-lang'] ? 'active' : 'none';
+      g.giveItem('u1', 'log', 5); g.tick(0.1);
+      const half = JSON.stringify(g.questProgress('u1', 'chao-lang'));
+      g.giveItem('u1', 'workbench', 1); g.tick(0.1);
+      const ready = g.questState('u1', 'chao-lang');
+      // trả nhiệm vụ
+      T.talk('truong-lang'); const menu = T.say(1);                             // Tôi muốn trả nhiệm vụ
+      const choices = (menu.v.find(e => e.t === 'dialog') || {}).choices || [];
+      const idx = choices.findIndex(c => c.text.includes('Chào làng'));
+      T.say(choices[idx].i);
+      const done = g.questState('u1', 'chao-lang');
+      const sword = p.inv.some(s => s && s.id === 'wood_sword'), xu = p.inv.filter(Boolean).filter(s => s.id === 'xu').reduce((a, s) => a + s.n, 0);
+      // nhiệm vụ săn sói chỉ nhận được sau khi xong Chào làng; giết sói không phải của nhiệm vụ không tính
+      const { spawnMob } = await imp('sim/mobs.js');
+      T.talk('truong-lang'); T.say(0); const accept2 = T.say(1);
+      const hunting = g.questState('u1', 'san-soi');
+      p.inv.fill(null); p.inv[0] = { id: 'gem_sword', n: 1 }; p.sel = 0;
+      for (let i = 0; i < 3; i++) { const m = spawnMob(g, 'soi-xam', p.x + 2, p.y, p.z); g.damageEntity(m, 999, p); }
+      g.tick(0.1);
+      return { state1, half, ready, done, sword, xu, hunting, afterKills: g.questState('u1', 'san-soi') };
+    """)
+    assert r['state1'] == 'active' and r['ready'] == 'ready' and r['done'] == 'done' and r['sword'] and r['xu'] == 10, r
+    assert r['hunting'] == 'active' and r['afterKills'] == 'ready', r
+
+
+@test
+def test_quest_kill_only_counts_when_active_and_boss_quest(pg):
+    r = ev(pg, NPC_JS + r"""
+      const T = mkTown(); const { g, p } = T;
+      const { spawnMob } = await imp('sim/mobs.js');
+      p.inv[0] = { id: 'gem_sword', n: 1 };
+      g.quests_accept = null;
+      for (let i = 0; i < 3; i++) { const m = spawnMob(g, 'soi-xam', p.x + 2, p.y, p.z); g.damageEntity(m, 999, p); }   // trước khi nhận
+      p.quests.done['chao-lang'] = true;
+      g.acceptQuest('u1', 'san-soi'); g.tick(0.1);
+      const afterAccept = g.questProgress('u1', 'san-soi');
+      const early = g.acceptQuest('u1', 'diet-thu-linh');                                         // chưa xong san-soi
+      p.quests.done['san-soi'] = true; const later = g.acceptQuest('u1', 'diet-thu-linh');
+      g.onBossDefeated?.call(g, 'thu-linh-soi', [p]);
+      g.tick(0.1);
+      return { afterAccept, early: early.ok, later: later.ok, bossQuest: g.questState('u1', 'diet-thu-linh') };
+    """)
+    assert r['afterAccept'][0]['n'] == 0 and not r['early'] and r['later'] and r['bossQuest'] == 'ready', r
+
+
+@test
+def test_shop_buy_sell_rules(pg):
+    r = ev(pg, NPC_JS + r"""
+      const T = mkTown(); const { g, p } = T;
+      T.talk('tho-ren'); const shopEv = T.say(0);                                  // Cho tôi xem hàng
+      const shop = shopEv.v.find(e => e.t === 'shop');
+      const poor = g.act('u1', { t: 'buy', item: 'stone_pick', n: 1 });
+      g.giveItem('u1', 'xu', 50);
+      const bought = g.act('u1', { t: 'buy', item: 'stone_pick', n: 1 });
+      const xuAfter = p.inv.filter(Boolean).filter(s => s.id === 'xu').reduce((a, s) => a + s.n, 0);
+      const notSold = g.act('u1', { t: 'buy', item: 'gem_sword', n: 1 });
+      g.giveItem('u1', 'crystal', 2);
+      const sold = g.act('u1', { t: 'sell', item: 'crystal', n: 2 });
+      const notBought = g.act('u1', { t: 'sell', item: 'wolf_heart', n: 1 });
+      const xuEnd = p.inv.filter(Boolean).filter(s => s.id === 'xu').reduce((a, s) => a + s.n, 0);
+      p.x += 40; const far = g.act('u1', { t: 'buy', item: 'planks', n: 1 });
+      return { has: !!shop, sells: shop && shop.sells.map(s => s.item), poor: poor.ok, bought: bought.ok, xuAfter, notSold: notSold.ok, sold: sold.ok, notBought: notBought.ok, xuEnd, far: far.ok,
+               pick: p.inv.some(s => s && s.id === 'stone_pick') };
+    """)
+    assert r['has'] and 'stone_pick' in r['sells'] and not r['poor'] and r['bought'] and r['xuAfter'] == 30 and r['pick'], r
+    assert not r['notSold'] and r['sold'] and not r['notBought'] and r['xuEnd'] == 54 and not r['far'], r
+
+
+@test
+def test_dialogue_conditions_hide_choices(pg):
+    r = ev(pg, NPC_JS + r"""
+      const T = mkTown(); const { g, p } = T;
+      const t1 = T.talk('truong-lang'); const jobs1 = T.say(0).v.find(e => e.t === 'dialog').choices.map(c => c.text);
+      g.acceptQuest('u1', 'chao-lang');
+      T.talk('truong-lang'); const jobs2 = T.say(0).v.find(e => e.t === 'dialog').choices.map(c => c.text);
+      return { jobs1, jobs2 };
+    """)
+    assert any('Chào làng' in c for c in r['jobs1']) and not any('Săn sói' in c for c in r['jobs1']), r
+    assert not any('Chào làng' in c for c in r['jobs2']), r
+
+
+# ---------------------------------------------------------------- H1: trình kiểm tra nội dung
+
+@test
+def test_content_valid(pg):
+    r = ev(pg, r"""
+      const { validateContent, loadContent } = await imp('content/validate.js');
+      const errors = validateContent(await loadContent());
+      return { errors };
+    """)
+    assert r['errors'] == [], r
+
+
+@test
+def test_content_validator_catches_broken_references(pg):
+    r = ev(pg, r"""
+      const { validateContent, loadContent } = await imp('content/validate.js');
+      const c = await loadContent();
+      const clone = JSON.parse(JSON.stringify(c));
+      clone.mobs['soi-xam'].drops.push({ item: 'khong-co', min: 1, max: 1, p: 1 });
+      clone.npcs['tho-ren'].nodes.hi.choices[0].goto = 'nut-ma';
+      clone.quests['san-soi'].steps[0].mob = 'quai-ma';
+      clone.items['vat-pham-mo-coi'] = { id: 'vat-pham-mo-coi', name: 'Mồ côi', stack: 1 };
+      clone.recipes.push({ id: 'x', out: { item: 'stone', n: 1 }, in: { khong_co: 1 }, bench: false });
+      clone.bosses['bang-de'].phases[1].moves = ['khong-co-chieu'];
+      clone.npcs['an-si'].nodes.curse.choices = [{ text: 'Cụt', goto: 'lore-khong-co' }];
+      const errors = validateContent(clone);
+      return { errors };
+    """)
+    joined = ' | '.join(r['errors'])
+    for needle in ['khong-co', 'nut-ma', 'quai-ma', 'vat-pham-mo-coi', 'khong_co', 'khong-co-chieu', 'lore-khong-co']:
+        assert needle in joined, (needle, r['errors'])
 
 
 if __name__ == '__main__':

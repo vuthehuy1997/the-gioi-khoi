@@ -1,0 +1,87 @@
+// NPC và hội thoại dạng đồ thị. Mỗi nút: text và choices [{ text, goto?, if?, do? }]; choices rỗng hoặc goto null là kết thúc.
+// if: { flag } | { noflag } | { quest: id, state: none|active|ready|done } | { has: { item, n } }
+// do: [{ accept: id } | { turnin: id } | { give: { item, n } } | { setflag: tên } | { shop: id }]
+export const NPCS = {
+  'truong-lang': {
+    name: 'Trưởng Làng Mộc', village: 'khoi-dau', color: '#c9a35a',
+    start: 'hi',
+    nodes: {
+      hi: { text: 'Chào lữ khách! Vùng Rừng Sương này không yên ổn khi đêm xuống. Bạn cần gì ở làng?', choices: [
+        { text: 'Cho tôi một việc để làm.', goto: 'jobs' },
+        { text: 'Tôi muốn trả nhiệm vụ.', goto: 'turnin', if: { anyReady: true } },
+        { text: 'Kể tôi nghe về vùng đất này.', goto: 'lore' },
+        { text: 'Tạm biệt.', goto: null },
+      ] },
+      jobs: { text: 'Chúng tôi đang cần người giúp đỡ.', choices: [
+        { text: 'Nhận: Chào làng (chặt gỗ, làm bàn chế tạo).', do: [{ accept: 'chao-lang' }], goto: 'ok', if: { quest: 'chao-lang', state: 'none' } },
+        { text: 'Nhận: Săn sói đêm.', do: [{ accept: 'san-soi' }], goto: 'ok', if: { quest: 'san-soi', state: 'none', requires: true } },
+        { text: 'Nhận: Hạ Thủ Lĩnh Sói.', do: [{ accept: 'diet-thu-linh' }], goto: 'ok', if: { quest: 'diet-thu-linh', state: 'none', requires: true } },
+        { text: 'Quay lại.', goto: 'hi' },
+      ] },
+      turnin: { text: 'Bạn đã làm xong? Để tôi xem.', choices: [
+        { text: 'Trả: Chào làng.', do: [{ turnin: 'chao-lang' }], goto: 'thanks', if: { quest: 'chao-lang', state: 'ready' } },
+        { text: 'Trả: Săn sói đêm.', do: [{ turnin: 'san-soi' }], goto: 'thanks', if: { quest: 'san-soi', state: 'ready' } },
+        { text: 'Trả: Hạ Thủ Lĩnh Sói.', do: [{ turnin: 'diet-thu-linh' }], goto: 'thanks', if: { quest: 'diet-thu-linh', state: 'ready' } },
+        { text: 'Quay lại.', goto: 'hi' },
+      ] },
+      ok: { text: 'Cảm ơn bạn. Cứ làm xong rồi quay lại báo tôi nhé.', choices: [{ text: 'Được.', goto: null }] },
+      thanks: { text: 'Quá tốt! Đây là phần thưởng của bạn.', choices: [{ text: 'Cảm ơn.', goto: null }] },
+      lore: { text: 'Phía đông là Sa Mạc Lửa, xa hơn nữa là Núi Băng. Nhưng Thủ Lĩnh Sói giữ ngã đường; chưa hạ hắn thì khí độc sa mạc sẽ gặm mòn bạn.', choices: [{ text: 'Tôi hiểu.', goto: 'hi' }] },
+    },
+  },
+  'tho-ren': {
+    name: 'Thợ Rèn Đá', village: 'khoi-dau', color: '#8a6b5a',
+    start: 'hi',
+    nodes: {
+      hi: { text: 'Lửa lò đang nóng. Cần mua dụng cụ hay có quặng bán không?', choices: [
+        { text: 'Cho tôi xem hàng.', do: [{ shop: 'tho-ren' }], goto: null },
+        { text: 'Có việc nào cho tôi không?', goto: 'job' },
+        { text: 'Trả nhiệm vụ.', do: [{ turnin: 'quang-tinh-the' }], goto: 'thanks', if: { quest: 'quang-tinh-the', state: 'ready' } },
+        { text: 'Tạm biệt.', goto: null },
+      ] },
+      job: { text: 'Tôi cần ba tinh thể từ mỏ sâu. Phải có cuốc đá mới đào được.', choices: [
+        { text: 'Tôi sẽ lo.', do: [{ accept: 'quang-tinh-the' }], goto: null, if: { quest: 'quang-tinh-the', state: 'none', requires: true } },
+        { text: 'Để sau.', goto: 'hi' },
+      ] },
+      thanks: { text: 'Tinh thể đẹp lắm! Cuốc này là của bạn.', choices: [{ text: 'Cảm ơn.', goto: null }] },
+    },
+  },
+  'thuong-nhan': {
+    name: 'Thương Nhân Ốc Đảo', village: 'oc-dao', color: '#d9a441',
+    start: 'hi',
+    nodes: {
+      hi: { text: 'Nắng gắt hôm nay! Mua gì cho đỡ khát nào?', choices: [
+        { text: 'Xem hàng.', do: [{ shop: 'thuong-nhan' }], goto: null },
+        { text: 'Có việc gì không?', goto: 'job' },
+        { text: 'Trả nhiệm vụ.', do: [{ turnin: 'nguoi-lanh-sa-mac' }], goto: 'thanks', if: { quest: 'nguoi-lanh-sa-mac', state: 'ready' } },
+        { text: 'Tạm biệt.', goto: null },
+      ] },
+      job: { text: 'Bọ cạp làm tôi mất khách. Hạ vài con và mang nọc độc về, tôi trả công hậu hĩnh.', choices: [
+        { text: 'Nhận việc.', do: [{ accept: 'nguoi-lanh-sa-mac' }], goto: null, if: { quest: 'nguoi-lanh-sa-mac', state: 'none' } },
+        { text: 'Để sau.', goto: 'hi' },
+      ] },
+      thanks: { text: 'Gọn gàng! Xu của bạn đây.', choices: [{ text: 'Cảm ơn.', goto: null }] },
+    },
+  },
+  'an-si': {
+    name: 'Ẩn Sĩ Tuyết', village: 'tram-bang', color: '#cfe3f5',
+    start: 'hi',
+    nodes: {
+      hi: { text: 'Gió núi lạnh, nhưng lời nguyền của Băng Đế còn lạnh hơn.', choices: [
+        { text: 'Lời nguyền là gì?', goto: 'curse' },
+        { text: 'Tôi muốn giúp.', do: [{ accept: 'hoi-sinh-bang' }], goto: null, if: { quest: 'hoi-sinh-bang', state: 'none' } },
+        { text: 'Trả nhiệm vụ.', do: [{ turnin: 'hoi-sinh-bang' }], goto: 'thanks', if: { quest: 'hoi-sinh-bang', state: 'ready' } },
+        { text: 'Tạm biệt.', goto: null },
+      ] },
+      curse: { text: 'Băng Đế đóng băng cả đỉnh núi. Chỉ ai đủ mạnh mới hạ được hắn. Hãy đem theo bạn bè.', choices: [{ text: 'Tôi hiểu.', goto: 'hi' }] },
+      thanks: { text: 'Đỉnh núi đã tan băng. Thanh kiếm này xứng với bạn.', choices: [{ text: 'Cảm ơn.', goto: null }] },
+    },
+  },
+};
+
+// Làng: vùng đặt và NPC sinh ra ở đó. buildHuts: số nhà.
+export const VILLAGES = {
+  'khoi-dau': { name: 'Làng Mộc', region: 'rung-suong', huts: 2, nearSpawn: true },
+  'oc-dao': { name: 'Ốc Đảo', region: 'sa-mac-lua', huts: 1 },
+  'tram-bang': { name: 'Trạm Băng', region: 'nui-bang', huts: 1 },
+};
