@@ -1,0 +1,37 @@
+// Danh mục block. tiles = [mặt trên, mặt bên, mặt dưới] là chỉ số ô trong atlas (xem render/atlas.js, TILES).
+// hardness: giây để đào bằng tay (-1 là không đào được). tool: loại công cụ đào nhanh; tier: bậc công cụ tối thiểu để có vật phẩm rơi.
+export const B = {
+  AIR: 0, STONE: 1, DIRT: 2, GRASS: 3, SAND: 4, SNOW: 5, LOG: 6, LEAVES: 7, PLANKS: 8, ORE: 9, WATER: 10,
+  CACTUS: 11, ICE: 12, BEDROCK: 13, MAGMA: 14, WORKBENCH: 15, GEM_ORE: 16,
+};
+
+export const TILES = ['stone', 'dirt', 'grass_top', 'grass_side', 'sand', 'snow', 'snow_side', 'log_side', 'log_top', 'leaves',
+  'planks', 'ore', 'water', 'cactus_side', 'cactus_top', 'ice', 'bedrock', 'magma', 'bench_top', 'bench_side', 'gem_ore'];
+export const ATLAS_COLS = 8, ATLAS_ROWS = 3;
+const T = Object.fromEntries(TILES.map((n, i) => [n, i]));
+
+const def = (id, name, o) => ({ id, name, solid: true, opaque: true, hardness: 1, tool: null, tier: 0, drop: name, ...o });
+
+export const BLOCKS = [
+  def(B.AIR, 'air', { solid: false, opaque: false, hardness: -1, drop: null, tiles: [0, 0, 0] }),
+  def(B.STONE, 'stone', { hardness: 1.5, tool: 'pick', tier: 1, tiles: [T.stone, T.stone, T.stone] }),
+  def(B.DIRT, 'dirt', { hardness: 0.5, tool: 'shovel', tiles: [T.dirt, T.dirt, T.dirt] }),
+  def(B.GRASS, 'grass', { hardness: 0.6, tool: 'shovel', drop: 'dirt', tiles: [T.grass_top, T.grass_side, T.dirt] }),
+  def(B.SAND, 'sand', { hardness: 0.5, tool: 'shovel', tiles: [T.sand, T.sand, T.sand] }),
+  def(B.SNOW, 'snow', { hardness: 0.4, tool: 'shovel', tiles: [T.snow, T.snow_side, T.dirt] }),
+  def(B.LOG, 'log', { hardness: 2, tool: 'axe', tiles: [T.log_top, T.log_side, T.log_top] }),
+  def(B.LEAVES, 'leaves', { hardness: 0.3, opaque: false, tiles: [T.leaves, T.leaves, T.leaves] }),
+  def(B.PLANKS, 'planks', { hardness: 1.5, tool: 'axe', tiles: [T.planks, T.planks, T.planks] }),
+  def(B.ORE, 'ore', { hardness: 3, tool: 'pick', tier: 2, drop: 'crystal', tiles: [T.ore, T.ore, T.ore] }),
+  def(B.WATER, 'water', { solid: false, opaque: false, hardness: -1, drop: null, liquid: true, tiles: [T.water, T.water, T.water] }),
+  def(B.CACTUS, 'cactus', { hardness: 0.5, opaque: false, tiles: [T.cactus_top, T.cactus_side, T.cactus_top] }),
+  def(B.ICE, 'ice', { hardness: 0.6, tool: 'pick', tiles: [T.ice, T.ice, T.ice] }),
+  def(B.BEDROCK, 'bedrock', { hardness: -1, drop: null, tiles: [T.bedrock, T.bedrock, T.bedrock] }),
+  def(B.MAGMA, 'magma', { hardness: 2.5, tool: 'pick', tier: 2, tiles: [T.magma, T.magma, T.magma] }),
+  def(B.WORKBENCH, 'workbench', { hardness: 1.5, tool: 'axe', tiles: [T.bench_top, T.bench_side, T.planks] }),
+  def(B.GEM_ORE, 'gem_ore', { hardness: 4, tool: 'pick', tier: 3, drop: 'gem', tiles: [T.gem_ore, T.gem_ore, T.gem_ore] }),
+];
+
+export const BLOCK_BY_NAME = Object.fromEntries(BLOCKS.map(b => [b.name, b]));
+export const isSolid = id => !!BLOCKS[id] && BLOCKS[id].solid;
+export const isOpaque = id => !!BLOCKS[id] && BLOCKS[id].opaque;

@@ -1,0 +1,134 @@
+// Thế giới: kho chunk nạp lười từ seed, cộng "delta" (các ô người chơi đã sửa) để lưu và đồng bộ.
+import { generateChunk, CHUNK_W, CHUNK_H, WATER_LEVEL, idx } from './generate.js';
+import { regionAt } from './regions.js';
+import { B, isSolid } from './blocks.js';
+
+const key = (cx, cz) => cx + ',' + cz;
+
+export class World {
+  constructor(seed) {
+    this.seed = seed;
+    this.chunks = new Map();     // "cx,cz" -> Uint8Array
+    this.delta = new Map();      // "cx,cz" -> Map(idx -> id)
+    this.dirty = new Set();      // chunk cần dựng lại mesh
+  }
+
+  chunk(cx, cz) {
+    const k = key(cx, cz);
+    let c = this.chunks.get(k);
+    if (!c) {
+      c = generateChunk(this.seed, cx, cz);
+      const d = this.delta.get(k);
+      if (d) for (const [i, id] of d) c[i] = id;
+      this.chunks.set(k, c);
+    }
+    return c;
+  }
+
+  // Nạp các chunk trong bán kính (đơn vị chunk) quanh các điểm, bỏ chunk ở xa. Chỉnh sửa của người chơi nằm trong delta nên không mất.
+  keepAround(points, radius) {
+    const need = new Set();
+    for (const p of points) {
+      const pcx = Math.floor(p.x / CHUNK_W), pcz = Math.floor(p.z / CHUNK_W);
+      for (let dz = -radius; dz <= radius; dz++) for (let dx = -radius; dx <= radius; dx++) need.add(key(pcx + dx, pcz + dz));
+    }
+    for (const k of need) { const [cx, cz] = k.split(',').map(Number); this.chunk(cx, cz); }
+    for (const k of [...this.chunks.keys()]) if (!need.has(k)) { this.chunks.delete(k); this.dirty.delete(k); }
+    return need;
+  }
+
+  has(cx, cz) { return this.chunks.has(key(cx, cz)); }
+  unload(cx, cz) { this.chunks.delete(key(cx, cz)); this.dirty.delete(key(cx, cz)); }
+
+  get(x, y, z) {
+    x = Math.floor(x); y = Math.floor(y); z = Math.floor(z);
+    if (y < 0 || y >= CHUNK_H) return B.AIR;
+    const cx = x >> 4, cz = z >> 4;
+    return this.chunk(cx, cz)[idx(x - cx * 16, y, z - cz * 16)];
+  }
+
+  // Trả true nếu ô thật sự đổi. Ghi vào delta và đánh dấu chunk (và chunk kề nếu ở biên) cần dựng lại.
+  set(x, y, z, id) {
+    x = Math.floor(x); y = Math.floor(y); z = Math.floor(z);
+    if (y < 0 || y >= CHUNK_H) return false;
+    const cx = x >> 4, cz = z >> 4, lx = x - cx * 16, lz = z - cz * 16, c = this.chunk(cx, cz), i = idx(lx, y, lz);
+    if (c[i] === id) return false;
+    c[i] = id;
+    const k = key(cx, cz);
+    if (!this.delta.has(k)) this.delta.set(k, new Map());
+    this.delta.get(k).set(i, id);
+    this.dirty.add(k);
+    if (lx === 0) this.dirty.add(key(cx - 1, cz));
+    if (lx === 15) this.dirty.add(key(cx + 1, cz));
+    if (lz === 0) this.dirty.add(key(cx, cz - 1));
+    if (lz === 15) this.dirty.add(key(cx, cz + 1));
+    return true;
+  }
+
+  exportDelta() {
+    const out = {};
+    for (const [k, m] of this.delta) out[k] = Object.fromEntries(m);
+    return out;
+  }
+
+  importDelta(obj) {
+    for (const k of Object.keys(obj)) {
+      const m = this.delta.get(k) || new Map();
+      for (const i of Object.keys(obj[k])) m.set(+i, obj[k][i]);
+      this.delta.set(k, m);
+      const c = this.chunks.get(k);
+      if (c) { for (const [i, id] of m) c[i] = id; this.dirty.add(k); }
+    }
+  }
+
+  // Y của ô đất cao nhất (bỏ qua nước, lá, thân cây, xương rồng).
+  surfaceY(x, z) {
+    for (let y = CHUNK_H - 1; y >= 0; y--) {
+      const b = this.get(x, y, z);
+      if (b !== B.AIR && b !== B.WATER && b !== B.LEAVES && b !== B.LOG && b !== B.CACTUS) return y;
+    }
+    return 0;
+  }
+
+  regionAt(x, z) { return regionAt(this.seed, Math.floor(x), Math.floor(z)); }
+
+  // Phía trên (y+1..y+5) của cột không có block nào (không bị cây che đầu).
+  clearAbove(x, z) {
+    const y = this.surfaceY(x, z);
+    for (let dy = 1; dy <= 5; dy++) if (this.get(x, y + dy, z) !== B.AIR) return false;
+    return true;
+  }
+
+  // Tìm điểm xuất hiện gần gốc toạ độ: đất trên mực nước, thuộc vùng rừng, không bị cây che đầu.
+  findSpawn() {
+    for (let r = 0; r < 400; r += 4) {
+      for (let a = 0; a < 8; a++) {
+        const x = Math.round(r * [1, 1, 0, -1, -1, -1, 0, 1][a] * (a % 2 ? 0.7 : 1)), z = Math.round(r * [0, 1, 1, 1, 0, -1, -1, -1][a] * (a % 2 ? 0.7 : 1));
+        if (this.surfaceY(x, z) > WATER_LEVEL + 1 && this.regionAt(x, z) === 'rung-suong' && this.clearAbove(x, z)) return { x, z };
+      }
+    }
+    return { x: 0, z: 0 };
+  }
+
+  // Tia qua lưới (DDA). Trả { pos, normal, id, dist } của block đặc đầu tiên trúng, hoặc null.
+  raycast(o, d, maxDist = 6) {
+    let x = Math.floor(o.x), y = Math.floor(o.y), z = Math.floor(o.z);
+    const sx = d.x > 0 ? 1 : -1, sy = d.y > 0 ? 1 : -1, sz = d.z > 0 ? 1 : -1;
+    const inv = v => (v === 0 ? Infinity : Math.abs(1 / v));
+    const dx = inv(d.x), dy = inv(d.y), dz = inv(d.z);
+    let tx = d.x === 0 ? Infinity : ((d.x > 0 ? x + 1 - o.x : o.x - x) * dx);
+    let ty = d.y === 0 ? Infinity : ((d.y > 0 ? y + 1 - o.y : o.y - y) * dy);
+    let tz = d.z === 0 ? Infinity : ((d.z > 0 ? z + 1 - o.z : o.z - z) * dz);
+    let n = { x: 0, y: 0, z: 0 }, t = 0;
+    for (let i = 0; i < 512 && t <= maxDist; i++) {
+      const id = this.get(x, y, z);
+      if (id !== B.AIR && id !== B.WATER) return { pos: { x, y, z }, normal: n, id, dist: t };
+      if (tx < ty && tx < tz) { x += sx; t = tx; tx += dx; n = { x: -sx, y: 0, z: 0 }; }
+      else if (ty < tz) { y += sy; t = ty; ty += dy; n = { x: 0, y: -sy, z: 0 }; }
+      else { z += sz; t = tz; tz += dz; n = { x: 0, y: 0, z: -sz }; }
+    }
+    return null;
+  }
+
+  isSolidAt(x, y, z) { return isSolid(this.get(x, y, z)); }
+}
