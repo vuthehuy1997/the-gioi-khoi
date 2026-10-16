@@ -254,7 +254,16 @@ function interpolate(now) {
 }
 
 let last = performance.now(), nowS = 0;
+// Số đo chi phí JS mỗi khung (cho test hiệu năng và bộ điều chỉnh chất lượng).
+const perf = { n: 0, sum: 0, max: 0, ring: new Float32Array(240), i: 0, reset() { this.n = 0; this.sum = 0; this.max = 0; this.ring.fill(0); this.i = 0; },
+  add(ms) { this.n++; this.sum += ms; if (ms > this.max) this.max = ms; this.ring[this.i++ % 240] = ms; },
+  p(q) { const a = [...this.ring.slice(0, Math.min(this.n, 240))].sort((x, y) => x - y); return a.length ? a[Math.min(a.length - 1, Math.floor(a.length * q))] : 0; } };
 function frame(dt) {
+  const tf = performance.now();
+  frameBody(dt);
+  perf.add(performance.now() - tf);
+}
+function frameBody(dt) {
   nowS += dt;
   if (!S) { scene.render(); return; }
   const y = S.you, ui = inUi();
@@ -294,7 +303,7 @@ requestAnimationFrame(loop);
 if (debugOn()) {
   window.__g = {
     get S() { return S; }, get game() { return game; }, get local() { return local; }, get view() { return view; }, scene, hud, get panels() { return panels; }, get ents() { return ents; },
-    get pending() { return pending; }, get interp() { return interp; }, mouse, keys,
+    get pending() { return pending; }, perf, get interp() { return interp; }, mouse, keys,
     renderNow: () => frame(0.0001),
     lookAt(x, y, z) { const dx = x - local.x, dy = y - (local.y + 1.62), dz = z - local.z; local.yaw = Math.atan2(-dx, -dz); local.pitch = Math.atan2(dy, Math.hypot(dx, dz)); },
   };

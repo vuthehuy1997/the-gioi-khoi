@@ -1137,6 +1137,30 @@ def test_hardening_odd_uids_loot_placement_no_alive_mob_cleanup_and_st_flood(pg)
     assert r == {'odd': True, 'occupied': False, 'mobKept': True}, r
 
 
+# ---------------------------------------------------------------- H5: độ mượt khi di chuyển (chi phí JS mỗi khung)
+
+def _streaming_run(pg, base, extra=''):
+    pg.goto(root(base) + 'games/the-gioi-khoi/game.html?debug&net=memory&seed=777&r=6' + extra); pg.wait_for_timeout(300)
+    pg.fill('#name', 'P'); pg.click('#btn-new')
+    pg.wait_for_function("window.__g && window.__g.S && window.__g.pending === 0", timeout=60000)
+    pg.wait_for_timeout(500)
+    return pg.evaluate("""async () => {
+      const g = __g; g.perf.reset();
+      let long = 0, longMax = 0; const po = new PerformanceObserver(l => { for (const e of l.getEntries()) { long++; longMax = Math.max(longMax, e.duration); } }); po.observe({ entryTypes: ['longtask'] });
+      const t0 = performance.now();
+      await new Promise(res => { function f(now) { g.local.x += 0.9; g.local.vy = 0; if (now - t0 < 7000) requestAnimationFrame(f); else res(); } requestAnimationFrame(f); });   // ~16 block/giây: nhanh gấp 3 lần chạy nước rút
+      await new Promise(r => setTimeout(r, 200));
+      return { frames: g.perf.n, avg: g.perf.sum / g.perf.n, p95: g.perf.p(0.95), max: g.perf.max, long, longMax, chunks: g.scene.chunkCount(), pending: g.pending };
+    }""")
+
+
+@test
+def test_perf_streaming_frame_cost(pg, browser, base):
+    r = _streaming_run(pg, base)
+    assert r['frames'] > 30, r
+    assert r['avg'] < 6 and r['p95'] < 16 and r['max'] < 40 and r['long'] <= 2, r
+
+
 
 def _e2e_two_players(pg, browser, base):
     url = root(base) + 'games/the-gioi-khoi/game.html?debug&seed=777&r=4&net=memory'

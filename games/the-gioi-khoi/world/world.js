@@ -3,56 +3,78 @@ import { generateChunk, CHUNK_W, CHUNK_H, WATER_LEVEL, idx } from './generate.js
 import { regionAt } from './regions.js';
 import { B, isSolid } from './blocks.js';
 
-const key = (cx, cz) => cx + ',' + cz;
+const key = (cx, cz) => cx + ',' + cz;                 // khoá chuỗi: dùng cho delta/dirty (ít gọi)
+const nkey = (cx, cz) => ((cx & 0xffff) << 16) | (cz & 0xffff);   // khoá số cho kho chunk (gọi rất nhiều lần)
 
 export class World {
   constructor(seed) {
     this.seed = seed;
-    this.chunks = new Map();     // "cx,cz" -> Uint8Array
+    this.chunks = new Map();     // khoá số (nkey) -> Uint8Array
+    this.onSet = null;           // gọi (x, y, z, id) mỗi khi một ô đổi (để đồng bộ cho worker dựng mesh)
+    this._lk = NaN; this._la = null;   // chunk truy cập gần nhất
     this.delta = new Map();      // "cx,cz" -> Map(idx -> id)
     this.dirty = new Set();      // chunk cần dựng lại mesh
   }
 
   chunk(cx, cz) {
-    const k = key(cx, cz);
+    const k = nkey(cx, cz);
+    if (k === this._lk) return this._la;
     let c = this.chunks.get(k);
     if (!c) {
       c = generateChunk(this.seed, cx, cz);
-      const d = this.delta.get(k);
+      const d = this.delta.get(key(cx, cz));
       if (d) for (const [i, id] of d) c[i] = id;
       this.chunks.set(k, c);
     }
+    this._lk = k; this._la = c;
     return c;
   }
 
-  // Tập khoá chunk trong bán kính (đơn vị chunk) quanh các điểm.
+  // Nhận mảng chunk đã sinh ở nơi khác (worker). Bỏ qua nếu đã có; áp delta hiện tại lên trên.
+  adopt(cx, cz, arr) {
+    const k = nkey(cx, cz);
+    if (this.chunks.has(k)) return false;
+    const d = this.delta.get(key(cx, cz));
+    if (d) for (const [i, id] of d) arr[i] = id;
+    this.chunks.set(k, arr);
+    return true;
+  }
+
+  // Lấy ra và xoá danh sách chunk bị sửa: [[cx, cz], ...].
+  takeDirty() {
+    const out = [...this.dirty].map(k => k.split(',').map(Number));
+    this.dirty.clear();
+    return out;
+  }
+
+  // Tập khoá số của các chunk trong bán kính (đơn vị chunk) quanh các điểm; p.r (nếu có) ghi đè bán kính.
   static keysAround(points, radius) {
     const set = new Set();
     for (const p of points) {
       const pcx = Math.floor(p.x / CHUNK_W), pcz = Math.floor(p.z / CHUNK_W), r = p.r ?? radius;
-      for (let dz = -r; dz <= r; dz++) for (let dx = -r; dx <= r; dx++) set.add(key(pcx + dx, pcz + dz));
+      for (let dz = -r; dz <= r; dz++) for (let dx = -r; dx <= r; dx++) set.add(nkey(pcx + dx, pcz + dz));
     }
     return set;
   }
 
-  // Nạp các chunk quanh các điểm (bán kính radius) và quanh các vùng giữ thêm `extra` ({x, z, r}); bỏ chunk ngoài cả hai.
-  // Chỉnh sửa của người chơi nằm trong delta nên không mất khi bỏ chunk.
-  keepAround(points, radius, extra = []) {
+  // Giữ các chunk quanh các điểm (bán kính radius) và quanh vùng giữ thêm `extra` ({x, z, r}); bỏ chunk ngoài cả hai.
+  // generate=false: chỉ bỏ chunk thừa, không sinh chunk còn thiếu (người gọi tự nhận chunk từ worker hoặc sinh khi cần).
+  keepAround(points, radius, extra = [], generate = true) {
     const need = World.keysAround(points, radius);
     for (const k of World.keysAround(extra, 0)) need.add(k);
-    for (const k of need) { const [cx, cz] = k.split(',').map(Number); this.chunk(cx, cz); }
-    for (const k of [...this.chunks.keys()]) if (!need.has(k)) { this.chunks.delete(k); this.dirty.delete(k); }
+    if (generate) for (const k of need) this.chunk(k >> 16, (k << 16) >> 16);
+    for (const k of [...this.chunks.keys()]) if (!need.has(k)) { this.chunks.delete(k); this.dirty.delete(key(k >> 16, (k << 16) >> 16)); if (k === this._lk) { this._lk = NaN; this._la = null; } }
     return need;
   }
 
-  has(cx, cz) { return this.chunks.has(key(cx, cz)); }
-  unload(cx, cz) { this.chunks.delete(key(cx, cz)); this.dirty.delete(key(cx, cz)); }
+  has(cx, cz) { return this.chunks.has(nkey(cx, cz)); }
+  unload(cx, cz) { const k = nkey(cx, cz); this.chunks.delete(k); this.dirty.delete(key(cx, cz)); if (k === this._lk) { this._lk = NaN; this._la = null; } }
 
   get(x, y, z) {
     x = Math.floor(x); y = Math.floor(y); z = Math.floor(z);
     if (y < 0 || y >= CHUNK_H) return B.AIR;
     const cx = x >> 4, cz = z >> 4;
-    return this.chunk(cx, cz)[idx(x - cx * 16, y, z - cz * 16)];
+    return this.chunk(cx, cz)[(x & 15) + 16 * ((z & 15) + 16 * y)];
   }
 
   // Trả true nếu ô thật sự đổi. Ghi vào delta và đánh dấu chunk (và chunk kề nếu ở biên) cần dựng lại.
@@ -66,6 +88,7 @@ export class World {
     if (!this.delta.has(k)) this.delta.set(k, new Map());
     this.delta.get(k).set(i, id);
     this.dirty.add(k);
+    if (this.onSet) this.onSet(x, y, z, id);
     if (lx === 0) this.dirty.add(key(cx - 1, cz));
     if (lx === 15) this.dirty.add(key(cx + 1, cz));
     if (lz === 0) this.dirty.add(key(cx, cz - 1));
@@ -84,7 +107,7 @@ export class World {
       const m = this.delta.get(k) || new Map();
       for (const i of Object.keys(obj[k])) m.set(+i, obj[k][i]);
       this.delta.set(k, m);
-      const c = this.chunks.get(k);
+      const [cx, cz] = k.split(',').map(Number), c = this.chunks.get(nkey(cx, cz));
       if (c) { for (const [i, id] of m) c[i] = id; this.dirty.add(k); }
     }
   }
