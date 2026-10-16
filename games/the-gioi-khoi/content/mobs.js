@@ -1,0 +1,28 @@
+// Quái vật. ai: kiểu hành vi (xem sim/mobs.js). regions: vùng spawn. when: day | night | any.
+// attack: { dmg, range, cd } cận chiến; shot: { dmg, speed, cd, range } bắn xa. drops: [{ item, min, max, p }].
+export const MOBS = {
+  'soi-xam': { name: 'Sói Xám', hp: 16, speed: 3.6, w: 0.8, h: 0.9, ai: 'chase-melee', sight: 16, attack: { dmg: 3, range: 1.6, cd: 1.0 },
+    regions: ['rung-suong'], when: 'night', weight: 3, color: '#8a8f98',
+    drops: [{ item: 'meat', min: 1, max: 2, p: 1 }, { item: 'fang', min: 1, max: 1, p: 0.4 }, { item: 'xu', min: 1, max: 3, p: 1 }] },
+  'nai': { name: 'Nai Rừng', hp: 8, speed: 4.2, w: 0.7, h: 1.1, ai: 'flee', passive: true, sight: 10,
+    regions: ['rung-suong'], when: 'day', weight: 3, color: '#b98b5a',
+    drops: [{ item: 'meat', min: 1, max: 2, p: 1 }, { item: 'xu', min: 1, max: 2, p: 0.5 }] },
+  'xac-song': { name: 'Xác Sống', hp: 20, speed: 2.6, w: 0.6, h: 1.8, ai: 'chase-melee', sight: 18, attack: { dmg: 4, range: 1.5, cd: 1.2 },
+    regions: ['rung-suong', 'nui-bang'], when: 'night', weight: 4, color: '#5f8a5a',
+    drops: [{ item: 'bone', min: 1, max: 2, p: 0.8 }, { item: 'herb', min: 1, max: 1, p: 0.2 }, { item: 'xu', min: 1, max: 3, p: 1 }] },
+  'bo-cap': { name: 'Bọ Cạp Lửa', hp: 14, speed: 3.9, w: 0.9, h: 0.6, ai: 'chase-melee', sight: 14, attack: { dmg: 4, range: 1.5, cd: 0.9 },
+    regions: ['sa-mac-lua'], when: 'any', weight: 4, color: '#c8742a',
+    drops: [{ item: 'venom', min: 1, max: 1, p: 0.5 }, { item: 'xu', min: 1, max: 4, p: 1 }] },
+  'xuong-cung': { name: 'Xương Cung Thủ', hp: 14, speed: 2.8, w: 0.6, h: 1.8, ai: 'ranged-kite', sight: 20,
+    shot: { dmg: 3, speed: 14, cd: 1.6, range: 18 }, regions: ['sa-mac-lua', 'rung-suong'], when: 'night', weight: 2, color: '#d8d4c4',
+    drops: [{ item: 'bone', min: 1, max: 3, p: 1 }, { item: 'xu', min: 1, max: 3, p: 1 }] },
+  'gau-bang': { name: 'Gấu Băng', hp: 40, speed: 2.8, w: 1.2, h: 1.4, ai: 'chase-melee', sight: 14, attack: { dmg: 6, range: 2.0, cd: 1.4 },
+    regions: ['nui-bang'], when: 'any', weight: 3, color: '#e8f0f8',
+    drops: [{ item: 'meat', min: 2, max: 3, p: 1 }, { item: 'shard', min: 1, max: 2, p: 0.6 }, { item: 'xu', min: 3, max: 6, p: 1 }] },
+  'ma-bang': { name: 'Ma Băng', hp: 18, speed: 2.4, w: 0.6, h: 1.6, ai: 'ranged-kite', sight: 20,
+    shot: { dmg: 4, speed: 9, cd: 2.0, range: 18 }, regions: ['nui-bang'], when: 'any', weight: 2, color: '#9fd8ff',
+    drops: [{ item: 'shard', min: 1, max: 2, p: 0.9 }, { item: 'xu', min: 2, max: 5, p: 1 }] },
+  'tuong-da': { name: 'Tượng Đá Canh Gác', hp: 50, speed: 3.0, w: 0.9, h: 2.2, ai: 'guard', sight: 9, leash: 14, attack: { dmg: 7, range: 2.0, cd: 1.5 },
+    regions: [], when: 'any', weight: 0, color: '#7a7a82',
+    drops: [{ item: 'stone', min: 2, max: 4, p: 1 }, { item: 'crystal', min: 1, max: 2, p: 0.5 }, { item: 'xu', min: 4, max: 8, p: 1 }] },
+};

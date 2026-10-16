@@ -347,5 +347,179 @@ def test_break_place_rejections(pg):
     assert r['bedrockStill'] == 13, r
 
 
+# ---------------------------------------------------------------- D: quái, spawn, chiến đấu
+
+ARENA_JS = GAME_JS + """
+const { MOBS } = await imp('content/mobs.js');
+const { spawnMob } = await imp('sim/mobs.js');
+// Sân phẳng bằng đá ở nơi xa (không cây), mặt sân ở y=30, trần thoáng.
+const mkArena = (opts = {}) => {
+  const g = new Game({ seed: 777, spawning: false, ...opts }); const p = g.addPlayer('u1', 'T');
+  const cx = 2000, cz = 2000, y0 = 30;
+  for (let dx = -20; dx <= 20; dx++) for (let dz = -20; dz <= 20; dz++) { g.world.set(cx + dx, y0, cz + dz, 1); for (let dy = 1; dy <= 8; dy++) g.world.set(cx + dx, y0 + dy, cz + dz, 0); }
+  p.x = cx + 0.5; p.y = y0 + 1; p.z = cz + 0.5;
+  return { g, p, cx, cz, y0 };
+};
+const dist = (a, b) => Math.hypot(a.x - b.x, a.z - b.z);
+const run = (g, secs, dt = 0.05) => { for (let t = 0; t < secs; t += dt) g.tick(dt); };
+"""
+
+
+@test
+def test_mob_content_has_variety(pg):
+    r = ev(pg, r"""
+      const { MOBS } = await imp('content/mobs.js');
+      const list = Object.values(MOBS);
+      return { count: list.length, ais: [...new Set(list.map(m => m.ai))].sort(), hostile: list.filter(m => !m.passive).length, regions: [...new Set(list.flatMap(m => m.regions || []))].sort() };
+    """)
+    assert r['count'] >= 8 and len(r['ais']) >= 4 and r['hostile'] >= 5 and len(r['regions']) >= 3, r
+    for ai in ['chase-melee', 'flee', 'ranged-kite', 'guard']:
+        assert ai in r['ais'], r
+
+
+@test
+def test_mob_ai_chase_melee_closes_in_and_bites(pg):
+    r = ev(pg, ARENA_JS + r"""
+      const { g, p, cx, cz, y0 } = mkArena();
+      const m = spawnMob(g, 'soi-xam', cx + 0.5 + 10, y0 + 1, cz + 0.5);
+      const d0 = dist(m, p); const hp0 = p.hp;
+      run(g, 1.0); const d1 = dist(m, p);
+      run(g, 6);
+      return { d0, d1, hp0, hp1: p.hp, close: dist(m, p) };
+    """)
+    assert r['d1'] < r['d0'] - 2 and r['hp1'] < r['hp0'] and r['close'] < 3, r
+
+
+@test
+def test_mob_ai_flee_runs_away(pg):
+    r = ev(pg, ARENA_JS + r"""
+      const { g, p, cx, cz, y0 } = mkArena();
+      const m = spawnMob(g, 'nai', cx + 0.5 + 4, y0 + 1, cz + 0.5);
+      const d0 = dist(m, p); run(g, 3);
+      return { d0, d1: dist(m, p), hp: p.hp };
+    """)
+    assert r['d1'] > r['d0'] + 3 and r['hp'] == 20, r
+
+
+@test
+def test_mob_ai_ranged_keeps_distance_and_shoots(pg):
+    r = ev(pg, ARENA_JS + r"""
+      const { g, p, cx, cz, y0 } = mkArena();
+      const m = spawnMob(g, 'xuong-cung', cx + 0.5 + 4, y0 + 1, cz + 0.5);
+      let sawProj = false, minD = 99; const hp0 = p.hp;
+      for (let t = 0; t < 8; t += 0.05) { g.tick(0.05); if ([...g.ents.values()].some(e => e.kind === 'proj')) sawProj = true; minD = Math.min(minD, dist(m, p)); p.x = cx + 0.5; p.z = cz + 0.5; }
+      return { sawProj, hp0, hp1: p.hp, d: dist(m, p) };
+    """)
+    assert r['sawProj'] and r['hp1'] < r['hp0'] and r['d'] >= 5, r
+
+
+@test
+def test_mob_ai_guard_holds_post_and_returns(pg):
+    r = ev(pg, ARENA_JS + r"""
+      const { g, p, cx, cz, y0 } = mkArena();
+      const m = spawnMob(g, 'tuong-da', cx + 0.5 + 12, y0 + 1, cz + 0.5);
+      p.x = cx + 0.5 - 15;                                         // xa tầm nhìn
+      run(g, 3); const idle = dist(m, { x: cx + 12.5, z: cz + 0.5 });
+      p.x = cx + 0.5 + 6; run(g, 2); const chased = dist(m, p) < 8 && Math.abs(m.x - (cx + 12.5)) > 0.5;
+      p.x = cx + 0.5 - 18; run(g, 12);                              // người chơi bỏ đi xa: tượng quay về vị trí gác
+      return { idle, chased, back: dist(m, { x: cx + 12.5, z: cz + 0.5 }) };
+    """)
+    assert r['idle'] < 1 and r['chased'] and r['back'] < 3, r
+
+
+@test
+def test_spawn_rules_by_region_and_time(pg):
+    r = ev(pg, GAME_JS + r"""
+      const { isNight, DAY_LEN } = await imp('sim/daynight.js');
+      const { regionAt } = await imp('world/regions.js');
+      const find = (id) => { for (let x = -3000; x <= 3000; x += 40) for (let z = -3000; z <= 3000; z += 40) if (regionAt(777, x, z) === id && g0.world.surfaceY(x, z) > 21) return { x, z }; return null; };
+      const g0 = new Game({ seed: 777, spawning: false });
+      const types = {};
+      let maxTotal = 0;
+      for (const [region, night] of [['rung-suong', false], ['rung-suong', true], ['sa-mac-lua', false], ['nui-bang', false]]) {
+        const spot = find(region);
+        const g = new Game({ seed: 777 }); const p = g.addPlayer('u1', 'T');
+        g.world.keepAround([{ x: spot.x, z: spot.z }], 3);
+        p.x = spot.x + 0.5; p.z = spot.z + 0.5; p.y = g.world.surfaceY(spot.x, spot.z) + 1; p.hp = 9999; p.maxHp = 9999;
+        g.time = night ? DAY_LEN * 0.8 : DAY_LEN * 0.2;
+        const seen = new Set();
+        for (let t = 0; t < 240; t += 0.5) {
+          g.tick(0.5); p.hp = 9999;
+          for (const e of g.ents.values()) if (e.kind === 'mob') seen.add(e.type);
+          maxTotal = Math.max(maxTotal, [...g.ents.values()].filter(e => e.kind === 'mob').length);
+          for (const e of [...g.ents.values()]) if (e.kind === 'mob' && Math.hypot(e.x - p.x, e.z - p.z) < 5) g.ents.delete(e.id);   // giữ người chơi sống
+        }
+        types[region + (night ? '-night' : '-day')] = [...seen].sort();
+      }
+      return { types, maxTotal, night: [isNight(DAY_LEN * 0.8), isNight(DAY_LEN * 0.2)] };
+    """)
+    t = r['types']
+    assert r['night'] == [True, False], r
+    assert 'nai' in t['rung-suong-day'] and 'xac-song' not in t['rung-suong-day'], r
+    assert 'xac-song' in t['rung-suong-night'], r
+    assert 'bo-cap' in t['sa-mac-lua-day'] and 'gau-bang' not in t['sa-mac-lua-day'], r
+    assert 'gau-bang' in t['nui-bang-day'] and 'bo-cap' not in t['nui-bang-day'], r
+    assert 0 < r['maxTotal'] <= 40, r
+
+
+@test
+def test_loot_tables(pg):
+    r = ev(pg, ARENA_JS + r"""
+      const { g, p, cx, cz, y0 } = mkArena();
+      p.inv.fill(null); p.inv[0] = { id: 'gem_sword', n: 1 };
+      let fangs = 0, meat = 0, xu = 0, kills = 0;
+      for (let i = 0; i < 200; i++) {
+        const m = spawnMob(g, 'soi-xam', cx + 0.5 + 2, y0 + 1, cz + 0.5);
+        g.damageEntity(m, 999, p);
+        kills++;
+        for (const e of [...g.ents.values()]) if (e.kind === 'item') { if (e.item === 'fang') fangs += e.n; if (e.item === 'meat') meat += e.n; if (e.item === 'xu') xu += e.n; g.ents.delete(e.id); }
+      }
+      return { fangs, meat, xu, kills, mobsLeft: [...g.ents.values()].filter(e => e.kind === 'mob').length };
+    """)
+    assert r['mobsLeft'] == 0 and r['meat'] >= 200 and 50 <= r['fangs'] <= 120 and r['xu'] >= 200, r
+
+
+@test
+def test_combat_hit_rules_damage_and_cooldown(pg):
+    r = ev(pg, ARENA_JS + r"""
+      const { g, p, cx, cz, y0 } = mkArena();
+      const m = spawnMob(g, 'xac-song', cx + 0.5 + 2.5, y0 + 1, cz + 0.5); m.hp = m.maxHp = 20; m.frozen = true;
+      p.inv.fill(null); p.inv[0] = { id: 'stone_sword', n: 1 }; p.sel = 0;
+      const a = g.act('u1', { t: 'hit', id: m.id });
+      const hpAfterA = m.hp;
+      const tooSoon = g.act('u1', { t: 'hit', id: m.id });
+      run(g, 0.6);
+      const b = g.act('u1', { t: 'hit', id: m.id });
+      p.sel = 1; run(g, 0.6);                                       // tay không
+      const hand = g.act('u1', { t: 'hit', id: m.id });
+      const far = spawnMob(g, 'xac-song', cx + 0.5 + 12, y0 + 1, cz + 0.5); far.frozen = true; run(g, 0.6);
+      const farHit = g.act('u1', { t: 'hit', id: far.id });
+      const noSuch = g.act('u1', { t: 'hit', id: 99999 });
+      return { a: a.ok, hpAfterA, tooSoon: tooSoon.ok, b: b.ok, hpAfterB: 20 - 10, handOk: hand.ok, mHp: m.hp, farHit: farHit.ok, noSuch: noSuch.ok };
+    """)
+    assert r['a'] and r['hpAfterA'] == 15 and not r['tooSoon'] and r['b'] and r['handOk'] and r['mHp'] == 9, r
+    assert not r['farHit'] and not r['noSuch'], r
+
+
+@test
+def test_combat_player_death_respawn_regen_and_food(pg):
+    r = ev(pg, ARENA_JS + r"""
+      const { g, p, cx, cz, y0 } = mkArena();
+      g.hurtPlayer(p, 8, null); const hurt = p.hp;
+      p.inv.fill(null); p.inv[0] = { id: 'meat', n: 2 }; p.sel = 0;
+      const ate = g.act('u1', { t: 'use' }); const afterEat = p.hp; const meatLeft = p.inv[0] && p.inv[0].n;
+      g.hurtPlayer(p, 99, null);
+      const dead = p.dead, blocked = g.act('u1', { t: 'sel', i: 2 }).ok, earlyRespawn = g.act('u1', { t: 'respawn' }).ok;
+      g.tick(3.1);
+      const respawn = g.act('u1', { t: 'respawn' });
+      const hpBack = p.hp;
+      g.hurtPlayer(p, 5, null); const low = p.hp; run(g, 6); const noRegen = p.hp; run(g, 12);
+      return { hurt, ate: ate.ok, afterEat, meatLeft, dead, blocked, earlyRespawn, respawn: respawn.ok, hpBack, alive: !p.dead, low, noRegen, regen: p.hp };
+    """)
+    assert r['hurt'] == 12 and r['ate'] and r['afterEat'] == 17 and r['meatLeft'] == 1, r
+    assert r['dead'] and not r['blocked'] and not r['earlyRespawn'] and r['respawn'] and r['hpBack'] == 20 and r['alive'], r
+    assert r['noRegen'] == r['low'] and r['regen'] > r['low'], r
+
+
 if __name__ == '__main__':
     run(TESTS)

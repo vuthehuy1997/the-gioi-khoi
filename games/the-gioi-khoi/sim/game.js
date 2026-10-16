@@ -7,12 +7,14 @@ import { makeInventory, addItem, removeItem, countItem, HOTBAR } from './invento
 import { craft, canCraft } from './crafting.js';
 import { makePlayer, stepPlayer } from './physics.js';
 import { makeRng } from './rng.js';
+import { stepMobs, spawnTick } from './mobs.js';
+import * as combat from './combat.js';
 
 export const REACH = 6.5, EYE = 1.62, MAX_HP = 20, RESPAWN_S = 3;
 
 export class Game {
-  constructor({ seed, world } = {}) {
-    this.seed = seed;
+  constructor({ seed, world, spawning = true } = {}) {
+    this.seed = seed; this.spawning = spawning;
     this.world = world || new World(seed);
     this.rng = makeRng(seed ^ 0x5eed);
     this.time = 0; this.tickNo = 0;
@@ -88,6 +90,9 @@ export class Game {
       case 'break': return this.actBreak(p, a);
       case 'place': return this.actPlace(p, a);
       case 'craft': return this.actCraft(p, a);
+      case 'hit': return combat.actHit(this, p, a);
+      case 'use': return combat.actUse(this, p);
+      case 'respawn': return combat.actRespawn(this, p);
       default: return this.actExtra ? this.actExtra(p, a) : { ok: false, reason: 'unknown' };
     }
   }
@@ -174,8 +179,16 @@ export class Game {
     return true;
   }
 
+  hurtPlayer(p, dmg, src) { combat.hurtPlayer(this, typeof p === 'string' ? this.player(p) : p, dmg, src); }
+  damageEntity(e, dmg, src) { return combat.damageEntity(this, e, dmg, src); }
+
   tick(dt) {
     this.time += dt; this.tickNo++;
+    stepMobs(this, dt);
+    if (this.spawning) spawnTick(this, dt);
+    combat.updateItems(this, dt);
+    combat.updateProjectiles(this, dt);
+    combat.updatePlayers(this, dt);
     this.tickExtra?.(dt);
   }
 }
