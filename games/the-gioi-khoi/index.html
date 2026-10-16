@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Thế Giới Khối · Game Hub</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Itim&family=Pattaya&display=swap">
+<link rel="stylesheet" href="../../platform/css/kit.css">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div class="stage" id="stage">
+  <canvas id="cv" width="960" height="540" aria-label="Sân thử mạng"></canvas>
+</div>
+<section id="panel">
+  <div id="lobby">
+    <label>Tên <input id="name" maxlength="16" autocomplete="off" placeholder="Khách"></label>
+    <div class="row">
+      <button id="btn-create">Tạo phòng</button>
+      <span>hoặc</span>
+      <input id="code" maxlength="6" autocomplete="off" placeholder="Mã phòng" aria-label="Mã phòng">
+      <button id="btn-join">Vào phòng</button>
+    </div>
+    <p id="err" role="alert"></p>
+  </div>
+  <div id="inroom" hidden>
+    <p>Mã phòng: <b id="room-code"></b> <span id="role"></span></p>
+    <ul id="players"></ul>
+    <p id="stats"></p>
+    <button id="btn-leave">Rời phòng</button>
+  </div>
+</section>
+<p class="keys">Bản thử mạng: dùng mũi tên hoặc WASD để di chuyển chấm của bạn; mọi người trong phòng thấy nhau.</p>
+<script type="module" src="main.js"></script>
+</body>
+</html>

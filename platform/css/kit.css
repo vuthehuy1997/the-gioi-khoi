@@ -1,0 +1,6 @@
+/* Thành phần giao diện nền tảng cung cấp cho các trang game. Dùng đơn vị em để co giãn theo cỡ chữ của game. */
+.hub-home{position:absolute;top:.8em;left:.9em;z-index:5;display:inline-flex;align-items:center;min-height:2.2em;
+  padding:.15em .8em;border-radius:999px;font:inherit;font-size:.9em;text-decoration:none;
+  color:#f4f1ea;background:#0b0d12b3;border:1px solid #ffffff59;backdrop-filter:blur(4px);transition:background .15s}
+.hub-home:hover{background:#0b0d12e6}
+.hub-home:focus-visible{outline:3px solid #fff;outline-offset:2px}
