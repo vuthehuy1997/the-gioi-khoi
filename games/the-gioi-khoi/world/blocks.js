@@ -3,11 +3,12 @@
 export const B = {
   AIR: 0, STONE: 1, DIRT: 2, GRASS: 3, SAND: 4, SNOW: 5, LOG: 6, LEAVES: 7, PLANKS: 8, ORE: 9, WATER: 10,
   CACTUS: 11, ICE: 12, BEDROCK: 13, MAGMA: 14, WORKBENCH: 15, GEM_ORE: 16,
+  TALL_GRASS: 17, FLOWER_RED: 18, FLOWER_YELLOW: 19, DEAD_BUSH: 20,
 };
 
 export const TILES = ['stone', 'dirt', 'grass_top', 'grass_side', 'sand', 'snow', 'snow_side', 'log_side', 'log_top', 'leaves',
-  'planks', 'ore', 'water', 'cactus_side', 'cactus_top', 'ice', 'bedrock', 'magma', 'bench_top', 'bench_side', 'gem_ore'];
-export const ATLAS_COLS = 8, ATLAS_ROWS = 3;
+  'planks', 'ore', 'water', 'cactus_side', 'cactus_top', 'ice', 'bedrock', 'magma', 'bench_top', 'bench_side', 'gem_ore', 'tall_grass', 'flower_red', 'flower_yellow', 'dead_bush'];
+export const ATLAS_COLS = 8, ATLAS_ROWS = 4;
 const T = Object.fromEntries(TILES.map((n, i) => [n, i]));
 
 const def = (id, name, o) => ({ id, name, solid: true, opaque: true, hardness: 1, tool: null, tier: 0, drop: name, ...o });
@@ -30,8 +31,13 @@ export const BLOCKS = [
   def(B.MAGMA, 'magma', { hardness: 2.5, tool: 'pick', tier: 2, tiles: [T.magma, T.magma, T.magma] }),
   def(B.WORKBENCH, 'workbench', { hardness: 1.5, tool: 'axe', tiles: [T.bench_top, T.bench_side, T.planks] }),
   def(B.GEM_ORE, 'gem_ore', { hardness: 4, tool: 'pick', tier: 3, drop: 'gem', tiles: [T.gem_ore, T.gem_ore, T.gem_ore] }),
+  def(B.TALL_GRASS, 'tall_grass', { solid: false, opaque: false, plant: true, hardness: 0.05, drop: null, tiles: [T.tall_grass, T.tall_grass, T.tall_grass] }),
+  def(B.FLOWER_RED, 'flower_red', { solid: false, opaque: false, plant: true, hardness: 0.05, drop: null, tiles: [T.flower_red, T.flower_red, T.flower_red] }),
+  def(B.FLOWER_YELLOW, 'flower_yellow', { solid: false, opaque: false, plant: true, hardness: 0.05, drop: null, tiles: [T.flower_yellow, T.flower_yellow, T.flower_yellow] }),
+  def(B.DEAD_BUSH, 'dead_bush', { solid: false, opaque: false, plant: true, hardness: 0.05, drop: null, tiles: [T.dead_bush, T.dead_bush, T.dead_bush] }),
 ];
 
 export const BLOCK_BY_NAME = Object.fromEntries(BLOCKS.map(b => [b.name, b]));
+export const isPlant = id => !!BLOCKS[id] && !!BLOCKS[id].plant;
 export const isSolid = id => !!BLOCKS[id] && BLOCKS[id].solid;
 export const isOpaque = id => !!BLOCKS[id] && BLOCKS[id].opaque;

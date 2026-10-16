@@ -6,9 +6,10 @@ import { BLOCKS, B, ATLAS_COLS, ATLAS_ROWS } from '../world/blocks.js';
 const PW = 18, PH = 66, PLAYER = PW * PW;                  // mảng đệm: x,z có viền 1 ô; y có viền dưới (đặc) và trên (khí)
 const pidx = (x, y, z) => ((y + 1) * PW + (z + 1)) * PW + (x + 1);
 
+const PLANT = new Uint8Array(256);
 const OPAQUE = new Uint8Array(256), OCC = new Uint8Array(256), LIQ = new Uint8Array(256), TILE = new Int16Array(256 * 3);
 for (const b of BLOCKS) {
-  OPAQUE[b.id] = b.opaque ? 1 : 0; LIQ[b.id] = b.liquid ? 1 : 0;
+  OPAQUE[b.id] = b.opaque ? 1 : 0; LIQ[b.id] = b.liquid ? 1 : 0; PLANT[b.id] = b.plant ? 1 : 0;
   OCC[b.id] = (b.opaque || b.id === B.LEAVES) ? 1 : 0;      // lá cũng che sáng/AO
   for (let k = 0; k < 3; k++) TILE[b.id * 3 + k] = b.tiles[k];
 }
@@ -44,15 +45,32 @@ function sky(top, x, y, z) {
   return v < 0.3 ? 0.3 : v;
 }
 
+// Cây cỏ/hoa: hai mặt phẳng chéo, vẽ hai phía.
+const CROSS = [[[0, 0, 0], [1, 0, 1], [1, 1, 1], [0, 1, 0]], [[1, 0, 0], [0, 0, 1], [0, 1, 1], [1, 1, 0]]];
+function crossPlant(part, id, lx, y, lz, s) {            // vật liệu hai mặt nên mỗi mặt phẳng chỉ cần một lớp tam giác
+  const tile = TILE[id * 3], col = tile % ATLAS_COLS, row = (tile / ATLAS_COLS) | 0, br = 0.92 * s;
+  for (const quad of CROSS) for (const flip of [0]) {
+    const k0 = part.p.length / 3;
+    for (let v = 0; v < 4; v++) {
+      const c = quad[v];
+      part.p.push(lx + c[0], y + c[1], lz + c[2]);
+      part.u.push((col + (UV[v][0] ? 1 - INSET : INSET)) / ATLAS_COLS, 1 - (row + 1) / ATLAS_ROWS + (UV[v][1] ? 1 - INSET : INSET) / ATLAS_ROWS);
+      part.c.push(br, br, br);
+    }
+    if (flip) part.i.push(k0, k0 + 2, k0 + 1, k0, k0 + 3, k0 + 2); else part.i.push(k0, k0 + 1, k0 + 2, k0, k0 + 2, k0 + 3);
+  }
+}
+
 // P: mảng đệm (PW x PH x PW) đã điền; top: chiều cao ô che sáng cao nhất mỗi cột (PW x PW).
 function meshPadded(P, top) {
-  const solid = { p: [], u: [], c: [], i: [] }, water = { p: [], u: [], c: [], i: [] };
+  const solid = { p: [], u: [], c: [], i: [] }, water = { p: [], u: [], c: [], i: [] }, plants = { p: [], u: [], c: [], i: [] };
   const ao = [0, 0, 0, 0], br = [0, 0, 0, 0];
   for (let y = 0; y < 64; y++) for (let lz = 0; lz < 16; lz++) {
     let base = pidx(0, y, lz);
     for (let lx = 0; lx < 16; lx++, base++) {
       const id = P[base];
       if (id === 0) continue;
+      if (PLANT[id]) { crossPlant(plants, id, lx, y, lz, sky(top, lx, y, lz)); continue; }
       const liquid = LIQ[id] === 1, part = liquid ? water : solid;
       for (let fi = 0; fi < 6; fi++) {
         const f = FACES[fi], nx = f.n[0], ny = f.n[1], nz = f.n[2];
@@ -91,7 +109,7 @@ function meshPadded(P, top) {
     }
   }
   const fin = m => ({ positions: new Float32Array(m.p), uvs: new Float32Array(m.u), colors: new Float32Array(m.c), indices: new Uint32Array(m.i) });
-  return { solid: fin(solid), water: fin(water) };
+  return { solid: fin(solid), water: fin(water), plants: fin(plants) };
 }
 
 function computeTop(P) {
@@ -126,4 +144,4 @@ export function meshChunk(world, cx, cz) {
   return meshPadded(P, computeTop(P));
 }
 
-export const transferables = m => [m.solid, m.water].flatMap(p => [p.positions.buffer, p.uvs.buffer, p.colors.buffer, p.indices.buffer]);
+export const transferables = m => [m.solid, m.water, m.plants].flatMap(p => [p.positions.buffer, p.uvs.buffer, p.colors.buffer, p.indices.buffer]);

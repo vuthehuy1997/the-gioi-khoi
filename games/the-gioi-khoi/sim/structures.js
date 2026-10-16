@@ -8,7 +8,13 @@ const id = n => BLOCK_BY_NAME[n].id;
 const FLOOR = { 'sa-mac-lua': 'sand', 'rung-suong': 'grass', 'nui-bang': 'snow' };
 
 // Tìm điểm gần gốc (cx, cz) trong vùng `region`, địa hình đủ phẳng, cách các điểm đã dùng ít nhất minGap.
-function findSite(g, region, used, { fromX = 0, fromZ = 0, minGap = 70, flat = 5 } = {}) {
+function findSite(g, region, used, opts = {}) {
+  const flat = opts.flat ?? 5;
+  for (const f of [flat, flat * 2, flat * 4]) { const r = findSiteWith(g, region, used, { ...opts, flat: f }); if (r) return r; }
+  return null;
+}
+
+function findSiteWith(g, region, used, { fromX = 0, fromZ = 0, minGap = 70, flat = 5 } = {}) {
   const seed = g.world.seed, step = 16;
   for (let r = 0; r <= 1600; r += step) {
     const pts = r === 0 ? [[0, 0]] : [];

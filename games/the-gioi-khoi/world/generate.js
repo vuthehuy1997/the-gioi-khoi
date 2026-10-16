@@ -12,9 +12,11 @@ export function columnInfo(seed, wx, wz) {
   const c = climate(seed, wx, wz);
   const region = regionOf(c);
   const mt = smoothstep(0.5, 0.78, c), ds = 1 - smoothstep(0.2, 0.42, c);
-  const base = 24 + mt * 14 - ds * 3, amp = 5 + mt * 18 - ds * 2.5;
+  const base = 25 + mt * 12 - ds * 3, amp = 6 + mt * 16 - ds * 3;
   const n = fbm2(seed, wx * 0.022, wz * 0.022, 4);
-  let h = Math.floor(base + (n - 0.5) * 2 * amp);
+  const hills = fbm2(seed + 500, wx * 0.0075, wz * 0.0075, 3);                 // đồi và thung lũng lớn (tạo hồ)
+  const rg = 1 - Math.abs(2 * fbm2(seed + 700, wx * 0.013, wz * 0.013, 3) - 1);  // dãy núi gồ ghề
+  let h = Math.floor(base + (n - 0.5) * 2 * amp + (hills - 0.5) * 16 * (1 - ds * 0.7) + mt * rg * 15);
   h = h < 3 ? 3 : h > CHUNK_H - 14 ? CHUNK_H - 14 : h;
   return { region, h };
 }
@@ -56,12 +58,23 @@ export function generateChunk(seed, cx, cz) {
     if (region.surface === 'snow' && h > 34 && hash(seed + 12, wx, wz) < 0.12) out[idx(lx, h, lz)] = B.ICE;
   }
 
+  // Cỏ cao, hoa, bụi khô rải trên mặt đất
+  for (let lz = 0; lz < CHUNK_W; lz++) for (let lx = 0; lx < CHUNK_W; lx++) {
+    const { region, h } = info(x0 + lx, z0 + lz);
+    if (h <= WATER_LEVEL || h >= CHUNK_H - 3) continue;
+    const top = out[idx(lx, h, lz)], above = idx(lx, h + 1, lz);
+    if (out[above] !== B.AIR) continue;
+    const r = hash(seed + 21, x0 + lx, z0 + lz);
+    if (top === B.GRASS) out[above] = r < 0.16 ? B.TALL_GRASS : r < 0.175 ? B.FLOWER_RED : r < 0.19 ? B.FLOWER_YELLOW : B.AIR;
+    else if (top === B.SAND && region.surface === 'sand') out[above] = r < 0.012 ? B.DEAD_BUSH : B.AIR;
+  }
+
   // Cây có thể tràn qua biên chunk, nên xét cả các cột lân cận trong bán kính 2.
   const put = (wx, y, wz, b, onlyAir = true) => {
     const lx = wx - x0, lz = wz - z0;
     if (lx < 0 || lz < 0 || lx >= CHUNK_W || lz >= CHUNK_W || y < 0 || y >= CHUNK_H) return;
     const i = idx(lx, y, lz);
-    if (!onlyAir || out[i] === B.AIR) out[i] = b;
+    if (!onlyAir || out[i] === B.AIR || out[i] >= B.TALL_GRASS) out[i] = b;
   };
   for (let dz = -2; dz < CHUNK_W + 2; dz++) for (let dx = -2; dx < CHUNK_W + 2; dx++) {
     const wx = x0 + dx, wz = z0 + dz, inf = info(wx, wz), p = plantAt(seed, wx, wz, inf);

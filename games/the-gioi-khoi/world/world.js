@@ -1,7 +1,7 @@
 // Thế giới: kho chunk nạp lười từ seed, cộng "delta" (các ô người chơi đã sửa) để lưu và đồng bộ.
 import { generateChunk, CHUNK_W, CHUNK_H, WATER_LEVEL, idx } from './generate.js';
 import { regionAt } from './regions.js';
-import { B, isSolid } from './blocks.js';
+import { B, isSolid, isPlant } from './blocks.js';
 
 const key = (cx, cz) => cx + ',' + cz;                 // khoá chuỗi: dùng cho delta/dirty (ít gọi)
 const nkey = (cx, cz) => ((cx & 0xffff) << 16) | (cz & 0xffff);   // khoá số cho kho chunk (gọi rất nhiều lần)
@@ -10,7 +10,7 @@ export class World {
   constructor(seed) {
     this.seed = seed;
     this.chunks = new Map();     // khoá số (nkey) -> Uint8Array
-    this.onSet = null;           // gọi (x, y, z, id) mỗi khi một ô đổi (để đồng bộ cho worker dựng mesh)
+    this.onSet = null; this.onChange = null;   // onChange(x, y, z, cũ, mới): hiệu ứng hình ảnh           // gọi (x, y, z, id) mỗi khi một ô đổi (để đồng bộ cho worker dựng mesh)
     this._lk = NaN; this._la = null;   // chunk truy cập gần nhất
     this.delta = new Map();      // "cx,cz" -> Map(idx -> id)
     this.dirty = new Set();      // chunk cần dựng lại mesh
@@ -83,12 +83,14 @@ export class World {
     if (y < 0 || y >= CHUNK_H) return false;
     const cx = x >> 4, cz = z >> 4, lx = x - cx * 16, lz = z - cz * 16, c = this.chunk(cx, cz), i = idx(lx, y, lz);
     if (c[i] === id) return false;
+    const prev = c[i];
     c[i] = id;
     const k = key(cx, cz);
     if (!this.delta.has(k)) this.delta.set(k, new Map());
     this.delta.get(k).set(i, id);
     this.dirty.add(k);
     if (this.onSet) this.onSet(x, y, z, id);
+    if (this.onChange) this.onChange(x, y, z, prev, id);
     if (lx === 0) this.dirty.add(key(cx - 1, cz));
     if (lx === 15) this.dirty.add(key(cx + 1, cz));
     if (lz === 0) this.dirty.add(key(cx, cz - 1));
@@ -116,7 +118,7 @@ export class World {
   surfaceY(x, z) {
     for (let y = CHUNK_H - 1; y >= 0; y--) {
       const b = this.get(x, y, z);
-      if (b !== B.AIR && b !== B.WATER && b !== B.LEAVES && b !== B.LOG && b !== B.CACTUS) return y;
+      if (b !== B.AIR && b !== B.WATER && b !== B.LEAVES && b !== B.LOG && b !== B.CACTUS && !isPlant(b)) return y;
     }
     return 0;
   }
@@ -126,7 +128,7 @@ export class World {
   // Phía trên (y+1..y+5) của cột không có block nào (không bị cây che đầu).
   clearAbove(x, z) {
     const y = this.surfaceY(x, z);
-    for (let dy = 1; dy <= 5; dy++) if (this.get(x, y + dy, z) !== B.AIR) return false;
+    for (let dy = 1; dy <= 5; dy++) { const b = this.get(x, y + dy, z); if (b !== B.AIR && !isPlant(b)) return false; }
     return true;
   }
 

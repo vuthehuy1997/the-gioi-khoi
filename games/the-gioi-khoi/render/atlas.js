@@ -18,7 +18,7 @@ const PAINT = {
   snow_side: (x, y, s) => y < 4 + Math.floor(hash(s, x, 99) * 3) ? jitter(rgb(240, 246, 250), 6, s, x, y) : jitter(rgb(122, 82, 48), 14, s, x, y),
   log_side: (x, y, s) => jitter(rgb(x % 4 === 1 ? 84 : 108, x % 4 === 1 ? 58 : 76, x % 4 === 1 ? 34 : 44), 8, s, x, y),
   log_top: (x, y, s) => { const d = Math.max(Math.abs(x - 7.5), Math.abs(y - 7.5)); return jitter(Math.floor(d) % 2 ? rgb(150, 112, 66) : rgb(112, 80, 46), 8, s, x, y); },
-  leaves: (x, y, s) => hash(s, x, y) < 0.16 ? rgb(0, 0, 0, 0) : jitter(rgb(56, 132, 44), 22, s, x, y),
+  leaves: (x, y, s) => hash(s, x >> 1, y >> 1) < 0.07 && hash(s, x, y) < 0.5 ? rgb(0, 0, 0, 0) : jitter(rgb(52 + (hash(s, x >> 2, y >> 2) < 0.35 ? 14 : 0), 128, 42), 12, s, x, y),
   planks: (x, y, s) => (y % 4 === 3) ? jitter(rgb(120, 86, 46), 6, s, x, y) : jitter(rgb(184, 138, 80), 10, s, x, y),
   ore: (x, y, s) => (hash(s + 1, x >> 1, y >> 1) < 0.22) ? jitter(rgb(150, 100, 255), 30, s, x, y) : jitter(rgb(125, 125, 128), 14, s, x, y),
   gem_ore: (x, y, s) => (hash(s + 1, x >> 1, y >> 1) < 0.2) ? jitter(rgb(70, 230, 230), 30, s, x, y) : jitter(rgb(110, 110, 118), 14, s, x, y),
@@ -28,9 +28,15 @@ const PAINT = {
   ice: (x, y, s) => ((x + y) % 7 === 0) ? rgb(235, 248, 255) : jitter(rgb(160, 210, 240), 10, s, x, y),
   bedrock: (x, y, s) => jitter(rgb(48, 48, 52), 26, s, x, y),
   magma: (x, y, s) => hash(s, x >> 1, y >> 1) < 0.45 ? jitter(rgb(255, 130, 30), 40, s, x, y) : jitter(rgb(60, 24, 16), 14, s, x, y),
+  tall_grass: (x, y, s) => { const blade = (x * 5 + 3) % 7 < 2 || (x * 3 + 1) % 5 === 0; const hgt = 5 + Math.floor(hash(s, x, 7) * 9); return blade && y >= 16 - hgt ? jitter(rgb(86, 160, 52), 24, s, x, y) : rgb(0, 0, 0, 0); },
+  flower_red: (x, y, s) => { if (x === 7 && y > 7) return rgb(60, 130, 40); const d = Math.hypot(x - 7.5, y - 5.5); return d < 2.6 ? (d < 1 ? rgb(255, 214, 80) : rgb(222, 52, 56)) : rgb(0, 0, 0, 0); },
+  flower_yellow: (x, y, s) => { if (x === 7 && y > 7) return rgb(60, 130, 40); const d = Math.hypot(x - 7.5, y - 5.5); return d < 2.6 ? (d < 1 ? rgb(190, 110, 30) : rgb(250, 220, 60)) : rgb(0, 0, 0, 0); },
+  dead_bush: (x, y, s) => { const t = (x + y) % 5 === 0 || (x - y + 16) % 6 === 0; return t && y > 4 && y < 15 && x > 2 && x < 13 ? jitter(rgb(122, 86, 44), 18, s, x, y) : rgb(0, 0, 0, 0); },
   bench_top: (x, y, s) => (x % 5 === 0 || y % 5 === 0) ? rgb(96, 66, 36) : jitter(rgb(184, 138, 80), 10, s, x, y),
   bench_side: (x, y, s) => (y > 3 && y < 12 && x > 2 && x < 13 && ((x + y) % 4 === 0)) ? rgb(70, 70, 76) : jitter(rgb(150, 108, 60), 10, s, x, y),
 };
+
+export const tileColors = [];   // màu trung bình mỗi ô, điền khi makeAtlas() chạy (dùng cho hạt vỡ block)
 
 // Trả canvas 2D chứa toàn bộ atlas. Có thể dùng làm map cho CanvasTexture.
 export function makeAtlas(doc = document) {
@@ -39,10 +45,13 @@ export function makeAtlas(doc = document) {
   const ctx = c.getContext('2d'), img = ctx.createImageData(c.width, c.height);
   TILES.forEach((name, i) => {
     const ox = (i % ATLAS_COLS) * TILE, oy = Math.floor(i / ATLAS_COLS) * TILE, paint = PAINT[name], s = 1000 + i * 17;
+    let r = 0, g = 0, b = 0, n = 0;
     for (let y = 0; y < TILE; y++) for (let x = 0; x < TILE; x++) {
       const px = paint(x, y, s), o = ((oy + y) * c.width + ox + x) * 4;
       img.data[o] = px[0]; img.data[o + 1] = px[1]; img.data[o + 2] = px[2]; img.data[o + 3] = px[3] ?? 255;
+      if ((px[3] ?? 255) > 128) { r += px[0]; g += px[1]; b += px[2]; n++; }
     }
+    tileColors[i] = n ? [r / n / 255, g / n / 255, b / n / 255] : [0.5, 0.5, 0.5];
   });
   ctx.putImageData(img, 0, 0);
   return c;

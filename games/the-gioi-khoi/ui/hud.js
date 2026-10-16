@@ -5,13 +5,17 @@ const $ = id => document.getElementById(id);
 export const itemName = id => (ITEMS[id] ? ITEMS[id].name : id);
 export const itemColor = id => { let h = 0; for (const c of String(id)) h = (h * 31 + c.charCodeAt(0)) % 360; return `hsl(${h},55%,45%)`; };
 
+let iconOf = null;
+export const setIconProvider = fn => { iconOf = fn; };
+
 export function slotEl(s, { sel = false, small = false } = {}) {
   const d = document.createElement('div');
   d.className = 'slot' + (sel ? ' sel' : '');
   if (s) {
     d.title = itemName(s.id);
     d.style.background = `linear-gradient(${itemColor(s.id)}55, #0009)`;
-    const n = document.createElement('span'); n.textContent = itemName(s.id); d.appendChild(n);
+    if (iconOf) { const im = document.createElement('img'); im.src = iconOf(s.id); im.alt = itemName(s.id); im.draggable = false; d.appendChild(im); }
+    else { const n = document.createElement('span'); n.textContent = itemName(s.id); d.appendChild(n); }
     if (s.n > 1) { const b = document.createElement('b'); b.textContent = s.n; d.appendChild(b); }
   }
   return d;

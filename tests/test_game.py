@@ -1140,7 +1140,7 @@ def test_hardening_odd_uids_loot_placement_no_alive_mob_cleanup_and_st_flood(pg)
 # ---------------------------------------------------------------- H5: độ mượt khi di chuyển (chi phí JS mỗi khung)
 
 def _streaming_run(pg, base, extra=''):
-    pg.goto(root(base) + 'games/the-gioi-khoi/game.html?debug&net=memory&seed=777&r=6' + extra); pg.wait_for_timeout(300)
+    pg.goto(root(base) + 'games/the-gioi-khoi/game.html?debug&net=memory&seed=777&r=6&aa=0' + extra); pg.wait_for_timeout(300)
     pg.fill('#name', 'P'); pg.click('#btn-new')
     pg.wait_for_function("window.__g && window.__g.S && window.__g.pending === 0", timeout=60000)
     pg.wait_for_timeout(500)
@@ -1159,6 +1159,179 @@ def test_perf_streaming_frame_cost(pg, browser, base):
     r = _streaming_run(pg, base)
     assert r['frames'] > 30, r
     assert r['avg'] < 6 and r['p95'] < 16 and r['max'] < 40 and r['long'] <= 2, r
+
+
+# ---------------------------------------------------------------- V: chất lượng hình ảnh so với Minecraft
+
+def _open_game(pg, base, extra='', name='V'):
+    pg.goto(root(base) + 'games/the-gioi-khoi/game.html?debug&net=memory&seed=777&r=5' + extra); pg.wait_for_timeout(300)
+    pg.fill('#name', name); pg.click('#btn-new')
+    pg.wait_for_function("window.__g && window.__g.S && window.__g.pending === 0", timeout=60000)
+    pg.wait_for_timeout(300)
+
+
+@test
+def test_visual_sky_sun_moon_stars_clouds_follow_time(pg, browser, base):
+    _open_game(pg, base)
+    r = pg.evaluate("""() => {
+      const g = __g, S = g.S, out = {};
+      const at = (t) => { g.game.time = t; S.time = t; g.renderNow(); return { sun: g.sky.sun.visible, moon: g.sky.moon.visible, stars: g.sky.stars.material.opacity,
+        sunY: g.sky.sun.position.y, top: g.sky.dome.geometry.attributes.color.getX(g.sky.dome.geometry.attributes.position.count - 1) }; };
+      out.noon = at(180); out.night = at(480); out.dusk = at(380);
+      out.clouds = g.sky.clouds.visible && g.sky.clouds.position.y > 50;
+      const cam = g.scene.camera.position; out.cloudFollows = Math.abs(g.sky.root.position.x - cam.x) < 0.01;
+      return out;
+    }""")
+    assert r['noon']['sun'] and r['noon']['sunY'] > 100 and r['noon']['stars'] < 0.05, r
+    assert r['night']['moon'] and r['night']['stars'] > 0.5 and not r['night']['sun'], r
+    assert r['night']['top'] < r['noon']['top'] * 0.5, r
+    assert r['clouds'] and r['cloudFollows'], r
+
+
+@test
+def test_visual_selection_outline_crack_and_particles(pg, browser, base):
+    _open_game(pg, base)
+    r = pg.evaluate("""async () => {
+      const g = __g, w = g.S.world, l = g.local, out = {};
+      // nhắm xuống mặt đất ngay trước mặt
+      const x = Math.floor(l.x) + 2, z = Math.floor(l.z), y = w.surfaceY(x, z);
+      g.lookAt(x + 0.5, y + 0.5, z + 0.5); g.renderNow();
+      out.outline = g.fx.outline.visible && Math.abs(g.fx.outline.position.x - (x + 0.5)) < 0.6;
+      g.mouse.left = true; await new Promise(r => setTimeout(r, 250)); g.renderNow();
+      out.crack = g.fx.crack.visible; out.stage = g.fx.crack.material.map.offset.x;
+      await new Promise(r => setTimeout(r, 900)); g.mouse.left = false;
+      out.broken = w.get(x, y, z) === 0;
+      out.particles = g.fx.particleCount;
+      return out;
+    }""")
+    assert r['outline'] and r['crack'] and r['broken'] and r['particles'] >= 8, r
+
+
+@test
+def test_visual_vertex_ao_and_skylight_shade_corners_and_caves(pg):
+    r = ev(pg, r"""
+      const { buildChunkMesh } = await imp('render/mesher.js');
+      // sàn đá phẳng ở y=9, một cột đá cao 3 ở (5,10..12,5)
+      const cells = {};
+      for (let x = -1; x <= 16; x++) for (let z = -1; z <= 16; z++) cells[x + ',9,' + z] = 1;
+      for (let y = 10; y <= 12; y++) cells['5,' + y + ',5'] = 1;
+      // mái đá rộng ở y=14 che nửa chunk (x >= 8)
+      for (let x = 8; x <= 16; x++) for (let z = -1; z <= 16; z++) cells[x + ',14,' + z] = 1;
+      const m = buildChunkMesh((x, y, z) => cells[x + ',' + y + ',' + z] || 0, 0, 0);
+      const p = m.solid.positions, c = m.solid.colors;
+      const floorTop = [];                     // đỉnh nằm ở y=10 (mặt trên của sàn) trên các mặt hướng lên
+      for (let i = 0; i < p.length / 3; i++) if (p[i * 3 + 1] === 10) floorTop.push({ x: p[i * 3], z: p[i * 3 + 2], b: c[i * 3] });
+      const nearWall = floorTop.filter(v => Math.abs(v.x - 5) <= 1 && Math.abs(v.z - 5) <= 1 && v.x < 8).map(v => v.b);
+      const open = floorTop.filter(v => v.x <= 2 && v.z <= 2).map(v => v.b);
+      const covered = floorTop.filter(v => v.x >= 11 && v.z >= 3 && v.z <= 12).map(v => v.b);
+      const mean = a => a.reduce((s, v) => s + v, 0) / a.length;
+      return { open: Math.max(...open), nearMin: Math.min(...nearWall), covered: mean(covered), openMean: mean(open) };
+    """)
+    assert r['open'] > 0.99 and r['nearMin'] < r['open'] * 0.8, r        # AO: góc sát tường tối hơn
+    assert r['covered'] < r['openMean'] * 0.8, r                          # dưới mái tối hơn chỗ hở trời
+
+
+@test
+def test_visual_plants_and_terrain_relief(pg):
+    r = ev(pg, r"""
+      const { generateChunk, columnInfo, WATER_LEVEL } = await imp('world/generate.js');
+      const { buildChunkMesh } = await imp('render/mesher.js');
+      const { World } = await imp('world/world.js');
+      const w = new World(777);
+      let plants = { 17: 0, 18: 0, 19: 0, 20: 0 }, best = { n: -1, cx: 0, cz: 0 };
+      for (let cx = -6; cx <= 6; cx++) for (let cz = -6; cz <= 6; cz++) {
+        const ch = w.chunk(cx, cz); let n = 0;
+        for (const v of ch) if (v >= 17 && v <= 20) { plants[v]++; n++; }
+        if (n > best.n) best = { n, cx, cz };
+      }
+      const m = buildChunkMesh((x, y, z) => w.get(x, y, z), best.cx, best.cz);
+      // độ cao: phương sai vùng rừng, tỉ lệ cột chìm dưới nước (hồ)
+      const hs = []; let lake = 0, n = 0;
+      for (let x = -600; x <= 600; x += 12) for (let z = -600; z <= 600; z += 12) { const c = columnInfo(777, x, z); if (c.region.id !== 'rung-suong') continue; hs.push(c.h); n++; if (c.h <= WATER_LEVEL) lake++; }
+      const mean = hs.reduce((a, b) => a + b, 0) / hs.length, sd = Math.sqrt(hs.reduce((a, b) => a + (b - mean) ** 2, 0) / hs.length);
+      // đi xuyên cỏ
+      const { makePlayer, stepPlayer } = await imp('sim/physics.js');
+      const sp = w.findSpawn(), y = w.surfaceY(sp.x, sp.z); w.set(sp.x, y + 1, sp.z, 17); w.set(sp.x + 1, y + 1, sp.z, 17);
+      const p = makePlayer(sp.x + 0.5, y + 1, sp.z + 0.5);
+      for (let i = 0; i < 20; i++) stepPlayer(w, p, { fx: 1 }, 0.05);
+      return { plants, meshPlantVerts: m.plants.positions.length / 3, sd, range: Math.max(...hs) - Math.min(...hs), lakeShare: lake / n, walked: p.x - (sp.x + 0.5) };
+    """)
+    assert r['plants']['17'] > 200 and r['plants']['18'] > 5 and r['plants']['19'] > 5, r
+    assert r['meshPlantVerts'] > 0 and r['sd'] > 2.5 and r['range'] >= 14 and 0.01 < r['lakeShare'] < 0.35 and r['walked'] > 1.5, r
+
+
+@test
+def test_visual_entities_animate_flash_and_cast_shadow(pg, browser, base):
+    _open_game(pg, base)
+    r = pg.evaluate("""async () => {
+      const g = __g, v = g.ents; const out = {};
+      const e = (x, hp) => [{ key: 'e:900', kind: 'mob', type: 'soi-xam', id: 900, x, y: 40, z: 5, yaw: 0, hp, maxHp: 16 }];
+      let x = 0; for (let i = 0; i < 12; i++) { x += 0.2; v.update(e(x, 16), i * 0.05, 0.05, []); }
+      out.walk = v.rigOf('e:900'); out.shadow = out.walk.hasShadow;
+      v.update(e(x, 8), 1, 0.05, []); out.hurt = v.rigOf('e:900').flashing;
+      for (let i = 0; i < 6; i++) v.update(e(x, 8), 1.1 + i * 0.05, 0.05, []);
+      out.after = v.rigOf('e:900').flashing;
+      // đứng yên: chân về 0
+      for (let i = 0; i < 40; i++) v.update(e(x, 8), 2 + i * 0.05, 0.05, []);
+      out.idle = v.rigOf('e:900').legs.map(a => Math.abs(a));
+      // người chơi có tay, NPC quay mặt về người chơi
+      v.update([{ key: 'p:t', kind: 'player', uid: 'u', name: 'T', x: 0, y: 40, z: 0, yaw: 0, pitch: 0.4 }], 0, 0.05, []);
+      out.player = v.rigOf('p:t');
+      return out;
+    }""")
+    legs = r['walk']['legs']
+    assert len(legs) == 4 and max(abs(a) for a in legs) > 0.2 and legs[0] * legs[1] < 0, r      # chân chéo nhau đung đưa ngược pha
+    assert r['shadow'] and r['hurt'] and not r['after'] and max(r['idle']) < 0.25, r
+    assert len(r['player']['arms']) == 2 and len(r['player']['legs']) == 2, r
+
+
+@test
+def test_visual_camera_fx_fov_bob_tilt_and_governor(pg):
+    r = ev(pg, r"""
+      const { stepCameraFx, newCameraFx } = await imp('render/camerafx.js');
+      const { governRadius } = await imp('render/governor.js');
+      const c = newCameraFx(); const f0 = c.fov;
+      for (let i = 0; i < 60; i++) stepCameraFx(c, 0.016, { moving: true, sprint: true, onGround: true, speed: 5.6 });
+      const sprintFov = c.fov, bob = c.bob, amp = c.bobAmp;
+      for (let i = 0; i < 80; i++) stepCameraFx(c, 0.016, { moving: false, sprint: false, onGround: true, speed: 0 });
+      const back = c.fov, ampIdle = c.bobAmp;
+      c.tilt = 0.1; for (let i = 0; i < 40; i++) stepCameraFx(c, 0.016, { moving: false, sprint: false, onGround: true, speed: 0 });
+      // bộ điều chỉnh: chậm kéo dài -> giảm bán kính; nhanh kéo dài -> tăng; có giới hạn
+      const st = { slow: 0, fast: 0 }; let r = 6; const hist = [];
+      for (let i = 0; i < 400; i++) { r = governRadius(st, r, 6, 40, 0.05); } hist.push(r);
+      for (let i = 0; i < 2000; i++) { r = governRadius(st, r, 6, 10, 0.05); } hist.push(r);
+      const st2 = { slow: 0, fast: 0 }; let r2 = 3; for (let i = 0; i < 400; i++) r2 = governRadius(st2, r2, 6, 80, 0.05);
+      const st3 = { slow: 0, fast: 0 }; let r3 = 6; for (let i = 0; i < 400; i++) r3 = governRadius(st3, r3, 6, 20, 0.05);
+      return { f0, sprintFov, bob, amp, back, ampIdle, tilt: c.tilt, hist, floor: r2, steady: r3 };
+    """)
+    assert r['sprintFov'] > r['f0'] + 5 and r['bob'] > 1 and r['amp'] > 0.7 and abs(r['back'] - r['f0']) < 0.5 and r['ampIdle'] < 0.05 and abs(r['tilt']) < 0.01, r
+    assert r['hist'][0] == 3 and r['hist'][1] == 6 and r['floor'] == 3 and r['steady'] == 6, r
+
+
+@test
+def test_audio_icons_and_underwater_tint(pg, browser, base):
+    _open_game(pg, base)
+    r = pg.evaluate("""async () => {
+      const g = __g, w = g.S.world, l = g.local, out = {};
+      // âm thanh: đào xong thì có tiếng đào và tiếng vỡ được ghi nhận
+      const x = Math.floor(l.x) + 2, z = Math.floor(l.z), y = w.surfaceY(x, z);
+      g.lookAt(x + 0.5, y + 0.5, z + 0.5); g.renderNow();
+      g.mouse.left = true; await new Promise(r => setTimeout(r, 1300)); g.mouse.left = false;
+      out.sfx = { ...g.sfx.stats };
+      // icon: khác nhau và là ảnh thật
+      const a = g.icons.get('stone'), b = g.icons.get('wood_pick'), c = g.icons.get('gem'), d = g.icons.get('stone');
+      out.icons = { distinct: new Set([a, b, c]).size, cached: a === d, isImg: a.startsWith('data:image/png') };
+      g.game.giveItem(g.S.uid, 'wood_pick', 1); await new Promise(r => setTimeout(r, 400));
+      out.hotbarImgs = document.querySelectorAll('#hotbar img').length;
+      // dưới nước: đặt camera vào nước
+      const wx = Math.floor(l.x) + 3, wz = Math.floor(l.z);
+      for (let dy = -2; dy <= 4; dy++) for (let dx = -1; dx <= 1; dx++) for (let dz = -1; dz <= 1; dz++) w.set(wx + dx, 60 + dy, wz + dz, 10);
+      l.x = wx + 0.5; l.y = 58.5; l.z = wz + 0.5; l.vy = 0; g.renderNow();
+      out.water = !document.getElementById('water').hidden;
+      return out;
+    }""")
+    assert r['sfx'].get('dig', 0) >= 1 and r['sfx'].get('break', 0) >= 1, r
+    assert r['icons']['distinct'] == 3 and r['icons']['cached'] and r['icons']['isImg'] and r['hotbarImgs'] >= 1 and r['water'], r
 
 
 
@@ -1197,7 +1370,7 @@ def _e2e_two_players(pg, browser, base):
     A.mouse.up()
     B.wait_for_function("([x, y, z]) => __g.S.world.get(x, y, z) === 0", arg=[cell['x'], cell['y'], cell['z']], timeout=8000)
     A.wait_for_function("__g.S.you.inv.some(s => s && s.id === 'dirt')")
-    assert 'Đất' in A.inner_text('#hotbar')
+    assert A.locator('#hotbar img[alt="Đất"]').count() >= 1
     A.keyboard.press('Digit1')
     A.evaluate("([x, y, z]) => __g.lookAt(x + 0.5, y + 0.2, z + 0.5)", [cell['x'], cell['y'], cell['z']])
     A.mouse.down(button='right'); A.mouse.up(button='right')

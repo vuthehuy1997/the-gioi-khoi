@@ -13,14 +13,20 @@ import { ClientSession } from './net/client.js';
 import { createScene } from './render/scene.js';
 import { ChunkView } from './render/chunkview.js';
 import { createEntityView } from './render/entities.js';
-import { createHud } from './ui/hud.js';
+import { createSky } from './render/sky.js';
+import { createEffects } from './render/effects.js';
+import { stepCameraFx, newCameraFx, createHand } from './render/camerafx.js';
+import { governRadius } from './render/governor.js';
+import { createIcons } from './ui/icons.js';
+import { sfx } from './sfx.js';
+import { createHud, setIconProvider } from './ui/hud.js';
 import { createPanels } from './ui/panels.js';
 import { regionById } from './world/regions.js';
 import { REGIONS } from './content/regions.js';
 import { MOBS } from './content/mobs.js';
 import { BOSSES } from './content/bosses.js';
 import { ITEMS } from './content/items.js';
-import { BLOCKS } from './world/blocks.js';
+import { BLOCKS, B } from './world/blocks.js';
 import { saveWorld, loadWorld, exportWorld, importWorld } from './save.js';
 
 const params = new URLSearchParams(location.search);
@@ -35,8 +41,11 @@ const ERR = {
   'dup-uid': 'Tài khoản này đang ở trong phòng (mở trang ở hai tab?).', 'no-welcome': 'Chủ phòng không phản hồi. Thử lại.', 'newer-version': 'File thế giới này mới hơn phiên bản game.', 'bad-file': 'File không hợp lệ.',
 };
 
-const scene = createScene($('cv'));
+const scene = createScene($('cv'), { aa: params.get('aa') !== '0' && (devicePixelRatio || 1) < 1.75 });   // hi-dpi đã đủ nét, tắt MSAA cho nhẹ
 const hud = createHud();
+const sky = createSky(scene), fx = createEffects(scene), hand = createHand(scene), camFx = newCameraFx();
+const icons = createIcons(scene.atlasCanvas); setIconProvider(id => icons.get(id));
+const gov = { slow: 0, fast: 0 }, rawDts = []; let maxRadius = 6, wasOnGround = true, stepDist = 0, digSoundT = 0, loadingPhase = true;
 let S = null, game = null, local = null, view = null, ents = null, panels = null;
 let pending = 1, paused = false, wasLocked = false, lastHit = 0, dig = null, digCooldown = 0, lastSel = -1;
 const keys = new Set(), mouse = { left: false };
@@ -85,9 +94,15 @@ async function begin(session) {
   const p0 = S.pos || (game && game.player(uid));
   local = makePlayer(p0.x, p0.y, p0.z); local.yaw = 0; local.pitch = -0.1;
   view = new ChunkView(S.world, scene, { radius: Number(params.get('r')) || 6 });
+  maxRadius = view.radius;
   ents = createEntityView(scene);
   panels = createPanels({ act: a => S.act(a), onClose: () => { if (S && !S.you.dead) lockPointer(); } });
   S.on('ev', handleEvent);
+  S.world.onChange = (x, y, z, prev, id) => {            // hạt khi block vỡ hoặc được đặt
+    if (prev && BLOCKS[prev] && id === 0) sfx.play('break', { block: prev }); else if (id) sfx.play('place', { block: id });
+    if (prev && BLOCKS[prev] && id === 0) fx.burst(x + 0.5, y + 0.5, z + 0.5, BLOCKS[prev].tiles[1], 16);
+    else if (id && BLOCKS[id]) fx.burst(x + 0.5, y + 0.5, z + 0.5, BLOCKS[id].tiles[0], 5, 1.2);
+  };
   S.on('snap', onSnap);
   S.on('closed', reason => { if (reason !== 'left') { try { sessionStorage.setItem('tgk-msg', reason === 'host-left' ? 'Chủ phòng đã thoát.' : reason === 'replaced' ? 'Bạn đã vào phòng này từ nơi khác.' : 'Mất kết nối.'); } catch (e) { /* bỏ qua */ } location.reload(); } });
   if (S.onSave !== undefined) S.onSave = save => { saveWorld('main', save).catch(() => {}); };
@@ -118,20 +133,22 @@ function refreshYou() {
 function handleEvent(ev) {
   switch (ev.t) {
     case 'you': refreshYou(); break;
-    case 'hurt': hud.setHp(ev.hp, S.you.maxHp); if (ev.by !== undefined && ev.by !== null) hud.flash(); break;
+    case 'hurt': hud.setHp(ev.hp, S.you.maxHp); if (ev.by !== undefined && ev.by !== null) { hud.flash(); sfx.play('hurt'); camFx.tilt = (Math.random() < 0.5 ? -1 : 1) * 0.1; } break;
     case 'teleport': local.x = ev.x; local.y = ev.y; local.z = ev.z; local.vx = local.vy = local.vz = 0; break;
     case 'kb': local.vx += ev.vx; local.vz += ev.vz; local.vy = Math.max(local.vy, ev.vy); break;
     case 'toast': hud.toast(ev.text); break;
-    case 'dialog': document.exitPointerLock?.(); panels.showDialog(ev); break;
+    case 'dialog': document.exitPointerLock?.(); sfx.play('talk'); panels.showDialog(ev); break;
     case 'dialog-end': panels.endDialog(); break;
     case 'shop': document.exitPointerLock?.(); panels.showShop(ev, S.you); break;
     case 'quests': hud.setQuests(ev.list); break;
     case 'region': hud.setRegion(ev.name); break;
-    case 'died': hud.toast(ev.uid === uid ? 'Bạn đã gục ngã.' : `${ev.name} đã gục ngã.`); break;
-    case 'boss-start': hud.toast(`${ev.name} xuất hiện!`); break;
-    case 'boss-defeated': hud.toast(`${ev.name} đã bị hạ!`, 5000); break;
-    case 'pickup': hud.toast(`+${ev.n} ${ITEMS[ev.item].name}`, 1200); break;
+    case 'swing': ents.swing('e:' + ev.id); break;
+    case 'died': if (ev.uid === uid) sfx.play('die'); hud.toast(ev.uid === uid ? 'Bạn đã gục ngã.' : `${ev.name} đã gục ngã.`); break;
+    case 'boss-start': sfx.play('boss'); hud.toast(`${ev.name} xuất hiện!`); break;
+    case 'boss-defeated': sfx.play('victory'); hud.toast(`${ev.name} đã bị hạ!`, 5000); break;
+    case 'pickup': sfx.play('pickup'); hud.toast(`+${ev.n} ${ITEMS[ev.item].name}`, 1200); break;
     case 'fail': onFail(ev); break;
+    case 'hit': { const e = interp.es.find(x => x.id === ev.id); if (e) { fx.burst(e.x, e.y + 0.8, e.z, [0.9, 0.12, 0.1], 8, 2.2); if (Math.hypot(e.x - local.x, e.z - local.z) < 20) sfx.play('hit'); } break; }
     case 'telegraph': { const b = interp.es.find(e => e.id === ev.id); ents.telegraph(ev.x, b ? b.y : local.y, ev.z, ev.r, ev.time); break; }
   }
 }
@@ -224,18 +241,21 @@ function useItem() {
 }
 
 function mining(dt, now) {
-  if (!mouse.left) return;
   const o = eyeOf(), d = dirOf(), blk = S.world.raycast(o, d, 6), en = pickEntity(o, d, 4.5);
+  const progNow = dig && blk && dig.x === blk.pos.x && dig.y === blk.pos.y && dig.z === blk.pos.z ? Math.min(1, (now - dig.t0) / Math.max(0.05, breakTimeFor(blk.id, heldId()))) : null;
+  fx.setTarget(blk && !(en && (!blk || en.t < blk.dist)) ? blk.pos : null, mouse.left ? progNow : null);
+  if (!mouse.left) return;
   if (en && (en.e.kind === 'mob' || en.e.kind === 'boss') && (!blk || en.t < blk.dist)) {
     dig = null; hud.setProgress(null);
-    if (now - lastHit > 0.5) { lastHit = now; S.act({ t: 'hit', id: en.e.id }); }
+    if (now - lastHit > 0.5) { lastHit = now; S.act({ t: 'hit', id: en.e.id }); hand.swing(); sfx.play('swing'); }
     return;
   }
   if (!blk) { dig = null; hud.setProgress(null); return; }
-  digCooldown -= dt;
+  digCooldown -= dt; digSoundT -= dt;
   if (digCooldown > 0) return;
   const need = breakTimeFor(blk.id, heldId());
   if (need === Infinity) { dig = null; hud.setProgress(null); return; }
+  if (digSoundT <= 0) { digSoundT = 0.24; sfx.play('dig', { block: blk.id }); hand.swing(); }
   if (!dig || dig.x !== blk.pos.x || dig.y !== blk.pos.y || dig.z !== blk.pos.z) { dig = { ...blk.pos, t0: now }; S.act({ t: 'dig', ...blk.pos }); }
   const prog = (now - dig.t0) / need;
   hud.setProgress(prog);
@@ -253,7 +273,7 @@ function interpolate(now) {
   interp = { ps: lerpList(a.snap.ps, b.snap.ps, 'uid'), es: lerpList(a.snap.es, b.snap.es, 'id') };
 }
 
-let last = performance.now(), nowS = 0;
+let last = performance.now(), nowS = 0, lastVy = 0;
 // Số đo chi phí JS mỗi khung (cho test hiệu năng và bộ điều chỉnh chất lượng).
 const perf = { n: 0, sum: 0, max: 0, ring: new Float32Array(240), i: 0, reset() { this.n = 0; this.sum = 0; this.max = 0; this.ring.fill(0); this.i = 0; },
   add(ms) { this.n++; this.sum += ms; if (ms > this.max) this.max = ms; this.ring[this.i++ % 240] = ms; },
@@ -269,25 +289,45 @@ function frameBody(dt) {
   const y = S.you, ui = inUi();
   if (!y.dead) stepPlayer(S.world, local, ui ? {} : inputNow(), dt);
   S.sendState({ x: local.x, y: local.y, z: local.z, vx: local.vx, vy: local.vy, vz: local.vz, yaw: local.yaw, pitch: local.pitch });
-  scene.camera.position.set(local.x, local.y + 1.62, local.z);
-  scene.camera.rotation.set(local.pitch, local.yaw, 0);
-  if (!ui) mining(dt, nowS);
+  const hs = Math.hypot(local.vx, local.vz), inp = ui ? {} : inputNow(), moving = !y.dead && hs > 0.8 && (inp.fx || inp.fz);
+  stepCameraFx(camFx, dt, { moving, sprint: !!inp.sprint, onGround: local.onGround, speed: hs });
+  const bobY = Math.abs(Math.sin(camFx.bob)) * 0.05 * camFx.bobAmp;
+  if (Math.abs(scene.camera.fov - camFx.fov) > 0.05) { scene.camera.fov = camFx.fov; scene.camera.updateProjectionMatrix(); }
+  scene.camera.position.set(local.x, local.y + 1.62 - bobY, local.z);
+  scene.camera.rotation.set(local.pitch, local.yaw, camFx.tilt + Math.sin(camFx.bob) * 0.006 * camFx.bobAmp);
+  if (moving && local.onGround) { stepDist += hs * dt; if (stepDist > 2.1) { stepDist = 0; sfx.play('step', { block: S.world.get(local.x, local.y - 0.5, local.z) }); } }
+  if (local.onGround && !wasOnGround && local.vy > -1 && lastVy < -9) sfx.play('land');
+  wasOnGround = local.onGround; lastVy = local.vy;
+  hand.setHeld(heldId(), heldId() ? icons.get(heldId()) : null); hand.update(dt, camFx.bob, camFx.bobAmp);
+  if (!ui) mining(dt, nowS); else fx.setTarget(null);
   const keep = game ? [...game.players.values()].filter(p => p.uid !== uid && !p.dead).map(p => ({ x: p.x, z: p.z, r: 4 })) : [];
   pending = view.update([local], undefined, keep);
   interpolate(performance.now());
   const list = [];
   for (const p of interp.ps) if (p.uid !== uid && !p.dead) list.push({ key: 'p:' + p.uid, kind: 'player', ...p });
   for (const e of interp.es) list.push({ key: 'e:' + e.id, ...e });
-  ents.update(list, nowS);
+  ents.update(list, nowS, dt, [...interp.ps.filter(p => p.uid !== uid), { x: local.x, z: local.z }]);
   const boss = interp.es.filter(e => e.kind === 'boss').sort((a, b) => Math.hypot(a.x - local.x, a.z - local.z) - Math.hypot(b.x - local.x, b.z - local.z))[0];
   hud.setBoss(boss && Math.hypot(boss.x - local.x, boss.z - local.z) < 70 ? { name: BOSSES[boss.type].name, hp: boss.hp, maxHp: boss.maxHp, phase: boss.phase } : null);
   const r = regionById(S.world.regionAt(local.x, local.z));
-  scene.setEnvironment({ sky: r.sky, fog: r.fog, light: lightLevel(S.time) });
+  const light = lightLevel(S.time);
+  scene.setEnvironment({ sky: r.sky, fog: r.fog, light });
+  const far = view.radius * 16 - 6; scene.setFog(far * 0.5, far);
+  const eyeWater = S.world.get(local.x, local.y + 1.62, local.z) === B.WATER;
+  $('water').hidden = !eyeWater; if (eyeWater) scene.setFog(0.5, 22);
+  if (loadingPhase) { if (pending <= 8) { loadingPhase = false; $('loading').hidden = true; } else $('loading').hidden = false; }
+  sky.update(scene.camera.position, S.time, light, r.sky, r.fog);
+  fx.update(dt);
   scene.render();
 }
 
 function loop(now) {
-  const dt = Math.min(0.05, (now - last) / 1000); last = now;
+  const raw = (now - last) / 1000, dt = Math.min(0.05, raw); last = now;
+  if (S && !debugOn()) {                                           // tự giảm/tăng tầm nhìn theo độ mượt thực tế
+    rawDts.push(raw); if (rawDts.length > 60) rawDts.shift();
+    const avg = rawDts.reduce((a, b) => a + b, 0) / rawDts.length * 1000, r = governRadius(gov, view.radius, maxRadius, avg, raw);
+    if (r !== view.radius) { view.setRadius(r); rawDts.length = 0; }
+  }
   try { frame(dt); } catch (e) { console.error(e); }
   requestAnimationFrame(loop);
 }
@@ -303,7 +343,7 @@ requestAnimationFrame(loop);
 if (debugOn()) {
   window.__g = {
     get S() { return S; }, get game() { return game; }, get local() { return local; }, get view() { return view; }, scene, hud, get panels() { return panels; }, get ents() { return ents; },
-    get pending() { return pending; }, perf, get interp() { return interp; }, mouse, keys,
+    get pending() { return pending; }, perf, sky, fx, hand, camFx, sfx, icons, gov, get interp() { return interp; }, mouse, keys,
     renderNow: () => frame(0.0001),
     lookAt(x, y, z) { const dx = x - local.x, dy = y - (local.y + 1.62), dz = z - local.z; local.yaw = Math.atan2(-dx, -dz); local.pitch = Math.atan2(dy, Math.hypot(dx, dz)); },
   };

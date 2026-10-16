@@ -1,7 +1,7 @@
 // Lõi mô phỏng của một thế giới: người chơi, kho đồ, đào/đặt block. Chạy ở host (hoặc một mình); không biết gì về DOM hay mạng.
 // Mọi thay đổi cần báo cho người chơi được đẩy vào hàng đợi sự kiện, lấy ra bằng drain().
 import { World } from '../world/world.js';
-import { BLOCKS, BLOCK_BY_NAME, B } from '../world/blocks.js';
+import { BLOCKS, BLOCK_BY_NAME, B, isPlant } from '../world/blocks.js';
 import { ITEMS, HAND_DAMAGE } from '../content/items.js';
 import { makeInventory, addItem, removeItem, countItem, HOTBAR } from './inventory.js';
 import { craft, canCraft } from './crafting.js';
@@ -172,10 +172,10 @@ export class Game {
     if (!it.block) return { ok: false, reason: 'not-block' };
     if (!this.inReach(p, a.x, a.y, a.z)) return { ok: false, reason: 'reach' };
     const cur = this.world.get(a.x, a.y, a.z);
-    if (cur !== B.AIR && cur !== B.WATER) return { ok: false, reason: 'occupied' };
+    if (cur !== B.AIR && cur !== B.WATER && !isPlant(cur)) return { ok: false, reason: 'occupied' };
     if (a.y < 1 || a.y >= 63) return { ok: false, reason: 'bounds' };
     const nb = [[1, 0, 0], [-1, 0, 0], [0, 1, 0], [0, -1, 0], [0, 0, 1], [0, 0, -1]].some(([dx, dy, dz]) => {
-      const id = this.world.get(a.x + dx, a.y + dy, a.z + dz); return id !== B.AIR && id !== B.WATER;
+      const id = this.world.get(a.x + dx, a.y + dy, a.z + dz); return id !== B.AIR && id !== B.WATER && !isPlant(id);
     });
     if (!nb) return { ok: false, reason: 'floating' };
     if (this.occupied(a.x, a.y, a.z)) return { ok: false, reason: 'blocked' };

@@ -2,7 +2,7 @@
 import { MOBS } from '../content/mobs.js';
 import { moveBody } from './physics.js';
 import { isNight } from './daynight.js';
-import { B } from '../world/blocks.js';
+import { B, isPlant } from '../world/blocks.js';
 import { WATER_LEVEL } from '../world/generate.js';
 
 export const MOB_CAP = 40, PER_PLAYER_CAP = 12;
@@ -138,7 +138,8 @@ export function spawnTick(g, dt) {
     const a = g.rng() * Math.PI * 2, r = 14 + g.rng() * 16;
     const x = Math.floor(p.x + Math.cos(a) * r), z = Math.floor(p.z + Math.sin(a) * r);
     const sy = g.world.surfaceY(x, z);
-    if (sy <= WATER_LEVEL || g.world.get(x, sy + 1, z) !== B.AIR || g.world.get(x, sy + 2, z) !== B.AIR) continue;
+    const free = id => id === B.AIR || isPlant(id);
+    if (sy <= WATER_LEVEL || !free(g.world.get(x, sy + 1, z)) || !free(g.world.get(x, sy + 2, z))) continue;
     const region = g.world.regionAt(x, z);
     const options = Object.entries(MOBS).filter(([, d]) => d.weight > 0 && d.regions.includes(region) && (d.when === 'any' || (d.when === 'night') === night));
     if (!options.length) continue;
