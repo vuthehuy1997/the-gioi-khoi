@@ -960,5 +960,45 @@ def test_multiplayer_rejects_bad_input(pg):
     assert r == {'afterTeleport': True, 'alive': True, 'finite': True}, r
 
 
+# ---------------------------------------------------------------- H2: ngân sách hiệu năng
+
+@test
+def test_perf_world_generation_and_meshing(pg):
+    r = ev(pg, GAME_JS + r"""
+      const { World } = await imp('world/world.js'); const { buildChunkMesh } = await imp('render/mesher.js');
+      const w = new World(31337);
+      let t = performance.now(); w.keepAround([{ x: 0, z: 0 }], 3); const gen = performance.now() - t;
+      t = performance.now(); let tris = 0;
+      for (let cx = -3; cx < 3; cx++) for (let cz = -3; cz < 3; cz++) { const m = buildChunkMesh((x, y, z) => w.get(x, y, z), cx, cz); tris += m.solid.indices.length / 3; }
+      return { gen, mesh: performance.now() - t, tris };
+    """)
+    assert r['gen'] + r['mesh'] < 2500 and r['tris'] > 5000, r
+
+
+@test
+def test_perf_tick_with_40_mobs_and_5_players(pg):
+    r = ev(pg, GAME_JS + r"""
+      const { spawnMob } = await imp('sim/mobs.js');
+      const g = new Game({ seed: 31337, spawning: false });
+      for (let i = 1; i <= 5; i++) { const p = g.addPlayer('u' + i, 'P' + i); p.hp = p.maxHp = 9999; p.x += i * 6; }
+      const ps = [...g.players.values()], kinds = ['soi-xam', 'xac-song', 'bo-cap', 'xuong-cung', 'gau-bang'];
+      for (let i = 0; i < 40; i++) { const p = ps[i % 5], x = p.x + Math.cos(i) * 10, z = p.z + Math.sin(i) * 10; spawnMob(g, kinds[i % 5], x, g.world.surfaceY(Math.floor(x), Math.floor(z)) + 1, z); }
+      g.tick(0.05);
+      let worst = 0, sum = 0; const N = 100;
+      for (let i = 0; i < N; i++) { const t = performance.now(); g.tick(0.05); const d = performance.now() - t; sum += d; worst = Math.max(worst, d); }
+      return { avg: sum / N, worst, mobs: [...g.ents.values()].filter(e => e.kind === 'mob').length };
+    """)
+    assert r['mobs'] == 40 and r['avg'] < 5 and r['worst'] < 25, r
+
+
+@test
+def test_perf_structures_and_welcome_size(pg):
+    r = ev(pg, GAME_JS + r"""
+      const t = performance.now(); const g = new Game({ seed: 31337, spawning: false }); g.buildStructures(); const build = performance.now() - t;
+      return { build, welcomeKB: JSON.stringify({ delta: g.world.exportDelta(), flags: g.flags }).length / 1024 };
+    """)
+    assert r['build'] < 2000 and r['welcomeKB'] < 400, r
+
+
 if __name__ == '__main__':
     run(TESTS)
