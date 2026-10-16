@@ -6,9 +6,7 @@ export const PRESETS = {
 };
 export const presetOf = key => PRESETS[key] || PRESETS.medium;
 
-// Chọn mức mặc định theo máy: nhiều nhân + màn hình thường -> Vừa/Cao, máy yếu -> Thấp.
-export function defaultPreset({ cores = 4, dpr = 1, memory = 4 } = {}) {
-  if (cores <= 2 || memory <= 2) return 'low';
-  if (cores >= 8 && memory >= 8) return 'high';
-  return 'medium';
+// Mặc định theo máy: máy yếu -> Thấp, còn lại -> Vừa. "Cao" luôn do người chơi chọn (không đoán được GPU từ số nhân CPU).
+export function defaultPreset({ cores = 4, memory = 4 } = {}) {
+  return cores <= 2 || memory <= 2 ? 'low' : 'medium';
 }

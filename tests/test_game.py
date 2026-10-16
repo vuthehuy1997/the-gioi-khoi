@@ -1301,11 +1301,14 @@ def test_visual_camera_fx_fov_bob_tilt_and_governor(pg):
       for (let i = 0; i < 400; i++) { r = governRadius(st, r, 6, 40, 0.05); } hist.push(r);
       for (let i = 0; i < 2000; i++) { r = governRadius(st, r, 6, 10, 0.05); } hist.push(r);
       const st2 = { slow: 0, fast: 0 }; let r2 = 3; for (let i = 0; i < 400; i++) r2 = governRadius(st2, r2, 6, 80, 0.05);
+      const { defaultPreset } = await imp('render/quality.js');
+      const presets = [defaultPreset({ cores: 2, memory: 8 }), defaultPreset({ cores: 16, memory: 32 }), defaultPreset({ cores: 8, memory: 1 })];
       const st3 = { slow: 0, fast: 0 }; let r3 = 6; for (let i = 0; i < 400; i++) r3 = governRadius(st3, r3, 6, 20, 0.05);
-      return { f0, sprintFov, bob, amp, back, ampIdle, tilt: c.tilt, hist, floor: r2, steady: r3 };
+      return { f0, sprintFov, bob, amp, back, ampIdle, tilt: c.tilt, hist, floor: r2, steady: r3, presets };
     """)
     assert r['sprintFov'] > r['f0'] + 5 and r['bob'] > 1 and r['amp'] > 0.7 and abs(r['back'] - r['f0']) < 0.5 and r['ampIdle'] < 0.05 and abs(r['tilt']) < 0.01, r
     assert r['hist'][0] == 3 and r['hist'][1] == 6 and r['floor'] == 3 and r['steady'] == 6, r
+    assert r['presets'] == ['low', 'medium', 'low'], r        # máy mạnh cũng chỉ mặc định 'Vừa'
 
 
 @test
