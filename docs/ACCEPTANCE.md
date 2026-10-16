@@ -11,8 +11,8 @@ Yêu cầu gốc: game thế giới khối nhiều người chơi trên web, "nh
 | B1 | Đi, nhảy, va chạm với block; không rơi xuyên đất | `test_physics_*` | ✅ |
 | B2 | Đào và đặt block, có độ cứng/công cụ, rơi vật phẩm vào kho | `test_break_place_*` | ✅ |
 | B3 | Kho đồ, thanh nhanh, ≥ 8 công thức chế tạo | `test_inventory_*`, `test_crafting_*` | ✅ |
-| C1 | Phòng 2–5 người; đặt/đào block, vị trí, quái, boss đồng bộ qua host | `test_multiplayer_*` | ☐ |
-| C2 | Người vào muộn nhận đúng thế giới đã bị sửa | `test_late_join_gets_world` | ☐ |
+| C1 | Phòng 2–5 người; đặt/đào block, vị trí, quái, boss đồng bộ qua host | `test_multiplayer_*` | ✅ |
+| C2 | Người vào muộn nhận đúng thế giới đã bị sửa | `test_late_join_gets_world` | ✅ |
 | D1 | ≥ 6 loại quái với AI khác nhau (đuổi cận chiến, bắn xa, bỏ chạy, canh giữ...) | `test_mob_ai_*` | ✅ |
 | D2 | Quái spawn theo vùng và ngày/đêm, có bảng rơi đồ, có giới hạn tổng số | `test_spawn_*`, `test_loot_*` | ✅ |
 | D3 | Chiến đấu: sát thương, hồi chiêu, chết, hồi sinh | `test_combat_*` | ✅ |

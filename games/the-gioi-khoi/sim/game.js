@@ -35,11 +35,11 @@ export class Game {
   // ---- lưu / nạp ----
   toSave() {
     const players = { ...this.savedPlayers };
-    for (const p of this.players.values()) {
-      players[p.uid] = { name: p.name, x: p.x, y: p.y, z: p.z, hp: p.dead ? p.maxHp : p.hp, maxHp: p.maxHp, inv: p.inv, sel: p.sel, quests: p.quests, region: null };
-    }
+    for (const p of this.players.values()) players[p.uid] = this.playerSave(p);
     return { v: 1, seed: this.seed, time: this.time, flags: this.flags, delta: this.world.exportDelta(), players };
   }
+
+  playerSave(p) { return { name: p.name, x: p.x, y: p.y, z: p.z, hp: p.dead ? p.maxHp : p.hp, maxHp: p.maxHp, inv: p.inv, sel: p.sel, quests: p.quests, region: null }; }
 
   static fromSave(save, opts = {}) {
     const g = new Game({ seed: save.seed, ...opts });
@@ -67,7 +67,7 @@ export class Game {
     this.players.set(uid, p);
     return p;
   }
-  removePlayer(uid) { this.players.delete(uid); }
+  removePlayer(uid) { const p = this.players.get(uid); if (p) this.savedPlayers[uid] = JSON.parse(JSON.stringify(this.playerSave(p))); this.players.delete(uid); }
   player(uid) { return this.players.get(uid); }
 
   touch(p) { p.rev++; }

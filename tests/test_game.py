@@ -850,5 +850,115 @@ def test_save_store_export_import_and_versions(pg):
     assert r['newer'] == 'newer-version' and r['bad'] == 'rejected' and r['deleted'] == 0, r
 
 
+# ---------------------------------------------------------------- C: nhiều người chơi
+
+NET_JS = GAME_JS + """
+const { HostSession } = await imp('net/host.js');
+const { ClientSession } = await imp('net/client.js');
+const { createMemoryTransport: mt } = await imp('../../platform/net/transport-memory.js');
+const { spawnMob } = await imp('sim/mobs.js');
+const mkHost = async (code, opts = {}) => {
+  const game = new Game({ seed: 777, spawning: false, ...opts });
+  const host = await HostSession.create({ game, transport: mt(), name: 'Chủ', uid: 'uh', code });
+  return { game, host };
+};
+const join = (code, uid, name) => ClientSession.join({ transport: mt(), name, uid, code, timeoutMs: 4000 });
+"""
+
+
+@test
+def test_multiplayer_blocks_positions_mobs_sync(pg):
+    r = ev(pg, NET_JS + r"""
+      const { game, host } = await mkHost('SYNCA');
+      const a = await join('SYNCA', 'ua', 'An'), b = await join('SYNCA', 'ub', 'Bình');
+      await until(() => game.players.size === 3 && b.snap && b.snap.ps.length === 3);
+      const pa = game.player('ua');
+      // an đặt block; bình thấy
+      const cx = Math.floor(pa.x) + 2, cz = Math.floor(pa.z), cy = a.world.surfaceY(cx, cz);
+      game.giveItem('ua', 'planks', 5); await until(() => a.you && a.you.inv.some(s => s && s.id === 'planks'));
+      a.act({ t: 'sel', i: a.you.inv.findIndex(s => s && s.id === 'planks') });
+      await until(() => game.player('ua').sel === a.you.inv.findIndex(s => s && s.id === 'planks') || true);
+      a.act({ t: 'place', x: cx, y: cy + 1, z: cz });
+      await until(() => b.world.get(cx, cy + 1, cz) === 8);
+      const hostSees = game.world.get(cx, cy + 1, cz);
+      // vị trí của an hiện bên bình
+      const x0 = pa.x;
+      a.sendState({ x: x0 + 3, y: pa.y, z: pa.z, vx: 0, vy: 0, vz: 0, yaw: 1, pitch: 0 });
+      await until(() => { const q = b.snap.ps.find(p => p.uid === 'ua'); return q && Math.abs(q.x - (x0 + 3)) < 0.1; });
+      await until(() => { const q = b.snap.ps.find(p => p.uid === 'ua'); return q && Math.abs(q.yaw - 1) < 0.01; });
+      // quái trên host hiện bên cả hai, và đòn đánh của khách có tác dụng trên host
+      const m = spawnMob(game, 'xac-song', pa.x + 2, pa.y, pa.z); m.frozen = true;
+      await until(() => b.snap.es.some(e => e.id === m.id) && a.snap.es.some(e => e.id === m.id));
+      game.giveItem('ua', 'gem_sword', 1);
+      await until(() => a.you.inv.some(s => s && s.id === 'gem_sword'));
+      a.act({ t: 'sel', i: a.you.inv.findIndex(s => s && s.id === 'gem_sword') });
+      await wait(150);
+      a.act({ t: 'hit', id: m.id });
+      await until(() => { const e = b.snap.es.find(e => e.id === m.id); return e && e.hp < m.maxHp; });
+      // thực thể quá xa không được gửi
+      const far = spawnMob(game, 'nai', pa.x + 300, pa.y, pa.z); far.frozen = true;
+      await wait(300);
+      const farSeen = b.snap.es.some(e => e.id === far.id);
+      return { hostSees, farSeen, players: b.snap.ps.map(p => p.name).sort(), aWorldSeed: a.world.seed };
+    """)
+    assert r['hostSees'] == 8 and not r['farSeen'] and r['players'] == ['An', 'Bình', 'Chủ'] and r['aWorldSeed'] == 777, r
+
+
+@test
+def test_multiplayer_late_join_gets_edited_world_and_own_data(pg):
+    r = ev(pg, NET_JS + r"""
+      const { game, host } = await mkHost('LATE2');
+      const sp = game.spawn; const y = game.world.surfaceY(sp.x, sp.z);
+      game.setBlock(sp.x, y + 1, sp.z, 8); game.setBlock(sp.x + 1, y + 1, sp.z, 6);
+      game.flags['boss:thu-linh-soi'] = true;
+      const c = await join('LATE2', 'ulate', 'Muộn');
+      const seen = [c.world.get(sp.x, y + 1, sp.z), c.world.get(sp.x + 1, y + 1, sp.z)];
+      const flag = c.flags['boss:thu-linh-soi'];
+      // người này có đồ, thoát, vào lại với cùng uid: nhận lại đồ
+      game.giveItem('ulate', 'xu', 33); await until(() => c.you.inv.some(s => s && s.id === 'xu'));
+      c.leave(); await until(() => !game.players.has('ulate'));
+      const c2 = await join('LATE2', 'ulate', 'Muộn');
+      const xu = c2.you.inv.filter(Boolean).filter(s => s.id === 'xu').reduce((a, s) => a + s.n, 0);
+      return { seen, flag, xu, hasTerrain: c2.world.get(sp.x, 5, sp.z) !== 0 };
+    """)
+    assert r['seen'] == [8, 6] and r['flag'] and r['xu'] == 33 and r['hasTerrain'], r
+
+
+@test
+def test_multiplayer_limits_and_host_leaving(pg):
+    r = ev(pg, NET_JS + r"""
+      const { game, host } = await mkHost('LMTXN');
+      const cs = []; for (let i = 0; i < 3; i++) cs.push(await join('LMTXN', 'u' + i, 'K' + i));
+      let dup = null; try { await join('LMTXN', 'u0', 'Trùng'); } catch (e) { dup = e.message; }
+      cs.push(await join('LMTXN', 'u3', 'K3'));
+      let sixth = null; try { await join('LMTXN', 'u9', 'Thừa'); } catch (e) { sixth = e.message; }
+      await wait(200);
+      let closed = null; cs[0].on('closed', r => { closed = r; });
+      host.leave();
+      await until(() => closed);
+      return { sixth, dup, closed, count: game.players.size };
+    """)
+    assert r['sixth'] == 'full' and r['dup'] == 'dup-uid' and r['closed'] == 'host-left' and r['count'] == 5, r
+
+
+@test
+def test_multiplayer_rejects_bad_input(pg):
+    r = ev(pg, NET_JS + r"""
+      const { game, host } = await mkHost('BADXN');
+      const a = await join('BADXN', 'ua', 'An');
+      await until(() => game.players.has('ua'));
+      const p = game.player('ua'); const x0 = p.x;
+      a.sendState({ x: p.x + 500, y: p.y, z: p.z, vx: 0, vy: 0, vz: 0, yaw: 0, pitch: 0 });    // dịch chuyển tức thời
+      await wait(300);
+      const afterTeleport = Math.abs(p.x - x0) < 5;
+      a.sendState({ x: NaN, y: 1, z: 1, yaw: 0, pitch: 0 }); a.sendState({ x: 'abc' }); a.sendState(null);
+      a.act({ t: 'break', x: 1e9, y: 1, z: 1 }); a.act({ t: 'nonsense' }); a.act(null); a.act({ t: 'hit', id: 'xyz' });
+      for (let i = 0; i < 200; i++) a.act({ t: 'sel', i: i % 9 });                                 // dồn dập
+      await wait(300);
+      return { afterTeleport, alive: game.players.has('ua'), finite: Number.isFinite(p.x) };
+    """)
+    assert r == {'afterTeleport': True, 'alive': True, 'finite': True}, r
+
+
 if __name__ == '__main__':
     run(TESTS)
