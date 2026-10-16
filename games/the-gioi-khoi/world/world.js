@@ -25,13 +25,21 @@ export class World {
     return c;
   }
 
-  // Nạp các chunk trong bán kính (đơn vị chunk) quanh các điểm, bỏ chunk ở xa. Chỉnh sửa của người chơi nằm trong delta nên không mất.
-  keepAround(points, radius) {
-    const need = new Set();
+  // Tập khoá chunk trong bán kính (đơn vị chunk) quanh các điểm.
+  static keysAround(points, radius) {
+    const set = new Set();
     for (const p of points) {
-      const pcx = Math.floor(p.x / CHUNK_W), pcz = Math.floor(p.z / CHUNK_W);
-      for (let dz = -radius; dz <= radius; dz++) for (let dx = -radius; dx <= radius; dx++) need.add(key(pcx + dx, pcz + dz));
+      const pcx = Math.floor(p.x / CHUNK_W), pcz = Math.floor(p.z / CHUNK_W), r = p.r ?? radius;
+      for (let dz = -r; dz <= r; dz++) for (let dx = -r; dx <= r; dx++) set.add(key(pcx + dx, pcz + dz));
     }
+    return set;
+  }
+
+  // Nạp các chunk quanh các điểm (bán kính radius) và quanh các vùng giữ thêm `extra` ({x, z, r}); bỏ chunk ngoài cả hai.
+  // Chỉnh sửa của người chơi nằm trong delta nên không mất khi bỏ chunk.
+  keepAround(points, radius, extra = []) {
+    const need = World.keysAround(points, radius);
+    for (const k of World.keysAround(extra, 0)) need.add(k);
     for (const k of need) { const [cx, cz] = k.split(',').map(Number); this.chunk(cx, cz); }
     for (const k of [...this.chunks.keys()]) if (!need.has(k)) { this.chunks.delete(k); this.dirty.delete(k); }
     return need;

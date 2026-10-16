@@ -129,8 +129,8 @@ export function spawnTick(g, dt) {
   const mobs = [...g.ents.values()].filter(e => e.kind === 'mob');
   const night = isNight(g.time);
   // bỏ quái ở quá xa mọi người chơi (trừ lính gác)
-  const ps = alive(g);
-  for (const e of mobs) if (MOBS[e.type].ai !== 'guard' && !ps.some(p => Math.hypot(p.x - e.x, p.z - e.z) < 80)) g.ents.delete(e.id);
+  const ps = alive(g), all = [...g.players.values()];
+  for (const e of mobs) if (MOBS[e.type].ai !== 'guard' && all.length && !all.some(p => Math.hypot(p.x - e.x, p.z - e.z) < 80)) g.ents.delete(e.id);
   if (mobs.length >= MOB_CAP) return;
   for (const p of ps) {
     const near = mobs.filter(e => Math.hypot(p.x - e.x, p.z - e.z) < 48);

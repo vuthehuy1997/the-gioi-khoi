@@ -40,7 +40,8 @@ export class Game {
     return { v: 1, seed: this.seed, time: this.time, flags: this.flags, delta: this.world.exportDelta(), players };
   }
 
-  playerSave(p) { return { name: p.name, x: p.x, y: p.y, z: p.z, hp: p.dead ? p.maxHp : p.hp, maxHp: p.maxHp, inv: p.inv, sel: p.sel, quests: p.quests, region: null }; }
+  // Người đang gục lưu ở điểm hồi sinh (không để họ hiện lại ngay tại xác).
+  playerSave(p) { const at = p.dead ? { x: this.spawn.x + 0.5, y: this.world.surfaceY(this.spawn.x, this.spawn.z) + 1, z: this.spawn.z + 0.5 } : p; return { name: p.name, x: at.x, y: at.y, z: at.z, hp: p.dead ? p.maxHp : p.hp, maxHp: p.maxHp, inv: p.inv, sel: p.sel, quests: p.quests, region: null }; }
 
   static fromSave(save, opts = {}) {
     const g = new Game({ seed: save.seed, ...opts });
@@ -62,8 +63,8 @@ export class Game {
     const sx = this.spawn.x, sz = this.spawn.z;
     const p = makePlayer(sx + 0.5, this.world.surfaceY(sx, sz) + 1, sz + 0.5);
     Object.assign(p, { uid, name: String(name || 'Khách').slice(0, 16), hp: MAX_HP, maxHp: MAX_HP, inv: makeInventory(), sel: 0, rev: 1,
-      dead: false, respawnAt: 0, lastHurt: -99, attackAt: 0, dig: null, lastState: this.time, quests: { active: {}, done: {} }, region: null });
-    saved = saved || this.savedPlayers[uid];
+      dead: false, respawnAt: 0, tpSeq: 0, lastHurt: -99, attackAt: 0, dig: null, lastState: this.time, quests: { active: {}, done: {} }, region: null });
+    saved = saved || (Object.hasOwn(this.savedPlayers, uid) ? this.savedPlayers[uid] : null);
     if (saved) Object.assign(p, JSON.parse(JSON.stringify(saved)), { uid, dead: false, name: p.name });
     this.players.set(uid, p);
     return p;
@@ -102,7 +103,7 @@ export class Game {
   occupied(x, y, z) {
     const hit = (e) => Math.abs(e.x - (x + 0.5)) < e.w / 2 + 0.5 && Math.abs(e.z - (z + 0.5)) < e.w / 2 + 0.5 && e.y < y + 1 && e.y + e.h > y;
     for (const p of this.players.values()) if (!p.dead && hit(p)) return true;
-    for (const e of this.ents.values()) if (e.w && hit(e)) return true;
+    for (const e of this.ents.values()) if (e.w && e.kind !== 'item' && e.kind !== 'proj' && hit(e)) return true;
     return false;
   }
 
@@ -199,13 +200,20 @@ export class Game {
   }
 
   // ---- trạng thái người chơi do client báo (vị trí do client mô phỏng, host chỉ kiểm tra tốc độ) ----
+  // Dịch chuyển người chơi do máy chủ quyết định. seq tăng để loại các gói vị trí cũ còn đang bay.
+  teleportPlayer(p, x, y, z) {
+    p.x = x; p.y = y; p.z = z; p.vx = p.vy = p.vz = 0; p.lastState = this.time; p.tpSeq++;
+    this.emit(p.uid, { t: 'teleport', x, y, z, seq: p.tpSeq });
+  }
+
   applyState(uid, st) {
     const p = this.player(uid);
     if (!p || p.dead) return false;
     const dt = Math.max(0.05, this.time - p.lastState);
     const dist = Math.hypot(st.x - p.x, st.y - p.y, st.z - p.z);
     if (![st.x, st.y, st.z, st.yaw, st.pitch].every(Number.isFinite)) return false;
-    if (dist > 14 * dt + 3) { this.emit(uid, { t: 'teleport', x: p.x, y: p.y, z: p.z }); return false; }   // di chuyển quá nhanh: kéo về
+    if ((st.seq | 0) < p.tpSeq) return false;                                                 // gói cũ gửi trước lần dịch chuyển gần nhất
+    if (dist > 14 * dt + 3) { this.teleportPlayer(p, p.x, p.y, p.z); return false; }          // di chuyển quá nhanh: kéo về
     p.x = st.x; p.y = st.y; p.z = st.z; p.yaw = st.yaw; p.pitch = st.pitch;
     p.vx = st.vx || 0; p.vy = st.vy || 0; p.vz = st.vz || 0;
     p.lastState = this.time;

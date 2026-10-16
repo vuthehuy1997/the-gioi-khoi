@@ -74,8 +74,7 @@ export function actRespawn(g, p) {
   if (!p.dead) return { ok: false, reason: 'alive' };
   if (g.time < p.respawnAt) return { ok: false, reason: 'too-soon' };
   p.dead = false; p.hp = p.maxHp; p.lastHurt = -99; g.touch(p);
-  p.x = g.spawn.x + 0.5; p.z = g.spawn.z + 0.5; p.y = g.world.surfaceY(g.spawn.x, g.spawn.z) + 1; p.vx = p.vy = p.vz = 0;
-  g.emit(p.uid, { t: 'teleport', x: p.x, y: p.y, z: p.z });
+  g.teleportPlayer(p, g.spawn.x + 0.5, g.world.surfaceY(g.spawn.x, g.spawn.z) + 1, g.spawn.z + 0.5);
   g.emit(p.uid, { t: 'hurt', hp: p.hp, by: null });
   return { ok: true };
 }

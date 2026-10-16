@@ -30,3 +30,9 @@ Yêu cầu gốc: game thế giới khối nhiều người chơi trên web, "nh
 Ngoài phạm vi v1 (đã chốt trong spec): PvP, mobile/cảm ứng, chống gian lận, tài khoản, server chạy liên tục, redstone, nhạc nền.
 
 Giới hạn đã biết: kết nối thật giữa thiết bị khác mạng chưa được đo (cần người và thiết bị thật); test E2E dùng transport bộ nhớ.
+
+## Vá lỗi sau review độc lập (đều có test hồi quy)
+
+Hồi sinh bị gói vị trí cũ kéo ngược về chỗ chết (thêm số thứ tự dịch chuyển `seq`); nhiệm vụ boss/“đến vùng” không bị kẹt khi boss đã chết hoặc nhận ngay trong vùng; tab host chạy nền vẫn bắt kịp 2 giây mô phỏng và báo lý do thất bại cho người chơi; người đang gục được lưu ở điểm hồi sinh; nối lại sau khi rớt mạng thế chỗ kết nối cũ; chơi một mình dừng khi tạm dừng; host giữ chunk quanh người chơi khác; vật phẩm rơi không chặn đặt block; quái không bị dọn sạch khi mọi người đang gục; giới hạn tần suất gói vị trí; uid lạ (`constructor`) không làm hỏng việc vào phòng.
+
+Các mục nhỏ còn hoãn: xoá delta khi block trở về nguyên bản (gói chào lớn dần), giới hạn 40 hành động/giây có thể làm rơi một lệnh đào khi lăn chuột rất nhanh, ô đang cầm trên máy khách trễ một nhịp so với host khi vừa đổi công cụ giữa lúc đào.

@@ -1,5 +1,6 @@
 // Nhiệm vụ: nhận, tiến độ, trả. Trạng thái mỗi người chơi: p.quests = { active: { id: { prog: [..] } }, done: { id: true } }.
 import { QUESTS } from '../content/quests.js';
+import { BOSSES } from '../content/bosses.js';
 import { addItem, removeItem, countItem, canFit } from './inventory.js';
 
 export const questDef = id => QUESTS[id];
@@ -27,6 +28,7 @@ export function progress(g, p, id) {
     const text = s.text;
     if (s.type === 'collect') return { text, n: Math.min(s.n, countItem(p.inv, s.item)), need: s.n };
     if (s.type === 'kill') return { text, n: Math.min(s.n, a ? a.prog[i] || 0 : 0), need: s.n };
+    if (s.type === 'boss' && g.flags[BOSSES[s.boss].flag]) return { text, n: 1, need: 1 };   // boss đã bị hạ (kể cả khi mình không có mặt)
     return { text, n: a && a.prog[i] ? 1 : 0, need: 1 };            // boss, reach, talk
   });
 }
@@ -37,6 +39,7 @@ export function accept(g, p, id) {
   if (questState(g, p, id) !== 'none') return { ok: false, reason: 'already' };
   if (!requirementsMet(g, p, q)) return { ok: false, reason: 'requires' };
   p.quests.active[id] = { prog: q.steps.map(() => 0) };
+  if (p.region) creditRegion(g, p, p.region);
   g.touch(p); g.emit(p.uid, { t: 'toast', text: 'Nhận nhiệm vụ: ' + q.name });
   return { ok: true };
 }

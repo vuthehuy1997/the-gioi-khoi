@@ -1,18 +1,54 @@
-# Thế Giới Khối (smoke-world)
+# Thế Giới Khối
 
-Game thế giới khối nhiều người chơi chạy trên trình duyệt, không cần máy chủ: người tạo phòng làm host, những người khác nối vào bằng WebRTC (thư viện Trystero). Bản hiện tại (mốc M1) là trang thử kết nối phòng: mã phòng, tối đa 5 người, thấy nhau di chuyển, xem ping và băng thông.
+Game thế giới khối chạy ngay trên trình duyệt, không cần máy chủ: đào và xây, đánh quái, hạ boss, làm nhiệm vụ. Chơi một mình, hoặc cùng tối đa 5 người: một người tạo phòng (làm host), những người khác vào bằng mã phòng qua WebRTC (thư viện Trystero).
 
-- Trang thử: `games/the-gioi-khoi/` (mở `?net=memory` để thử hai tab cùng máy không cần mạng).
-- Lớp mạng dùng chung: `platform/net/`. Thư viện ngoài: `platform/vendor/` (xem `VENDOR.md`).
-- Đặc tả: `docs/superpowers/specs/2026-10-16-the-gioi-khoi-design.md`; kế hoạch M1: `docs/superpowers/plans/2026-10-16-the-gioi-khoi-m1-net.md`.
+**Chơi:** https://vuthehuy1997.github.io/the-gioi-khoi/ → "Chơi ngay".
 
-## Chạy
+## Có gì trong game
+
+- **Thế giới voxel** sinh từ seed, ba vùng: Rừng Sương, Sa Mạc Lửa, Núi Băng (địa hình, cây, quái, màu trời khác nhau); hang động, quặng, nước; chu kỳ ngày đêm.
+- **Đào / đặt block** có độ cứng và bậc công cụ (tay, gỗ, đá, tinh thể, ngọc); kho đồ 36 ô, thanh nhanh 1–9, 15 công thức chế tạo (một số cần đứng gần bàn chế tạo).
+- **8 loại quái** với 4 kiểu AI (đuổi cận chiến, bỏ chạy, bắn xa giữ khoảng cách, canh giữ), sinh theo vùng và ngày/đêm, có bảng rơi đồ.
+- **3 boss nhiều pha** ở đấu trường riêng, mỗi boss có chiêu khác nhau (đánh cận, nhảy đập, gọi quái, bắn loạt, đập vùng có báo hiệu). Máu và sát thương tăng theo số người trong đấu trường. Hạ boss mở an toàn cho vùng kế tiếp (vùng chưa mở có khí độc gặm máu).
+- **4 NPC** ở ba làng, hội thoại dạng đồ thị, hai cửa hàng (mua bán bằng xu), **6 nhiệm vụ** (nhặt, hạ quái, hạ boss, đến vùng).
+- **Lưu / nạp** thế giới trong IndexedDB, xuất và nhập file `.gz`.
+
+## Điều khiển
+
+WASD đi · Space nhảy · Shift chạy · chuột trái đào/đánh (giữ) · chuột phải đặt block / nói chuyện NPC / ăn · 1–9 hoặc lăn chuột chọn ô · E kho đồ và chế tạo · Esc tạm dừng. Chỉ hỗ trợ máy tính (bàn phím + chuột).
+
+## Chạy trên máy
 
 ```
-python3 -m http.server 8003      # rồi mở http://localhost:8003/games/the-gioi-khoi/
-python3 tests/test_net.py        # cần Python Playwright (chromium)
+python3 -m http.server 8003      # rồi mở http://localhost:8003/games/the-gioi-khoi/game.html
+python3 tests/test_game.py       # logic, mô phỏng, nội dung, hiệu năng, e2e hai trình duyệt
+python3 tests/test_net.py        # lớp mạng platform/net và trang thử kết nối
 ```
 
-Không có bước build. Kết nối giữa thiết bị khác mạng cần HTTPS (GitHub Pages) vì WebRTC của Trystero dùng `crypto.subtle`.
+Test cần Python Playwright (Chromium). Không có bước build. Muốn thử hai người trên một máy: thêm `?net=memory` (hai tab cùng trình duyệt, không cần mạng); chế độ mặc định dùng WebRTC thật và cần HTTPS hoặc `localhost`.
 
-Mã nguồn tách ra từ repo Game Hub; liên kết "← Game Hub" trên trang thử trỏ về trang giới thiệu ở gốc.
+## Cấu trúc
+
+```
+games/the-gioi-khoi/
+  world/    noise, block, vùng, sinh chunk, World (delta, raycast)
+  sim/      Game (người chơi, đào/đặt, chiến đấu), mobs, boss, quests, dialogue, structures, physics, inventory, crafting, daynight
+  content/  dữ liệu thuần: items, recipes, mobs, bosses, npcs, quests, shops, regions + validate.js (kiểm tra tham chiếu)
+  net/      HostSession, ClientSession, snapshot
+  render/   atlas texture tự vẽ, mesher, scene Three.js, chunkview, entities
+  ui/       HUD, bảng kho đồ/hội thoại/cửa hàng
+  save.js   IndexedDB, xuất/nhập
+platform/
+  net/      mã phòng, Room, transport (bộ nhớ, Trystero), ping/băng thông, vòng lặp tick cố định
+  vendor/   Three.js, Trystero (xem VENDOR.md)
+docs/ACCEPTANCE.md   tiêu chí hoàn thành và trạng thái
+```
+
+`sim/` và `world/` không phụ thuộc DOM hay mạng, nên chạy được trong test và có thể đưa lên máy chủ thật về sau.
+
+## Giới hạn đã biết
+
+- Host là một trình duyệt: người tạo phòng phải giữ tab ở phía trước và thế giới chỉ chạy khi họ còn mở. Vị trí người chơi do máy khách báo (host chỉ kiểm tra tốc độ), nên không chống gian lận; phù hợp chơi với bạn bè.
+- Kết nối WebRTC qua relay công cộng đôi khi cần thử lại; chưa đo trên nhiều thiết bị khác mạng (xem `docs/superpowers/specs`).
+- Chưa có âm thanh, PvP, cảm ứng/điện thoại.
+- Art là texture tự vẽ bằng mã (không dùng gói ngoài); mô hình quái là hộp màu.

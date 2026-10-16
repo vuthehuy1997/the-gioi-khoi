@@ -63,15 +63,20 @@ async function launch(fn) {
   $('err').textContent = ''; setBusy(true);
   store.set('tgk-name', $('name').value);
   try { await begin(await fn()); }
-  catch (e) { $('err').textContent = ERR[e.message] || 'Không thực hiện được: ' + (e.message || e); setBusy(false); }
+  catch (e) { $('err').textContent = e.message === 'cancelled' ? '' : ERR[e.message] || 'Không thực hiện được: ' + (e.message || e); setBusy(false); }
 }
 
 $('btn-solo').onclick = () => launch(async () => { game = await newOrSavedGame(false); return HostSession.solo({ game, name: myName(), uid }); });
-$('btn-new').onclick = () => launch(async () => { game = await newOrSavedGame(true); return HostSession.solo({ game, name: myName(), uid }); });
+$('btn-new').onclick = () => launch(async () => {
+  let has = null; try { has = await loadWorld('main'); } catch (e) { has = null; }
+  if (has && !confirm('Thế giới đã lưu sẽ bị thay bằng thế giới mới. Tiếp tục?')) throw new Error('cancelled');
+  game = await newOrSavedGame(true); return HostSession.solo({ game, name: myName(), uid }); });
 $('btn-host').onclick = () => launch(async () => { game = await newOrSavedGame(false); return HostSession.create({ game, transport: await makeTransport(), name: myName(), uid }); });
 $('btn-join').onclick = () => launch(async () => { game = null; return ClientSession.join({ transport: await makeTransport(), name: myName(), uid, code: $('code').value }); });
 $('file-import').onchange = (e) => launch(async () => {
   const f = e.target.files[0]; const save = await importWorld(f);
+  let has = null; try { has = await loadWorld('main'); } catch (e2) { has = null; }
+  if (has && !confirm('Thế giới đã lưu sẽ bị thay bằng file này. Tiếp tục?')) throw new Error('cancelled');
   await saveWorld('main', save); game = Game.fromSave(save); return HostSession.solo({ game, name: myName(), uid });
 });
 
@@ -84,7 +89,7 @@ async function begin(session) {
   panels = createPanels({ act: a => S.act(a), onClose: () => { if (S && !S.you.dead) lockPointer(); } });
   S.on('ev', handleEvent);
   S.on('snap', onSnap);
-  S.on('closed', reason => { if (reason !== 'left') { try { sessionStorage.setItem('tgk-msg', reason === 'host-left' ? 'Chủ phòng đã thoát.' : 'Mất kết nối.'); } catch (e) { /* bỏ qua */ } location.reload(); } });
+  S.on('closed', reason => { if (reason !== 'left') { try { sessionStorage.setItem('tgk-msg', reason === 'host-left' ? 'Chủ phòng đã thoát.' : reason === 'replaced' ? 'Bạn đã vào phòng này từ nơi khác.' : 'Mất kết nối.'); } catch (e) { /* bỏ qua */ } location.reload(); } });
   if (S.onSave !== undefined) S.onSave = save => { saveWorld('main', save).catch(() => {}); };
   $('menu').hidden = true; $('hud').hidden = false;
   hud.setRoom(S.code); refreshYou(); lockPointer();
@@ -94,10 +99,19 @@ async function begin(session) {
 // ---------------------------------------------------------------- sự kiện từ phiên
 function onSnap(snap) { buf.push({ t: performance.now(), snap }); if (buf.length > 5) buf.shift(); }
 
+const FAIL_TEXT = { poor: 'Không đủ xu.', 'inventory-full': 'Kho đồ đã đầy.', reach: 'Ở quá xa.', 'not-sold': 'Cửa hàng không bán món này.', 'not-bought': 'Cửa hàng không thu món này.',
+  missing: 'Bạn không có đủ món này.', full: 'Máu đã đầy.', 'cannot-craft': 'Chưa đủ nguyên liệu hoặc cần đứng gần bàn chế tạo.', blocked: 'Có vật cản ở đó.', floating: 'Cần đặt cạnh một block khác.', 'too-soon': 'Chưa thể hồi sinh ngay.', far: 'Ở quá xa NPC.' };
+function onFail(ev) {
+  if (ev.a === 'break' || ev.a === 'dig') { dig = null; hud.setProgress(null); digCooldown = 0.2; if (ev.reason === 'reach') hud.toast('Ở quá xa.', 800); return; }
+  if (FAIL_TEXT[ev.reason]) hud.toast(FAIL_TEXT[ev.reason], 1800);
+}
+
+let deathTimer = null;
 function refreshYou() {
   const y = S.you; if (!y) return;
   hud.setHp(y.hp, y.maxHp); hud.setHotbar(y.inv, y.sel);
-  if (y.dead) { document.exitPointerLock?.(); panels.close(); panels.showDeath(false); setTimeout(() => panels.showDeath(true), 3000); } else panels.hideDeath();
+  if (y.dead) { if (!deathTimer) { document.exitPointerLock?.(); panels.close(); panels.showDeath(false); deathTimer = setTimeout(() => panels.showDeath(true), 3000); } }
+  else if (deathTimer || !$('death').hidden) { clearTimeout(deathTimer); deathTimer = null; panels.hideDeath(); lockPointer(); }
   if (panels.isOpen) panels.refresh({ you: y, nearBench: nearBench(S.world, local.x, local.y, local.z) });
 }
 
@@ -117,13 +131,14 @@ function handleEvent(ev) {
     case 'boss-start': hud.toast(`${ev.name} xuất hiện!`); break;
     case 'boss-defeated': hud.toast(`${ev.name} đã bị hạ!`, 5000); break;
     case 'pickup': hud.toast(`+${ev.n} ${ITEMS[ev.item].name}`, 1200); break;
+    case 'fail': onFail(ev); break;
     case 'telegraph': { const b = interp.es.find(e => e.id === ev.id); ents.telegraph(ev.x, b ? b.y : local.y, ev.z, ev.r, ev.time); break; }
   }
 }
 
 // ---------------------------------------------------------------- điều khiển
 const inUi = () => !S || panels.isOpen || paused || S.you.dead || !$('menu').hidden;
-function lockPointer() { if (!debugOn() || NET !== 'memory') $('cv').requestPointerLock?.(); }
+function lockPointer() { if (!debugOn() || NET !== 'memory') { try { const r = $('cv').requestPointerLock?.(); if (r && r.catch) r.catch(() => {}); } catch (e) { /* không khoá được: bỏ qua */ } } }
 addEventListener('keydown', e => {
   if (e.target.tagName === 'INPUT') return;
   keys.add(e.code);
@@ -135,7 +150,7 @@ addEventListener('keydown', e => {
   if (m) S.act({ t: 'sel', i: Number(m[1]) - 1 });
 });
 addEventListener('keyup', e => keys.delete(e.code));
-addEventListener('blur', () => keys.clear());
+addEventListener('blur', () => { keys.clear(); mouse.left = false; dig = null; hud.setProgress(null); });
 addEventListener('wheel', e => { if (!S || inUi()) return; S.act({ t: 'sel', i: (S.you.sel + (e.deltaY > 0 ? 1 : 8)) % 9 }); }, { passive: true });
 addEventListener('mousemove', e => {
   if (!S || document.pointerLockElement !== $('cv') || inUi()) return;
@@ -157,7 +172,7 @@ addEventListener('mouseup', e => { if (e.button === 0) { mouse.left = false; dig
 addEventListener('contextmenu', e => e.preventDefault());
 
 function setPause(on) {
-  paused = on; $('pause').hidden = !on; $('btn-save').hidden = $('btn-export').hidden = !game;
+  paused = on; if (S && S.pause) S.pause(on); $('pause').hidden = !on; $('btn-save').hidden = $('btn-export').hidden = !game;
   if (on) { document.exitPointerLock?.(); mouse.left = false; dig = null; hud.setProgress(null); } else lockPointer();
 }
 $('btn-resume').onclick = () => setPause(false);
@@ -248,7 +263,8 @@ function frame(dt) {
   scene.camera.position.set(local.x, local.y + 1.62, local.z);
   scene.camera.rotation.set(local.pitch, local.yaw, 0);
   if (!ui) mining(dt, nowS);
-  pending = view.update([local]);
+  const keep = game ? [...game.players.values()].filter(p => p.uid !== uid && !p.dead).map(p => ({ x: p.x, z: p.z, r: 4 })) : [];
+  pending = view.update([local], undefined, keep);
   interpolate(performance.now());
   const list = [];
   for (const p of interp.ps) if (p.uid !== uid && !p.dead) list.push({ key: 'p:' + p.uid, kind: 'player', ...p });
@@ -272,6 +288,7 @@ mountHomeLink($('stage'));
 
 $('name').value = store.get('tgk-name') || '';
 try { const m = sessionStorage.getItem('tgk-msg'); if (m) { $('err').textContent = m; sessionStorage.removeItem('tgk-msg'); } } catch (e) { /* bỏ qua */ }
+addEventListener('pagehide', () => { if (game && S && !S.closed) saveWorld('main', game.toSave()).catch(() => {}); });
 requestAnimationFrame(loop);
 
 if (debugOn()) {

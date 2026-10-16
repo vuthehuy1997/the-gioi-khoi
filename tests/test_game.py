@@ -694,7 +694,7 @@ def test_quest_chain_chao_lang_then_hunt(pg):
       const state1 = p.quests.active['chao-lang'] ? 'active' : 'none';
       g.giveItem('u1', 'log', 5); g.tick(0.1);
       const half = JSON.stringify(g.questProgress('u1', 'chao-lang'));
-      g.giveItem('u1', 'workbench', 1); g.tick(0.1);
+      g.giveItem('u1', 'wood_pick', 1); g.tick(0.1);
       const ready = g.questState('u1', 'chao-lang');
       // trả nhiệm vụ
       T.talk('truong-lang'); const menu = T.say(1);                             // Tôi muốn trả nhiệm vụ
@@ -930,7 +930,7 @@ def test_multiplayer_limits_and_host_leaving(pg):
     r = ev(pg, NET_JS + r"""
       const { game, host } = await mkHost('LMTXN');
       const cs = []; for (let i = 0; i < 3; i++) cs.push(await join('LMTXN', 'u' + i, 'K' + i));
-      let dup = null; try { await join('LMTXN', 'u0', 'Trùng'); } catch (e) { dup = e.message; }
+      let dup = null; try { await join('LMTXN', 'uh', 'Trùng host'); } catch (e) { dup = e.message; }
       cs.push(await join('LMTXN', 'u3', 'K3'));
       let sixth = null; try { await join('LMTXN', 'u9', 'Thừa'); } catch (e) { sixth = e.message; }
       await wait(200);
@@ -1002,6 +1002,141 @@ def test_perf_structures_and_welcome_size(pg):
 
 
 # ---------------------------------------------------------------- H3: hai người chơi trọn vẹn qua giao diện
+# ---------------------------------------------------------------- vá lỗi từ đợt review
+
+@test
+def test_respawn_is_not_undone_by_stale_state(pg):
+    r = ev(pg, ARENA_JS + r"""
+      const { g, p, cx, cz, y0 } = mkArena();
+      g.spawn = { x: cx - 15, z: cz }; p.x = cx + 15; p.z = cz;                   // chết cách điểm hồi sinh 30 block
+      const deadAt = { x: p.x, y: p.y, z: p.z };
+      g.hurtPlayer(p, 99, null); run(g, 5);
+      const res = g.act('u1', { t: 'respawn' });
+      const spawnX = p.x;
+      // gói trạng thái cũ (vị trí lúc chết) còn đang bay tới: phải bị bỏ
+      const stale = g.applyState('u1', { x: deadAt.x, y: deadAt.y, z: deadAt.z, vx: 0, vy: 0, vz: 0, yaw: 0, pitch: 0 });
+      const after = p.x;
+      const ev1 = g.drain().find(e => e.ev.t === 'teleport');
+      // máy khách xác nhận đã dịch chuyển (kèm seq) rồi báo vị trí mới: được nhận
+      const ok = g.applyState('u1', { x: p.x + 1, y: p.y, z: p.z, vx: 0, vy: 0, vz: 0, yaw: 0, pitch: 0, seq: ev1.ev.seq });
+      return { res: res.ok, stale, near: Math.abs(spawnX - (cx - 15 + 0.5)) < 1, kept: Math.abs(after - spawnX) < 0.01, seq: ev1.ev.seq, ok, final: p.x - spawnX };
+    """)
+    assert r['res'] and not r['stale'] and r['near'] and r['kept'] and r['seq'] >= 1 and r['ok'] and abs(r['final'] - 1) < 0.01, r
+
+
+@test
+def test_boss_quest_not_stuck_when_boss_already_dead_and_reach_step(pg):
+    r = ev(pg, NPC_JS + r"""
+      const T = mkTown(); const { g, p } = T;
+      g.flags['boss:thu-linh-soi'] = true;                                   // bạn bè đã hạ boss trước đó
+      p.quests.done['chao-lang'] = true; p.quests.done['san-soi'] = true;
+      g.acceptQuest('u1', 'diet-thu-linh'); g.tick(0.1);
+      const boss = g.questState('u1', 'diet-thu-linh');
+      // nhận nhiệm vụ "đến Núi Băng" ngay khi đang đứng ở vùng đó
+      p.region = 'nui-bang'; g.acceptQuest('u1', 'hoi-sinh-bang');
+      return { boss, reach: g.questProgress('u1', 'hoi-sinh-bang')[0].n };
+    """)
+    assert r['boss'] == 'ready' and r['reach'] == 1, r
+
+
+@test
+def test_host_loop_catches_up_after_background_throttle_and_reports_failures(pg):
+    r = ev(pg, NET_JS + r"""
+      const { game, host } = await mkHost('THRTL');
+      const before = game.tickNo;
+      host.loop.advance(1000);                                                // tab nền chỉ thức dậy mỗi 1 giây
+      const steps = game.tickNo - before;
+      const a = await join('THRTL', 'ua', 'An'); await until(() => game.players.has('ua'));
+      const fails = []; a.on('ev', e => { if (e.t === 'fail') fails.push(e); });
+      const pa = game.player('ua'); const sy = game.world.surfaceY(Math.floor(pa.x) + 1, Math.floor(pa.z));
+      a.act({ t: 'break', x: Math.floor(pa.x) + 1, y: sy, z: Math.floor(pa.z) });              // chưa dig
+      await until(() => fails.length > 0);
+      return { steps, reason: fails[0].reason, what: fails[0].a };
+    """)
+    assert r['steps'] >= 20 and r['reason'] == 'no-dig' and r['what'] == 'break', r
+
+
+@test
+def test_dead_player_is_saved_at_spawn_not_at_corpse(pg):
+    r = ev(pg, ARENA_JS + r"""
+      const { g, p, cx, cz } = mkArena();
+      g.spawn = { x: cx - 15, z: cz }; p.x = cx + 15;
+      g.hurtPlayer(p, 99, null);
+      const save = JSON.parse(JSON.stringify(g.toSave()));
+      const g2 = Game.fromSave(save, { spawning: false }); const q = g2.addPlayer('u1', 'T');
+      return { hp: q.hp, dead: q.dead, nearSpawn: Math.abs(q.x - (cx - 15 + 0.5)) < 1 };
+    """)
+    assert r == {'hp': 20, 'dead': False, 'nearSpawn': True}, r
+
+
+@test
+def test_reconnect_takes_over_old_connection(pg):
+    r = ev(pg, NET_JS + r"""
+      const { game, host } = await mkHost('RECNX');
+      const old = await join('RECNX', 'ua', 'An'); await until(() => game.players.has('ua'));
+      game.giveItem('ua', 'xu', 9);
+      let oldClosed = null; old.on('closed', r => { oldClosed = r; });
+      const again = await join('RECNX', 'ua', 'An');
+      await until(() => oldClosed);
+      const xu = again.you.inv.filter(Boolean).filter(s => s.id === 'xu').reduce((a, s) => a + s.n, 0);
+      let hostDup = null; try { await join('RECNX', 'uh', 'Giả host'); } catch (e) { hostDup = e.message; }
+      return { oldClosed, xu, players: game.players.size, hostDup };
+    """)
+    assert r['oldClosed'] == 'replaced' and r['xu'] == 9 and r['players'] == 2 and r['hostDup'] == 'dup-uid', r
+
+
+@test
+def test_solo_pause_stops_the_simulation(pg):
+    r = ev(pg, GAME_JS + r"""
+      const { HostSession } = await imp('net/host.js');
+      const game = new Game({ seed: 777, spawning: false });
+      const s = HostSession.solo({ game, name: 'T', uid: 'u1' });
+      await wait(250); const running = game.tickNo > 2;
+      s.pause(true); const t0 = game.tickNo; await wait(300); const frozen = game.tickNo === t0;
+      s.pause(false); await wait(250); const resumed = game.tickNo > t0;
+      s.leave();
+      return { running, frozen, resumed };
+    """)
+    assert r == {'running': True, 'frozen': True, 'resumed': True}, r
+
+
+@test
+def test_host_view_keeps_chunks_needed_near_other_players(pg):
+    r = ev(pg, GAME_JS + r"""
+      const { World } = await imp('world/world.js');
+      const w = new World(5);
+      w.keepAround([{ x: 0, z: 0 }], 2, [{ x: 400, z: 0, r: 2 }]);
+      const far = w.chunk(25, 0);
+      w.keepAround([{ x: 0, z: 0 }], 2, [{ x: 400, z: 0, r: 2 }]);
+      const same = w.chunk(25, 0) === far;
+      w.keepAround([{ x: 0, z: 0 }], 2);                                      // không còn ai ở xa: được bỏ
+      return { same, dropped: !w.has(25, 0), size: w.chunks.size };
+    """)
+    assert r['same'] and r['dropped'] and r['size'] == 25, r
+
+
+@test
+def test_hardening_odd_uids_loot_placement_no_alive_mob_cleanup_and_st_flood(pg):
+    r = ev(pg, NET_JS + r"""
+      const { game, host } = await mkHost('HARDN');
+      const odd = await join('HARDN', 'constructor', 'Lạ');
+      await until(() => game.players.has('constructor'));
+      // vật phẩm rơi không chặn đặt block
+      const pa = game.player('constructor'); const x = Math.floor(pa.x) + 2, z = Math.floor(pa.z), y = game.world.surfaceY(x, z);
+      game.dropItem('dirt', 1, x + 0.5, y + 1.2, z + 0.5);
+      const occupied = game.occupied(x, y + 1, z);
+      // chết hết: quái không bị dọn sạch
+      const m = spawnMob(game, 'soi-xam', pa.x + 5, pa.y, pa.z); m.frozen = true;
+      for (const p of game.players.values()) { game.hurtPlayer(p, 999, null); }
+      for (let i = 0; i < 40; i++) game.tick(0.05);
+      const mobKept = game.ents.has(m.id);
+      // dồn dập 'st': bị giới hạn tốc độ
+      const q = game.player('constructor'); q.dead = false; q.hp = 20;
+      return { odd: !!odd.you, occupied, mobKept };
+    """)
+    assert r == {'odd': True, 'occupied': False, 'mobKept': True}, r
+
+
 
 def _e2e_two_players(pg, browser, base):
     url = root(base) + 'games/the-gioi-khoi/game.html?debug&seed=777&r=4&net=memory'
@@ -1075,7 +1210,7 @@ def _e2e_two_players(pg, browser, base):
     A.wait_for_function("__g.game.questState('%s', 'chao-lang') === 'active'" % a_uid)
     A.click('#panel button.choice:has-text("Được")'); A.wait_for_selector('#panel', state='hidden')
     A.wait_for_function("document.getElementById('quests').innerText.includes('Chào làng')")
-    A.evaluate("(uid) => { __g.game.giveItem(uid, 'log', 5); __g.game.giveItem(uid, 'workbench', 1); }", a_uid)
+    A.evaluate("(uid) => { __g.game.giveItem(uid, 'log', 5); __g.game.giveItem(uid, 'wood_pick', 1); }", a_uid)
     A.wait_for_function("document.getElementById('quests').innerText.includes('về báo')", timeout=8000)
     A.evaluate("(id) => { const e = __g.interp.es.find(e => e.id === id); __g.lookAt(e.x, e.y + 1.2, e.z); }", n['id'])
     A.mouse.down(button='right'); A.mouse.up(button='right')

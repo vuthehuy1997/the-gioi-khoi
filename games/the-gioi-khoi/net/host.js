@@ -6,6 +6,7 @@ import { cleanName } from '../../../platform/net/protocol.js';
 import { snapshotFor, youOf } from './snapshot.js';
 
 const ACT_PER_SEC = 40;
+const REPORT = new Set(['break', 'dig', 'place', 'buy', 'sell', 'craft', 'use', 'respawn', 'interact']);
 
 export class HostSession {
   constructor(game, room, uid, name) {
@@ -16,7 +17,8 @@ export class HostSession {
     this.peers = new Map();            // peerId -> uid
     this.revSent = new Map();          // uid -> rev
     this.acts = new Map();             // uid -> { t0, n }
-    this.closed = false; this.tickNo = 0; this.saveEvery = 30; this.saveAcc = 0;
+    this.seq = 0; this.closed = false; this.paused = false; this.tickNo = 0; this.saveEvery = 30; this.saveAcc = 0;
+    this.sts = new Map();               // uid -> { t0, n } giới hạn tần suất gói vị trí
     this.onSave = null;
   }
 
@@ -39,7 +41,7 @@ export class HostSession {
       this.room.on('roster', () => this.onRoster());
       this.room.on('closed', r => { this.stop(); this.emit('closed', r); });
     }
-    this.loop = createFixedLoop({ hz: 20, step: dt => this.step(dt) });
+    this.loop = createFixedLoop({ hz: 20, maxCatchUp: 40, step: dt => this.step(dt) });
     this.stopLoop = startHostLoop(this.loop);
   }
 
@@ -59,9 +61,11 @@ export class HostSession {
   onMessage({ type, data, from }) {
     const g = this.game;
     if (type === 'join') {
-      if (this.peers.has(from) || !data || typeof data.uid !== 'string' || data.uid.length > 64) return;
+      if (this.peers.has(from) || !data || typeof data.uid !== 'string' || !/^[\w-]{1,64}$/.test(data.uid)) return;
       if (!this.room.players.some(p => p.id === from)) return;
-      if (g.players.has(data.uid)) { this.room.send('deny', { reason: 'dup-uid' }, from); return; }
+      if (data.uid === this.uid) { this.room.send('deny', { reason: 'dup-uid' }, from); return; }
+      const oldPeer = [...this.peers].find(([, u]) => u === data.uid);          // nối lại sau khi rớt mạng: thế chỗ kết nối cũ
+      if (oldPeer) { this.peers.delete(oldPeer[0]); g.removePlayer(data.uid); this.room.send('kicked', {}, oldPeer[0]); }
       const p = g.addPlayer(data.uid, cleanName(data.name));
       this.peers.set(from, data.uid); this.revSent.set(data.uid, -1);
       this.welcome(from, p); this.emit('players');
@@ -69,7 +73,7 @@ export class HostSession {
     }
     const uid = this.peers.get(from);
     if (!uid) return;
-    if (type === 'st') { if (data && typeof data === 'object') g.applyState(uid, data); }
+    if (type === 'st') { if (data && typeof data === 'object' && this.allowSt(uid)) g.applyState(uid, data); }
     else if (type === 'act') { if (data && typeof data === 'object' && this.allow(uid)) this.safeAct(uid, data); }
   }
 
@@ -79,9 +83,24 @@ export class HostSession {
     a.n++; this.acts.set(uid, a);
     return a.n <= ACT_PER_SEC;
   }
-  safeAct(uid, a) { try { return this.game.act(uid, a); } catch (e) { return { ok: false, reason: 'error' }; } }
+  allowSt(uid) {
+    const now = this.game.time, a = this.sts.get(uid) || { t0: now, n: 0 };
+    if (now - a.t0 >= 1) { a.t0 = now; a.n = 0; }
+    a.n++; this.sts.set(uid, a);
+    return a.n <= 30;
+  }
+
+  safeAct(uid, a) {
+    let r;
+    try { r = this.game.act(uid, a); } catch (e) { r = { ok: false, reason: 'error' }; }
+    if (!r.ok && REPORT.has(a && a.t)) this.game.emit(uid, { t: 'fail', a: a.t, reason: r.reason });     // báo lý do thất bại cho người chơi
+    return r;
+  }
+
+  pause(on) { if (!this.room) this.paused = !!on; }          // chỉ chơi một mình mới dừng được
 
   step(dt) {
+    if (this.paused) return;
     const g = this.game;
     g.tick(dt); this.tickNo++;
     const per = new Map(), bcast = [];
@@ -107,12 +126,12 @@ export class HostSession {
   deliver(uid, ev) {
     if (uid !== this.uid) return;
     if (ev.t === 'you') this.you = ev;
-    if (ev.t === 'teleport' && this.player) { /* vị trí do giao diện áp dụng */ }
+    if (ev.t === 'teleport') this.seq = ev.seq | 0;
     this.emit('ev', ev);
   }
 
   // ---- giao diện cho giao diện người dùng ----
-  sendState(st) { return this.game.applyState(this.uid, st); }
+  sendState(st) { return this.game.applyState(this.uid, { ...st, seq: this.seq }); }
   act(a) { return this.safeAct(this.uid, a); }
   leave() {
     if (this.closed) return;

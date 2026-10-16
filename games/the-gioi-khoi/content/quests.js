@@ -3,7 +3,7 @@
 export const QUESTS = {
   'chao-lang': {
     name: 'Chào làng', giver: 'truong-lang',
-    steps: [{ type: 'collect', item: 'log', n: 5, text: 'Chặt 5 thân gỗ' }, { type: 'collect', item: 'workbench', n: 1, text: 'Chế tạo một bàn chế tạo' }],
+    steps: [{ type: 'collect', item: 'log', n: 5, text: 'Chặt 5 thân gỗ' }, { type: 'collect', item: 'wood_pick', n: 1, text: 'Chế tạo một cuốc gỗ (cần đứng gần bàn chế tạo)' }],
     reward: { items: [{ item: 'wood_sword', n: 1 }, { item: 'xu', n: 10 }] },
   },
   'san-soi': {

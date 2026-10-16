@@ -13,9 +13,9 @@ export function createPanels({ act, onClose }) {
   const root = $('panel');
   let kind = null, invCtx = null, shop = null;
 
-  const close = () => { kind = null; shop = null; root.hidden = true; root.textContent = ''; onClose && onClose(); };
+  const close = () => { if (kind === 'dialog') act({ t: 'dlg', i: -1 }); kind = null; shop = null; root.hidden = true; root.textContent = ''; onClose && onClose(); };
   const open = (k) => { kind = k; root.hidden = false; root.textContent = ''; };
-  const head = (title) => { const h = document.createElement('h2'); h.textContent = title; const x = btn('✕', () => { if (kind === 'dialog') act({ t: 'dlg', i: -1 }); close(); }, 'x'); x.style.float = 'right'; root.append(x, h); };
+  const head = (title) => { const h = document.createElement('h2'); h.textContent = title; const x = btn('✕', () => close(), 'x'); x.style.float = 'right'; root.append(x, h); };
 
   function renderInventory() {
     const { you, nearBench } = invCtx;

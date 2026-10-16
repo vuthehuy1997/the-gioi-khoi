@@ -13,7 +13,7 @@ export const NPCS = {
         { text: 'Tạm biệt.', goto: null },
       ] },
       jobs: { text: 'Chúng tôi đang cần người giúp đỡ.', choices: [
-        { text: 'Nhận: Chào làng (chặt gỗ, làm bàn chế tạo).', do: [{ accept: 'chao-lang' }], goto: 'ok', if: { quest: 'chao-lang', state: 'none' } },
+        { text: 'Nhận: Chào làng (chặt gỗ, chế tạo cuốc gỗ).', do: [{ accept: 'chao-lang' }], goto: 'ok', if: { quest: 'chao-lang', state: 'none' } },
         { text: 'Nhận: Săn sói đêm.', do: [{ accept: 'san-soi' }], goto: 'ok', if: { quest: 'san-soi', state: 'none', requires: true } },
         { text: 'Nhận: Hạ Thủ Lĩnh Sói.', do: [{ accept: 'diet-thu-linh' }], goto: 'ok', if: { quest: 'diet-thu-linh', state: 'none', requires: true } },
         { text: 'Quay lại.', goto: 'hi' },
