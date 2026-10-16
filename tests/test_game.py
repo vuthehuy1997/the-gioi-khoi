@@ -223,5 +223,129 @@ def test_render_screenshot(pg, browser, base):
     assert r['colors'] >= 25 and r['nonBg'] > 0.3, r
 
 
+# ---------------------------------------------------------------- B3: kho đồ và chế tạo
+
+@test
+def test_inventory_add_remove_stack(pg):
+    r = ev(pg, r"""
+      const { makeInventory, addItem, removeItem, countItem, HOTBAR } = await imp('sim/inventory.js');
+      const inv = makeInventory();
+      const left1 = addItem(inv, 'stone', 100);              // tối đa 64 mỗi ô -> 2 ô
+      const used = inv.filter(Boolean).length;
+      const left2 = addItem(inv, 'xu', 1500);                 // xu xếp tới 999 mỗi ô
+      const ok = removeItem(inv, 'stone', 70), bad = removeItem(inv, 'stone', 99);
+      const full = makeInventory(); for (let i = 0; i < full.length; i++) full[i] = { id: 'dirt', n: 64 };
+      const leftFull = addItem(full, 'stone', 5);
+      return { left1, used, left2, ok, bad, stone: countItem(inv, 'stone'), xu: countItem(inv, 'xu'), len: inv.length, hotbar: HOTBAR, leftFull,
+               unknown: (() => { try { addItem(inv, 'nope', 1); return false; } catch (e) { return true; } })() };
+    """)
+    assert r['left1'] == 0 and r['used'] == 2 and r['left2'] == 0 and r['ok'] and not r['bad'], r
+    assert r['stone'] == 30 and r['xu'] == 1500 and r['len'] == 36 and r['hotbar'] == 9 and r['leftFull'] == 5 and r['unknown'], r
+
+
+@test
+def test_crafting_recipes(pg):
+    r = ev(pg, r"""
+      const { makeInventory, addItem, countItem } = await imp('sim/inventory.js');
+      const { RECIPES, canCraft, craft } = await imp('sim/crafting.js');
+      const inv = makeInventory();
+      addItem(inv, 'log', 4);
+      const noBench = canCraft(inv, 'wood_pick', false);
+      const planks = craft(inv, 'planks', false);                      // 1 log -> 4 planks
+      craft(inv, 'planks', false); craft(inv, 'planks', false);
+      const stick = craft(inv, 'stick', false);
+      const bench = craft(inv, 'workbench', false);
+      const pickNeedsBench = craft(inv, 'wood_pick', false);
+      const pickOk = craft(inv, 'wood_pick', true);
+      const sword = craft(inv, 'wood_sword', true);
+      const missing = craft(inv, 'crystal_sword', true);
+      return { count: RECIPES.length, noBench, planks, stick, bench, pickNeedsBench, pickOk, sword, missing,
+               has: { pick: countItem(inv, 'wood_pick'), bench: countItem(inv, 'workbench'), planks: countItem(inv, 'planks') } };
+    """)
+    assert r['count'] >= 8 and not r['noBench'] and r['planks'] and r['stick'] and r['bench'], r
+    assert not r['pickNeedsBench'] and r['pickOk'] and r['sword'] is not None and not r['missing'], r
+    assert r['has']['pick'] == 1 and r['has']['bench'] == 1, r
+
+
+# ---------------------------------------------------------------- B2: đào và đặt block
+
+GAME_JS = """
+const { Game } = await imp('sim/game.js');
+const mkGame = (seed = 777) => { const g = new Game({ seed }); const p = g.addPlayer('u1', 'Tester'); return { g, p }; };
+// tìm một ô đất thật (không phải cây) gần người chơi để thử đào
+const groundCell = (g, p) => { const x = Math.floor(p.x) + 2, z = Math.floor(p.z), y = g.world.surfaceY(x, z); return { x, y, z, id: g.world.get(x, y, z) }; };
+"""
+
+
+@test
+def test_break_place_basic(pg):
+    r = ev(pg, GAME_JS + r"""
+      const { g, p } = mkGame();
+      const c = groundCell(g, p);
+      const noDig = g.act('u1', { t: 'break', x: c.x, y: c.y, z: c.z });
+      g.act('u1', { t: 'dig', x: c.x, y: c.y, z: c.z });
+      const early = g.act('u1', { t: 'break', x: c.x, y: c.y, z: c.z });
+      g.tick(2);                                           // đủ thời gian đào bằng tay
+      const ok = g.act('u1', { t: 'break', x: c.x, y: c.y, z: c.z });
+      const after = g.world.get(c.x, c.y, c.z);
+      const dirtN = (p.inv.filter(Boolean).find(s => s.id === 'dirt') || {}).n;
+      const ev1 = g.drain().filter(e => e.ev.t === 'block').map(e => [e.ev.x, e.ev.y, e.ev.z, e.ev.id]);
+      p.sel = p.inv.findIndex(s => s && s.id === 'dirt');
+      const placed = g.act('u1', { t: 'place', x: c.x, y: c.y, z: c.z });
+      return { grassId: c.id, noDig: noDig.ok, early: early.ok, ok: ok.ok, after, dirtN, ev1, placed: placed.ok,
+               now: g.world.get(c.x, c.y, c.z), left: (p.inv.find(s => s && s.id === 'dirt') || { n: 0 }).n };
+    """)
+    assert r['grassId'] == 3 and not r['noDig'] and not r['early'] and r['ok'] and r['after'] == 0, r
+    assert r['dirtN'] == 1 and r['ev1'][0][3] == 0 and r['placed'] and r['now'] == 2 and r['left'] == 0, r
+
+
+@test
+def test_break_tool_tiers_and_speed(pg):
+    r = ev(pg, GAME_JS + r"""
+      const { g, p } = mkGame();
+      const x = Math.floor(p.x) + 2, z = Math.floor(p.z), y = g.world.surfaceY(x, z) - 2;
+      const digBreak = (id, held) => {
+        g.world.set(x, y, z, id);
+        p.inv.fill(null); if (held) p.inv[0] = { id: held, n: 1 }; p.sel = 0;
+        g.act('u1', { t: 'dig', x, y, z }); g.tick(0.05);
+        const t = g.breakTime('u1', x, y, z); g.tick(t); 
+        const res = g.act('u1', { t: 'break', x, y, z });
+        return { ok: res.ok, t, items: p.inv.filter(Boolean).map(s => s.id + ':' + s.n).join(',') };
+      };
+      return { stoneHand: digBreak(1, null), stonePick: digBreak(1, 'wood_pick'), oreWood: digBreak(9, 'wood_pick'),
+               oreStone: digBreak(9, 'stone_pick'), gemStone: digBreak(16, 'stone_pick'), gemCrystal: digBreak(16, 'crystal_pick') };
+    """)
+    assert r['stoneHand']['items'] == '' and r['stonePick']['items'] == 'wood_pick:1,stone:1', r
+    assert r['stonePick']['t'] < r['stoneHand']['t'], r
+    assert r['oreWood']['items'] == 'wood_pick:1' and 'crystal:1' in r['oreStone']['items'], r
+    assert r['gemStone']['items'] == 'stone_pick:1' and 'gem:1' in r['gemCrystal']['items'], r
+
+
+@test
+def test_break_place_rejections(pg):
+    r = ev(pg, GAME_JS + r"""
+      const { g, p } = mkGame();
+      const c = groundCell(g, p);
+      g.world.set(c.x + 1, c.y, c.z, 13);                                 // bedrock
+      g.act('u1', { t: 'dig', x: c.x + 1, y: c.y, z: c.z }); g.tick(99);
+      const bedrock = g.act('u1', { t: 'break', x: c.x + 1, y: c.y, z: c.z });
+      const far = c.x + 30; const farY = g.world.surfaceY(far, c.z);
+      g.act('u1', { t: 'dig', x: far, y: farY, z: c.z }); g.tick(99);
+      const farBreak = g.act('u1', { t: 'break', x: far, y: farY, z: c.z });
+      p.inv.fill(null); p.inv[0] = { id: 'stone', n: 3 }; p.sel = 0;
+      const insideSelf = g.act('u1', { t: 'place', x: Math.floor(p.x), y: Math.floor(p.y), z: Math.floor(p.z) });
+      const farPlace = g.act('u1', { t: 'place', x: far, y: farY + 1, z: c.z });
+      const air = c.y + 3; const floating = g.act('u1', { t: 'place', x: c.x, y: air, z: c.z });          // không có block kề
+      p.inv[0] = { id: 'stick', n: 1 };
+      const notBlock = g.act('u1', { t: 'place', x: c.x, y: c.y + 1, z: c.z });
+      p.inv.fill(null);
+      const empty = g.act('u1', { t: 'place', x: c.x, y: c.y + 1, z: c.z });
+      return { bedrock: bedrock.ok, farBreak: farBreak.ok, insideSelf: insideSelf.ok, farPlace: farPlace.ok, floating: floating.ok, notBlock: notBlock.ok, empty: empty.ok,
+               bedrockStill: g.world.get(c.x + 1, c.y, c.z) };
+    """)
+    assert not any(r[k] for k in ['bedrock', 'farBreak', 'insideSelf', 'farPlace', 'floating', 'notBlock', 'empty']), r
+    assert r['bedrockStill'] == 13, r
+
+
 if __name__ == '__main__':
     run(TESTS)

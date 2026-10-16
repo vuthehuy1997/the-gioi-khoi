@@ -1,0 +1,181 @@
+// Lõi mô phỏng của một thế giới: người chơi, kho đồ, đào/đặt block. Chạy ở host (hoặc một mình); không biết gì về DOM hay mạng.
+// Mọi thay đổi cần báo cho người chơi được đẩy vào hàng đợi sự kiện, lấy ra bằng drain().
+import { World } from '../world/world.js';
+import { BLOCKS, BLOCK_BY_NAME, B } from '../world/blocks.js';
+import { ITEMS, HAND_DAMAGE } from '../content/items.js';
+import { makeInventory, addItem, removeItem, countItem, HOTBAR } from './inventory.js';
+import { craft, canCraft } from './crafting.js';
+import { makePlayer, stepPlayer } from './physics.js';
+import { makeRng } from './rng.js';
+
+export const REACH = 6.5, EYE = 1.62, MAX_HP = 20, RESPAWN_S = 3;
+
+export class Game {
+  constructor({ seed, world } = {}) {
+    this.seed = seed;
+    this.world = world || new World(seed);
+    this.rng = makeRng(seed ^ 0x5eed);
+    this.time = 0; this.tickNo = 0;
+    this.flags = {};
+    this.players = new Map();
+    this.ents = new Map(); this.nextId = 1;
+    this.out = [];
+    this.spawn = this.world.findSpawn();
+  }
+
+  // ---- sự kiện ----
+  emit(to, ev) { this.out.push({ to, ev }); }             // to: uid người nhận, hoặc null = mọi người
+  drain() { const o = this.out; this.out = []; return o; }
+
+  // ---- người chơi ----
+  addPlayer(uid, name, saved) {
+    const sx = this.spawn.x, sz = this.spawn.z;
+    const p = makePlayer(sx + 0.5, this.world.surfaceY(sx, sz) + 1, sz + 0.5);
+    Object.assign(p, { uid, name: String(name || 'Khách').slice(0, 16), hp: MAX_HP, maxHp: MAX_HP, inv: makeInventory(), sel: 0, rev: 1,
+      dead: false, respawnAt: 0, lastHurt: -99, attackAt: 0, dig: null, lastState: this.time, quests: { active: {}, done: {} }, region: null });
+    if (saved) Object.assign(p, saved);
+    this.players.set(uid, p);
+    return p;
+  }
+  removePlayer(uid) { this.players.delete(uid); }
+  player(uid) { return this.players.get(uid); }
+
+  touch(p) { p.rev++; }
+
+  giveItem(uid, id, n = 1) {
+    const p = this.player(uid), left = addItem(p.inv, id, n);
+    this.touch(p);
+    return n - left;
+  }
+
+  held(p) { const s = p.inv[p.sel]; return s ? ITEMS[s.id] : null; }
+
+  // Thời gian (giây) đào một block bằng vật đang cầm.
+  breakTime(uid, x, y, z) {
+    const p = this.player(uid), def = BLOCKS[this.world.get(x, y, z)], h = this.held(p);
+    if (!def || def.hardness < 0) return Infinity;
+    const speed = h && h.tool && h.tool.type === def.tool ? h.tool.speed : 1;
+    return def.hardness / speed;
+  }
+
+  inReach(p, x, y, z) {
+    const dx = x + 0.5 - p.x, dy = y + 0.5 - (p.y + EYE), dz = z + 0.5 - p.z;
+    return dx * dx + dy * dy + dz * dz <= REACH * REACH;
+  }
+
+  setBlock(x, y, z, id) {
+    if (!this.world.set(x, y, z, id)) return false;
+    this.emit(null, { t: 'block', x, y, z, id });
+    return true;
+  }
+
+  // Có thực thể (người chơi hoặc quái) nào chồng lên ô block này không.
+  occupied(x, y, z) {
+    const hit = (e) => Math.abs(e.x - (x + 0.5)) < e.w / 2 + 0.5 && Math.abs(e.z - (z + 0.5)) < e.w / 2 + 0.5 && e.y < y + 1 && e.y + e.h > y;
+    for (const p of this.players.values()) if (!p.dead && hit(p)) return true;
+    for (const e of this.ents.values()) if (e.w && hit(e)) return true;
+    return false;
+  }
+
+  // ---- hành động của người chơi. Trả { ok, reason? } ----
+  act(uid, a) {
+    const p = this.player(uid);
+    if (!p) return { ok: false, reason: 'no-player' };
+    if (p.dead && a.t !== 'respawn') return { ok: false, reason: 'dead' };
+    switch (a.t) {
+      case 'sel': if (a.i >= 0 && a.i < HOTBAR) { p.sel = a.i | 0; this.touch(p); return { ok: true }; } return { ok: false, reason: 'bad-slot' };
+      case 'dig': return this.actDig(p, a);
+      case 'break': return this.actBreak(p, a);
+      case 'place': return this.actPlace(p, a);
+      case 'craft': return this.actCraft(p, a);
+      default: return this.actExtra ? this.actExtra(p, a) : { ok: false, reason: 'unknown' };
+    }
+  }
+
+  actDig(p, a) {
+    if (!this.inReach(p, a.x, a.y, a.z)) return { ok: false, reason: 'reach' };
+    if (this.breakTime(p.uid, a.x, a.y, a.z) === Infinity) return { ok: false, reason: 'unbreakable' };
+    p.dig = { x: a.x, y: a.y, z: a.z, t0: this.time };
+    return { ok: true };
+  }
+
+  actBreak(p, a) {
+    const d = p.dig;
+    if (!this.inReach(p, a.x, a.y, a.z)) return { ok: false, reason: 'reach' };
+    if (!d || d.x !== a.x || d.y !== a.y || d.z !== a.z) return { ok: false, reason: 'no-dig' };
+    const id = this.world.get(a.x, a.y, a.z), def = BLOCKS[id], need = this.breakTime(p.uid, a.x, a.y, a.z);
+    if (!def || need === Infinity) return { ok: false, reason: 'unbreakable' };
+    if (this.time - d.t0 < need * 0.8) return { ok: false, reason: 'too-fast' };
+    const h = this.held(p);
+    const canHarvest = def.tier === 0 || (h && h.tool && h.tool.type === def.tool && h.tool.tier >= def.tier);
+    this.setBlock(a.x, a.y, a.z, B.AIR);
+    p.dig = null;
+    if (canHarvest && def.drop) this.collect(p, def.drop, 1, a.x + 0.5, a.y + 0.5, a.z + 0.5);
+    this.onBlockBroken?.(p, id);
+    return { ok: true };
+  }
+
+  // Cho vật phẩm vào kho; phần không vừa rơi xuống đất.
+  collect(p, id, n, x, y, z) {
+    const left = addItem(p.inv, id, n);
+    this.touch(p);
+    if (left > 0) this.dropItem(id, left, x, y, z);
+  }
+
+  dropItem(id, n, x, y, z) {
+    const e = { id: this.nextId++, kind: 'item', item: id, n, x, y, z, vx: 0, vy: 2, vz: 0, w: 0.25, h: 0.25, born: this.time };
+    this.ents.set(e.id, e);
+    return e;
+  }
+
+  actPlace(p, a) {
+    const s = p.inv[p.sel];
+    if (!s) return { ok: false, reason: 'empty' };
+    const it = ITEMS[s.id];
+    if (!it.block) return { ok: false, reason: 'not-block' };
+    if (!this.inReach(p, a.x, a.y, a.z)) return { ok: false, reason: 'reach' };
+    const cur = this.world.get(a.x, a.y, a.z);
+    if (cur !== B.AIR && cur !== B.WATER) return { ok: false, reason: 'occupied' };
+    if (a.y < 1 || a.y >= 63) return { ok: false, reason: 'bounds' };
+    const nb = [[1, 0, 0], [-1, 0, 0], [0, 1, 0], [0, -1, 0], [0, 0, 1], [0, 0, -1]].some(([dx, dy, dz]) => {
+      const id = this.world.get(a.x + dx, a.y + dy, a.z + dz); return id !== B.AIR && id !== B.WATER;
+    });
+    if (!nb) return { ok: false, reason: 'floating' };
+    if (this.occupied(a.x, a.y, a.z)) return { ok: false, reason: 'blocked' };
+    this.setBlock(a.x, a.y, a.z, BLOCK_BY_NAME[it.block].id);
+    removeItem(p.inv, s.id, 1); this.touch(p);
+    return { ok: true };
+  }
+
+  nearBench(p) {
+    for (let dy = -2; dy <= 2; dy++) for (let dz = -4; dz <= 4; dz++) for (let dx = -4; dx <= 4; dx++) {
+      if (this.world.get(Math.floor(p.x) + dx, Math.floor(p.y) + dy, Math.floor(p.z) + dz) === B.WORKBENCH) return true;
+    }
+    return false;
+  }
+
+  actCraft(p, a) {
+    if (!craft(p.inv, a.id, this.nearBench(p))) return { ok: false, reason: 'cannot-craft' };
+    this.touch(p);
+    return { ok: true };
+  }
+
+  // ---- trạng thái người chơi do client báo (vị trí do client mô phỏng, host chỉ kiểm tra tốc độ) ----
+  applyState(uid, st) {
+    const p = this.player(uid);
+    if (!p || p.dead) return false;
+    const dt = Math.max(0.05, this.time - p.lastState);
+    const dist = Math.hypot(st.x - p.x, st.y - p.y, st.z - p.z);
+    if (![st.x, st.y, st.z, st.yaw, st.pitch].every(Number.isFinite)) return false;
+    if (dist > 14 * dt + 3) { this.emit(uid, { t: 'teleport', x: p.x, y: p.y, z: p.z }); return false; }   // di chuyển quá nhanh: kéo về
+    p.x = st.x; p.y = st.y; p.z = st.z; p.yaw = st.yaw; p.pitch = st.pitch;
+    p.vx = st.vx || 0; p.vy = st.vy || 0; p.vz = st.vz || 0;
+    p.lastState = this.time;
+    return true;
+  }
+
+  tick(dt) {
+    this.time += dt; this.tickNo++;
+    this.tickExtra?.(dt);
+  }
+}
