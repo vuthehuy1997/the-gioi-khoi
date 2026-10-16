@@ -20,7 +20,7 @@ Yêu cầu gốc: game thế giới khối nhiều người chơi trên web, "nh
 | E2 | Boss tăng độ khó theo số người trong đấu trường | `test_boss_scaling` | ✅ |
 | F1 | ≥ 3 NPC, hội thoại dạng đồ thị, có cửa hàng | `test_npc_*`, `test_shop_*` | ✅ |
 | F2 | ≥ 4 nhiệm vụ (giết, thu thập, nói chuyện, hạ boss), cờ tiến trình | `test_quest_*` | ✅ |
-| G1 | Lưu/nạp thế giới và người chơi (IndexedDB), xuất/nhập file | `test_save_load_*` | ☐ |
+| G1 | Lưu/nạp thế giới và người chơi (IndexedDB), xuất/nhập file | `test_save_load_*` | ✅ |
 | H1 | Trình kiểm tra nội dung: không tham chiếu hỏng, vật phẩm không nguồn, hội thoại cụt | `test_content_valid` | ✅ |
 | H2 | Ngân sách hiệu năng: sinh + dựng 6×6 chunk, một tick với 40 quái | `test_perf_*` | ☐ |
 | H3 | Kịch bản trọn vẹn 2 trình duyệt: vào phòng, đào, đánh quái, nhận nhiệm vụ, hạ boss | `test_e2e_two_players` | ☐ |

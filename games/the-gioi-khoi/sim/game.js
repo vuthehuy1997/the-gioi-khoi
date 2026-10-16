@@ -29,6 +29,27 @@ export class Game {
     this.ents = new Map(); this.nextId = 1;
     this.out = [];
     this.spawn = this.world.findSpawn();
+    this.savedPlayers = {};
+  }
+
+  // ---- lưu / nạp ----
+  toSave() {
+    const players = { ...this.savedPlayers };
+    for (const p of this.players.values()) {
+      players[p.uid] = { name: p.name, x: p.x, y: p.y, z: p.z, hp: p.dead ? p.maxHp : p.hp, maxHp: p.maxHp, inv: p.inv, sel: p.sel, quests: p.quests, region: null };
+    }
+    return { v: 1, seed: this.seed, time: this.time, flags: this.flags, delta: this.world.exportDelta(), players };
+  }
+
+  static fromSave(save, opts = {}) {
+    const g = new Game({ seed: save.seed, ...opts });
+    g.world.importDelta(save.delta || {});
+    g.flags = save.flags || {};
+    g.time = save.time || 0;
+    g.rng = makeRng(save.seed ^ 0x5eed ^ Math.floor(g.time * 1000));
+    g.savedPlayers = save.players || {};
+    g.ensureNpcs();
+    return g;
   }
 
   // ---- sự kiện ----
@@ -41,7 +62,8 @@ export class Game {
     const p = makePlayer(sx + 0.5, this.world.surfaceY(sx, sz) + 1, sz + 0.5);
     Object.assign(p, { uid, name: String(name || 'Khách').slice(0, 16), hp: MAX_HP, maxHp: MAX_HP, inv: makeInventory(), sel: 0, rev: 1,
       dead: false, respawnAt: 0, lastHurt: -99, attackAt: 0, dig: null, lastState: this.time, quests: { active: {}, done: {} }, region: null });
-    if (saved) Object.assign(p, saved);
+    saved = saved || this.savedPlayers[uid];
+    if (saved) Object.assign(p, JSON.parse(JSON.stringify(saved)), { uid, dead: false, name: p.name });
     this.players.set(uid, p);
     return p;
   }

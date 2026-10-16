@@ -804,5 +804,51 @@ def test_content_validator_catches_broken_references(pg):
         assert needle in joined, (needle, r['errors'])
 
 
+# ---------------------------------------------------------------- G1: lưu, nạp, xuất, nhập
+
+@test
+def test_save_load_roundtrip(pg):
+    r = ev(pg, NPC_JS + r"""
+      const T = mkTown(); const { g, p } = T;
+      const sp = { x: Math.floor(p.x) + 3, z: Math.floor(p.z) };
+      const y = g.world.surfaceY(sp.x, sp.z);
+      g.setBlock(sp.x, y + 1, sp.z, 8);
+      g.acceptQuest('u1', 'chao-lang'); g.giveItem('u1', 'log', 3); g.giveItem('u1', 'xu', 77); p.hp = 13; p.sel = 3;
+      g.flags['boss:thu-linh-soi'] = true; g.tick(5);
+      const save = JSON.parse(JSON.stringify(g.toSave()));
+      const g2 = Game.fromSave(save, { spawning: false }); const q = g2.addPlayer('u1', 'T');
+      const npcs = [...g2.ents.values()].filter(e => e.kind === 'npc').length;
+      const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
+      return { block: g2.world.get(sp.x, y + 1, sp.z), flag: g2.flags['boss:thu-linh-soi'], sites: same(g2.flags.sites, g.flags.sites), time: g2.time, inv: same(q.inv, p.inv),
+               hp: q.hp === p.hp && q.hp > 12, sel: q.sel, quest: g2.questState('u1', 'chao-lang'), prog: g2.questProgress('u1', 'chao-lang')[0].n, npcs, v: save.v,
+               pos: Math.hypot(q.x - p.x, q.z - p.z) < 0.01, terrain: g2.world.get(sp.x + 40, 25, sp.z + 40) === g.world.get(sp.x + 40, 25, sp.z + 40), spawn: same(g2.spawn, g.spawn),
+               fresh: new Game({ seed: 777, spawning: false }).addPlayer('u9', 'N').hp };
+    """)
+    assert r['block'] == 8 and r['flag'] and r['sites'] and r['time'] >= 5 and r['inv'] and r['hp'] and r['sel'] == 3, r
+    assert r['quest'] == 'active' and r['prog'] == 3 and r['npcs'] == 4 and r['v'] == 1 and r['pos'] and r['terrain'] and r['spawn'] and r['fresh'] == 20, r
+
+
+@test
+def test_save_store_export_import_and_versions(pg):
+    r = ev(pg, GAME_JS + r"""
+      const S = await imp('save.js');
+      const g = new Game({ seed: 4242, spawning: false }); g.addPlayer('u1', 'T'); g.setBlock(5, 40, 5, 8); g.tick(1);
+      const save = g.toSave();
+      await S.saveWorld('thu-nghiem', save);
+      const list = await S.listWorlds();
+      const back = await S.loadWorld('thu-nghiem');
+      const blob = await S.exportWorld(save);
+      const imported = await S.importWorld(blob);
+      const out = { list: list.map(w => w.name), seedBack: back.seed, rt: JSON.stringify(imported) === JSON.stringify(save), gz: blob.size < JSON.stringify(save).length, missing: await S.loadWorld('khong-co') };
+      const newer = { ...save, v: 99 };
+      try { S.checkVersion(newer); out.newer = 'accepted'; } catch (e) { out.newer = e.message; }
+      try { await S.importWorld(new Blob([new Uint8Array([1, 2, 3, 4])])); out.bad = 'accepted'; } catch (e) { out.bad = 'rejected'; }
+      await S.deleteWorld('thu-nghiem'); out.deleted = (await S.listWorlds()).length;
+      return out;
+    """)
+    assert r['list'] == ['thu-nghiem'] and r['seedBack'] == 4242 and r['rt'] and r['gz'] and r['missing'] is None, r
+    assert r['newer'] == 'newer-version' and r['bad'] == 'rejected' and r['deleted'] == 0, r
+
+
 if __name__ == '__main__':
     run(TESTS)
