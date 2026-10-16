@@ -1,0 +1,25 @@
+*{box-sizing:border-box}
+html,body{margin:0;height:100%;background:#12141a;color:#eeede8;font-family:'Segoe UI',system-ui,sans-serif;overflow:hidden}
+#stage{position:fixed;inset:0}
+#cv{position:absolute;inset:0;width:100%;height:100%;display:block}
+#hud{position:absolute;inset:0;pointer-events:none}
+#crosshair{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);font-size:22px;color:#fff;text-shadow:0 0 3px #000}
+#hotbar{position:absolute;left:50%;bottom:10px;transform:translateX(-50%);display:flex;gap:4px}
+#hotbar .slot{width:46px;height:46px;border:2px solid #fff6;background:#0007;border-radius:4px;position:relative;font-size:11px;display:grid;place-items:center;text-align:center}
+#hotbar .slot.sel{border-color:#e9b949;background:#0009}
+#hotbar .slot b{position:absolute;right:3px;bottom:1px;font-size:12px}
+#bars{position:absolute;left:50%;bottom:64px;transform:translateX(-50%);color:#ff6b6b;text-shadow:0 0 3px #000;font-size:18px;letter-spacing:2px}
+#region{position:absolute;left:12px;top:44px;font-size:14px;color:#fff;text-shadow:0 0 3px #000}
+#toast{position:absolute;left:50%;top:18%;transform:translateX(-50%);padding:6px 14px;border-radius:6px;background:#000a;opacity:0;transition:opacity .3s}
+#toast.on{opacity:1}
+#menu{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;background:#12141ae6;text-align:center;padding:16px}
+#menu[hidden]{display:none}
+#menu .row{display:flex;gap:8px;align-items:center;justify-content:center;flex-wrap:wrap}
+#menu input{font:inherit;padding:8px 10px;border-radius:6px;border:1px solid #444a5a;background:#1b1d24;color:inherit}
+#menu button{font:inherit;padding:8px 18px;border-radius:6px;border:0;background:#e9b949;color:#1b1d24;cursor:pointer}
+#menu button:disabled{opacity:.5}
+#menu .hint{color:#a3a8b8;font-size:13px;max-width:34em}
+#err{color:#ff9d8a;min-height:1.2em}
+.panel{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);background:#1b1d24f0;border:1px solid #444a5a;border-radius:8px;padding:14px;min-width:300px;max-width:90vw;max-height:80vh;overflow:auto;pointer-events:auto}
+.panel h2{margin:0 0 8px;font-size:18px}
+.panel button{font:inherit;margin:3px;padding:5px 12px;border-radius:6px;border:0;background:#e9b949;color:#1b1d24;cursor:pointer}

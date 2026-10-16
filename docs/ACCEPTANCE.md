@@ -4,11 +4,11 @@ Yêu cầu gốc: game thế giới khối nhiều người chơi trên web, "nh
 
 | # | Tiêu chí | Test | Trạng thái |
 |---|---|---|---|
-| A1 | Địa hình voxel sinh từ seed, giống hệt nhau giữa các lần chạy | `test_world_deterministic` | ☐ |
-| A2 | ≥ 3 vùng (biome) khác nhau về block, cây, quái | `test_regions_distinct` | ☐ |
-| A3 | Chunk nạp/bỏ theo vị trí người chơi, mesh dựng đúng (không vẽ mặt bị che) | `test_mesher_*`, `test_chunk_streaming` | ☐ |
-| A4 | Có hình ảnh render 3D thật (chụp màn hình không trống, có nhiều màu) | `test_render_screenshot` | ☐ |
-| B1 | Đi, nhảy, va chạm với block; không rơi xuyên đất | `test_physics_*` | ☐ |
+| A1 | Địa hình voxel sinh từ seed, giống hệt nhau giữa các lần chạy | `test_world_deterministic` | ✅ |
+| A2 | ≥ 3 vùng (biome) khác nhau về block, cây, quái | `test_regions_distinct` | ✅ |
+| A3 | Chunk nạp/bỏ theo vị trí người chơi, mesh dựng đúng (không vẽ mặt bị che) | `test_mesher_*`, `test_chunk_streaming` | ✅ |
+| A4 | Có hình ảnh render 3D thật (chụp màn hình không trống, có nhiều màu) | `test_render_screenshot` | ✅ |
+| B1 | Đi, nhảy, va chạm với block; không rơi xuyên đất | `test_physics_*` | ✅ |
 | B2 | Đào và đặt block, có độ cứng/công cụ, rơi vật phẩm vào kho | `test_break_place_*` | ☐ |
 | B3 | Kho đồ, thanh nhanh, ≥ 8 công thức chế tạo | `test_inventory_*`, `test_crafting_*` | ☐ |
 | C1 | Phòng 2–5 người; đặt/đào block, vị trí, quái, boss đồng bộ qua host | `test_multiplayer_*` | ☐ |

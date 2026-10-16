@@ -202,5 +202,26 @@ def test_physics_water_slows_and_allows_swimming(pg):
     assert r['afterSwimY'] > r['sinkY'], r
 
 
+# ---------------------------------------------------------------- A4: hình ảnh thật
+
+@test
+def test_render_screenshot(pg, browser, base):
+    pg.goto(root(base) + 'games/the-gioi-khoi/game.html?debug&seed=777&r=4'); pg.wait_for_timeout(300)
+    pg.wait_for_function("window.pending === 0", timeout=20000)
+    pg.click('#btn-solo'); pg.evaluate("renderNow()")
+    r = pg.evaluate("""() => {
+      const src = scene.renderer.domElement, c = document.createElement('canvas'); c.width = 200; c.height = 112;
+      const ctx = c.getContext('2d'); scene.render(); ctx.drawImage(src, 0, 0, 200, 112);
+      const d = ctx.getImageData(0, 0, 200, 112).data, colors = new Set(); let nonBg = 0;
+      for (let i = 0; i < d.length; i += 4) { colors.add((d[i] >> 4) + ',' + (d[i+1] >> 4) + ',' + (d[i+2] >> 4)); }
+      const bg = [d[0], d[1], d[2]];
+      for (let i = 0; i < d.length; i += 4) if (Math.abs(d[i]-bg[0]) + Math.abs(d[i+1]-bg[1]) + Math.abs(d[i+2]-bg[2]) > 30) nonBg++;
+      return { colors: colors.size, nonBg: nonBg / (d.length / 4), chunks: scene.chunkCount(), calls: scene.renderer.info.render.calls, tris: scene.renderer.info.render.triangles };
+    }""")
+    pg.screenshot(path='/tmp/claude-464201200/-data-yuu-ai-data-yuu-self-c/ffbac0c7-dba7-4885-b0fa-42f49ea80379/scratchpad/shot_a4.png')
+    assert r['chunks'] >= 81 and r['tris'] > 1000, r
+    assert r['colors'] >= 25 and r['nonBg'] > 0.3, r
+
+
 if __name__ == '__main__':
     run(TESTS)

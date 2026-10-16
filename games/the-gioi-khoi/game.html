@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Thế Giới Khối</title>
+<link rel="stylesheet" href="../../platform/css/kit.css">
+<link rel="stylesheet" href="game.css">
+</head>
+<body>
+<div id="stage">
+  <canvas id="cv" aria-label="Thế giới khối"></canvas>
+  <div id="hud" hidden>
+    <div id="crosshair">+</div>
+    <div id="bars"><span id="hp"></span></div>
+    <div id="hotbar"></div>
+    <div id="region"></div>
+    <div id="toast"></div>
+  </div>
+  <div id="menu">
+    <h1>Thế Giới Khối</h1>
+    <p>Đào, xây, đánh quái, hạ boss cùng bạn bè.</p>
+    <input id="name" maxlength="16" placeholder="Tên của bạn" autocomplete="off">
+    <div class="row"><button id="btn-solo">Chơi một mình</button></div>
+    <div class="row"><button id="btn-host">Tạo phòng</button>
+      <input id="code" maxlength="6" placeholder="Mã phòng" autocomplete="off"><button id="btn-join">Vào phòng</button></div>
+    <p id="err" role="alert"></p>
+    <p class="hint">WASD đi · Space nhảy · Shift chạy · chuột trái đào/đánh · chuột phải đặt/dùng · 1–9 chọn ô · E kho đồ · Esc menu</p>
+  </div>
+</div>
+<script type="module" src="game.js"></script>
+</body>
+</html>
