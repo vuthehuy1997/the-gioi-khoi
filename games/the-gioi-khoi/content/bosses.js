@@ -21,7 +21,7 @@ export const BOSSES = {
     flag: 'boss:bo-cap-chua', unlocks: 'nui-bang',
     moves: {
       sting: { type: 'melee', dmg: 8, range: 3.0, cd: 1.3 },
-      spit: { type: 'volley', dmg: 4, count: 5, spread: 0.5, speed: 12, cd: 4 },
+      spit: { type: 'volley', style: 'venom', dmg: 4, count: 5, spread: 0.5, speed: 12, cd: 4 },
       quake: { type: 'slam', dmg: 10, radius: 5.5, windup: 1.0, cd: 7 },
       brood: { type: 'summon', mob: 'bo-cap', count: 3, cd: 14 },
     },
@@ -37,7 +37,7 @@ export const BOSSES = {
     flag: 'boss:bang-de', unlocks: null,
     moves: {
       frost: { type: 'melee', dmg: 9, range: 3.2, cd: 1.5 },
-      shards: { type: 'volley', dmg: 5, count: 7, spread: 0.7, speed: 10, cd: 4.5 },
+      shards: { type: 'volley', style: 'ice', dmg: 5, count: 7, spread: 0.7, speed: 10, cd: 4.5 },
       crash: { type: 'slam', dmg: 12, radius: 6.5, windup: 1.2, cd: 8 },
       court: { type: 'summon', mob: 'ma-bang', count: 2, cd: 15 },
     },

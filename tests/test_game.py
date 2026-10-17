@@ -1164,7 +1164,7 @@ def test_perf_streaming_frame_cost(pg, browser, base):
 # ---------------------------------------------------------------- V: chất lượng hình ảnh so với Minecraft
 
 def _open_game(pg, base, extra='', name='V'):
-    pg.goto(root(base) + 'games/the-gioi-khoi/game.html?debug&net=memory&seed=777&r=5' + extra); pg.wait_for_timeout(300)
+    pg.goto(root(base) + 'games/the-gioi-khoi/game.html?debug&net=memory&seed=777&r=5&hw=1' + extra); pg.wait_for_timeout(300)
     pg.fill('#name', name); pg.click('#btn-new')
     pg.wait_for_function("window.__g && window.__g.S && window.__g.pending === 0", timeout=60000)
     pg.wait_for_timeout(300)
@@ -1266,8 +1266,9 @@ def test_visual_entities_animate_flash_and_cast_shadow(pg, browser, base):
     r = pg.evaluate("""async () => {
       const g = __g, v = g.ents; const out = {};
       const e = (x, hp) => [{ key: 'e:900', kind: 'mob', type: 'soi-xam', id: 900, x, y: 40, z: 5, yaw: 0, hp, maxHp: 16 }];
-      let x = 0; for (let i = 0; i < 12; i++) { x += 0.2; v.update(e(x, 16), i * 0.05, 0.05, []); }
-      out.walk = v.rigOf('e:900'); out.shadow = out.walk.hasShadow;
+      let x = 0, maxLeg = 0, opposite = false;
+      for (let i = 0; i < 24; i++) { x += 0.2; v.update(e(x, 16), i * 0.05, 0.05, []); const l = v.rigOf('e:900').legs; maxLeg = Math.max(maxLeg, ...l.map(Math.abs)); if (l[0] * l[1] < -0.01) opposite = true; }
+      out.walk = { ...v.rigOf('e:900'), maxLeg, opposite }; out.shadow = out.walk.hasShadow;
       v.update(e(x, 8), 1, 0.05, []); out.hurt = v.rigOf('e:900').flashing;
       for (let i = 0; i < 6; i++) v.update(e(x, 8), 1.1 + i * 0.05, 0.05, []);
       out.after = v.rigOf('e:900').flashing;
@@ -1280,7 +1281,7 @@ def test_visual_entities_animate_flash_and_cast_shadow(pg, browser, base):
       return out;
     }""")
     legs = r['walk']['legs']
-    assert len(legs) == 4 and max(abs(a) for a in legs) > 0.2 and legs[0] * legs[1] < 0, r      # chân chéo nhau đung đưa ngược pha
+    assert len(legs) == 4 and r['walk']['maxLeg'] > 0.4 and r['walk']['opposite'], r      # chân đung đưa và đối xứng ngược pha
     assert r['shadow'] and r['hurt'] and not r['after'] and max(r['idle']) < 0.25, r
     assert len(r['player']['arms']) == 2 and len(r['player']['legs']) == 2, r
 
@@ -1289,26 +1290,28 @@ def test_visual_entities_animate_flash_and_cast_shadow(pg, browser, base):
 def test_visual_camera_fx_fov_bob_tilt_and_governor(pg):
     r = ev(pg, r"""
       const { stepCameraFx, newCameraFx } = await imp('render/camerafx.js');
-      const { governRadius } = await imp('render/governor.js');
+      const { governLevel, LEVELS, PRESETS, isSoftwareRenderer } = await imp('render/quality.js');
       const c = newCameraFx(); const f0 = c.fov;
       for (let i = 0; i < 60; i++) stepCameraFx(c, 0.016, { moving: true, sprint: true, onGround: true, speed: 5.6 });
       const sprintFov = c.fov, bob = c.bob, amp = c.bobAmp;
       for (let i = 0; i < 80; i++) stepCameraFx(c, 0.016, { moving: false, sprint: false, onGround: true, speed: 0 });
       const back = c.fov, ampIdle = c.bobAmp;
       c.tilt = 0.1; for (let i = 0; i < 40; i++) stepCameraFx(c, 0.016, { moving: false, sprint: false, onGround: true, speed: 0 });
-      // bộ điều chỉnh: chậm kéo dài -> giảm bán kính; nhanh kéo dài -> tăng; có giới hạn
-      const st = { slow: 0, fast: 0 }; let r = 6; const hist = [];
-      for (let i = 0; i < 400; i++) { r = governRadius(st, r, 6, 40, 0.05); } hist.push(r);
-      for (let i = 0; i < 2000; i++) { r = governRadius(st, r, 6, 10, 0.05); } hist.push(r);
-      const st2 = { slow: 0, fast: 0 }; let r2 = 3; for (let i = 0; i < 400; i++) r2 = governRadius(st2, r2, 6, 80, 0.05);
+      // bộ điều chỉnh mức: chậm kéo dài -> hạ mức; nhanh kéo dài -> nâng lại; có sàn và trần
+      const st = { slow: 0, fast: 0 }; let lv = 6; const hist = [];
+      for (let i = 0; i < 400; i++) lv = governLevel(st, lv, 6, 60, 0.05); hist.push(lv);
+      for (let i = 0; i < 4000; i++) lv = governLevel(st, lv, 6, 10, 0.05); hist.push(lv);
+      const st2 = { slow: 0, fast: 0 }; let lv2 = 3; for (let i = 0; i < 4000; i++) lv2 = governLevel(st2, lv2, 6, 90, 0.05);
+      const st3 = { slow: 0, fast: 0 }; let lv3 = 4; for (let i = 0; i < 4000; i++) lv3 = governLevel(st3, lv3, 4, 20, 0.05);
       const { defaultPreset } = await imp('render/quality.js');
-      const presets = [defaultPreset({ cores: 2, memory: 8 }), defaultPreset({ cores: 16, memory: 32 }), defaultPreset({ cores: 8, memory: 1 })];
-      const st3 = { slow: 0, fast: 0 }; let r3 = 6; for (let i = 0; i < 400; i++) r3 = governRadius(st3, r3, 6, 20, 0.05);
-      return { f0, sprintFov, bob, amp, back, ampIdle, tilt: c.tilt, hist, floor: r2, steady: r3, presets };
+      const presets = [defaultPreset({ cores: 2, memory: 8 }), defaultPreset({ cores: 16, memory: 32 }), defaultPreset({ cores: 8, memory: 1 }), defaultPreset({ cores: 16, memory: 32, software: true })];
+      const soft = [isSoftwareRenderer('Google SwiftShader'), isSoftwareRenderer('ANGLE (Intel, Mesa llvmpipe)'), isSoftwareRenderer('NVIDIA GeForce RTX 3060'), isSoftwareRenderer('Apple M2')];
+      const monotone = LEVELS.every((l, i) => i === 0 || (l.r >= LEVELS[i - 1].r && l.pr >= LEVELS[i - 1].pr));
+      return { f0, sprintFov, bob, amp, back, ampIdle, tilt: c.tilt, hist, floor: lv2, steady: lv3, presets, soft, monotone, presetLevels: Object.values(PRESETS).map(p => p.level) };
     """)
     assert r['sprintFov'] > r['f0'] + 5 and r['bob'] > 1 and r['amp'] > 0.7 and abs(r['back'] - r['f0']) < 0.5 and r['ampIdle'] < 0.05 and abs(r['tilt']) < 0.01, r
-    assert r['hist'][0] == 3 and r['hist'][1] == 6 and r['floor'] == 3 and r['steady'] == 6, r
-    assert r['presets'] == ['low', 'medium', 'low'], r        # máy mạnh cũng chỉ mặc định 'Vừa'
+    assert r['hist'][0] == 0 and r['hist'][1] == 6 and r['floor'] == 0 and r['steady'] == 4, r      # hạ tới sàn, nâng lại tới trần, không vượt trần
+    assert r['presets'] == ['low', 'medium', 'low', 'low'] and r['soft'] == [True, True, False, False] and r['monotone'] and r['presetLevels'] == [1, 4, 6], r
 
 
 @test
@@ -1367,6 +1370,110 @@ def test_quality_presets_debug_overlay_and_optimistic_edits(pg, browser, base):
     B.evaluate("() => __g.handleEvent({ t: 'fail', a: 'break', reason: 'reach' })")
     assert B.evaluate("([x, y, z]) => __g.S.world.get(x, y, z)", arg) == cell['id']                         # bị từ chối: trả lại
     assert B.evaluate("__g.pendingEdits.length") == 0
+
+
+# ---------------------------------------------------------------- M: mô hình sinh vật
+
+MODEL_JS = """
+const THREE = await import('/platform/vendor/three/three.module.js');
+const M = await imp('render/models/index.js');
+const { MOBS } = await imp('content/mobs.js'); const { BOSSES } = await imp('content/bosses.js'); const { NPCS } = await imp('content/npcs.js');
+const lib = M.createModelLib(THREE);
+const entityList = () => [
+  ...Object.keys(MOBS).map(t => ({ kind: 'mob', type: t })), ...Object.keys(BOSSES).map(t => ({ kind: 'boss', type: t })),
+  ...Object.keys(NPCS).map(n => ({ kind: 'npc', npc: n })), { kind: 'player', uid: 'abc', name: 'A' }, { kind: 'player', uid: 'xyz', name: 'B' }];
+"""
+
+
+@test
+def test_models_exist_for_every_creature_and_every_face_is_painted(pg):
+    r = ev(pg, MODEL_JS + r"""
+      const out = { missing: [], unpainted: [], oversize: [], tris: {}, bones: {}, textures: {} };
+      const ids = new Set();
+      for (const e of entityList()) { const id = M.modelIdFor(e); if (!id) { out.missing.push(JSON.stringify(e)); continue; } ids.add(id); }
+      for (const id of ids) {
+        const b = lib.get(id);
+        const ctx = b.canvas.getContext('2d'), W = b.canvas.width, H = b.canvas.height;
+        const data = ctx.getImageData(0, 0, W, H).data;
+        for (const p of b.parts) for (const f of ['top', 'bottom', 'left', 'front', 'right', 'back']) {
+          const [w, h, d] = p.size, [u, v] = p.uv;
+          const r = { top: [u + d, v, w, d], bottom: [u + d + w, v, w, d], left: [u, v + d, d, h], front: [u + d, v + d, w, h], right: [u + d + w, v + d, d, h], back: [u + 2 * d + w, v + d, w, h] }[f];
+          if (r[0] < 0 || r[1] < 0 || r[0] + r[2] > W || r[1] + r[3] > H) out.oversize.push(id + ':' + p.id + ':' + f);
+          let any = 0; for (let y = r[1]; y < r[1] + r[3]; y++) for (let x = r[0]; x < r[0] + r[2]; x++) if (data[(y * W + x) * 4 + 3] > 0) any++;
+          if (!any) out.unpainted.push(id + ':' + p.id + ':' + f);
+        }
+        out.tris[id] = b.geometry.index.count / 3; out.bones[id] = b.model.bones.length; out.textures[id] = W + 'x' + H;
+      }
+      return { ...out, count: ids.size };
+    """)
+    assert not r['missing'] and not r['oversize'], r
+    assert not r['unpainted'], sorted({u.rsplit(':', 1)[0] for u in r['unpainted']})
+    assert r['count'] >= 15 and max(r['tris'].values()) <= 1400 and max(r['bones'].values()) <= 32, r
+
+
+@test
+def test_models_share_geometry_and_use_one_draw_call_each(pg):
+    r = ev(pg, MODEL_JS + r"""
+      const a = lib.spawn('wolf'), b = lib.spawn('wolf'), c = lib.spawn('zombie');
+      let meshes = 0; a.mesh.traverse(o => { if (o.isMesh || o.isSkinnedMesh) meshes++; });
+      return { sameGeo: a.mesh.geometry === b.mesh.geometry, sameMat: a.mesh.material === b.mesh.material, diffGeo: a.mesh.geometry !== c.mesh.geometry, meshes,
+               ownSkeleton: a.mesh.skeleton !== b.mesh.skeleton, skinned: a.mesh.isSkinnedMesh };
+    """)
+    assert r == {'sameGeo': True, 'sameMat': True, 'diffGeo': True, 'meshes': 1, 'ownSkeleton': True, 'skinned': True}, r
+
+
+@test
+def test_model_animation_walk_attack_and_poses(pg):
+    r = ev(pg, MODEL_JS + r"""
+      const out = {};
+      for (const id of ['wolf', 'deer', 'zombie', 'skeleton', 'scorpion', 'bear', 'wraith', 'golem', 'wolf-lord', 'scorpion-queen', 'ice-emperor', 'npc:truong-lang']) {
+        const rig = lib.spawn(id), pose = (st) => { M.animate(rig, st); return rig.model.bones.map(b => { const r = rig.bones[b.id].rotation; return [r.x, r.y, r.z]; }); };
+        const idle = pose({ phase: 0, k: 0, t: 0, pitch: 0, swing: 0 }), walk = pose({ phase: 1.2, k: 1, t: 1, pitch: 0, swing: 0 }), hit = pose({ phase: 0, k: 0, t: 0, pitch: 0, swing: 1 });
+        const diff = (a, b) => Math.max(...a.map((r, i) => Math.max(...r.map((v, j) => Math.abs(v - b[i][j])))));
+        out[id] = { walk: diff(idle, walk), attack: diff(idle, hit), finite: [...idle, ...walk, ...hit].every(r => r.every(Number.isFinite)) };
+      }
+      return out;
+    """)
+    for id, v in r.items():
+        assert v['finite'], (id, v)
+        assert v['walk'] > 0.05 or id in ('wraith',), (id, v)               # mọi con đều có chuyển động (ma lơ lửng dùng chuyển động khác)
+        assert v['attack'] > 0.05, (id, v)                                    # và có tư thế tấn công
+
+
+@test
+def test_entity_view_draw_calls_dying_and_cpu_budget(pg, browser, base):
+    _open_game(pg, base)
+    r = pg.evaluate("""async () => {
+      const g = __g, v = g.ents, info = g.scene.renderer.info;
+      g.hud.setBoss(null);
+      const mk = (n) => { const out = []; const kinds = ['soi-xam', 'xac-song', 'bo-cap', 'xuong-cung', 'gau-bang', 'nai', 'ma-bang', 'tuong-da'];
+        for (let i = 0; i < n; i++) out.push({ key: 'e:' + (500 + i), kind: 'mob', type: kinds[i % 8], id: 500 + i, x: g.local.x + 3 + (i % 10) * 2.2, y: g.local.y, z: g.local.z - 4 - Math.floor(i / 10) * 2.5, yaw: i * 0.3, hp: 10, maxHp: 10 }); return out; };
+      const calls = () => { g.renderNow(); return info.render.calls; };
+      v.update([], 0, 0.016, [], g.scene.camera.position); const base0 = calls();
+      const list = mk(48); v.update(list, 0, 0.016, [], g.scene.camera.position); const withAll = calls();
+      // chi phí CPU của việc cập nhật 48 thực thể
+      let t0 = performance.now(); for (let i = 0; i < 120; i++) { for (const e of list) e.x += 0.02; v.update(list, i * 0.016, 0.016, [], g.scene.camera.position); } const perFrame = (performance.now() - t0) / 120;
+      // chết: biến mất khỏi danh sách -> ngã xuống rồi mới xoá
+      const gone = list.slice(1); v.update(gone, 3, 0.016, [], g.scene.camera.position);
+      const dying = v.rigOf('e:500') && v.rigOf('e:500').dying;
+      for (let i = 0; i < 60; i++) v.update(gone, 3 + i * 0.016, 0.016, [], g.scene.camera.position);
+      const after = v.rigOf('e:500');
+      return { base0, withAll, perFrame, dying, after, shadows: v.shadowCount(), n: v.count() };
+    }""")
+    assert r['withAll'] - r['base0'] <= 48 * 1.15 + 6, r                  # tối đa ~1 lệnh vẽ mỗi thực thể (+ bóng và thẻ tên)
+    assert r['perFrame'] < 2.5, r                                         # cập nhật 48 thực thể có xương dưới 2,5 ms
+    assert r['dying'] and r['after'] is None and r['n'] == 47, r
+    assert r['shadows'] <= 128, r
+
+
+@test
+def test_software_renderer_starts_in_low_quality_and_warns(pg, browser, base):
+    pg.goto(root(base) + 'games/the-gioi-khoi/game.html?debug&net=memory&seed=777&aa=0'); pg.wait_for_timeout(300)
+    pg.fill('#name', 'S'); pg.click('#btn-new')
+    pg.wait_for_function("window.__g && window.__g.S", timeout=60000)
+    r = pg.evaluate("({ software: __g.software, quality: __g.quality, level: __g.level, pr: __g.scene.renderer.getPixelRatio(), clouds: __g.sky.clouds.visible, toast: document.getElementById('toast').textContent, gl: __g.glInfo })")
+    assert r['software'] and r['quality'] == 'low' and r['level'] == 1 and r['pr'] <= 0.75 and not r['clouds'], r
+    assert 'CPU' in r['toast'] or 'phần mềm' in r['toast'], r
 
 
 

@@ -44,11 +44,12 @@ const MATERIAL = {
 };
 
 export function createIcons(atlas) {
-  const cache = new Map();
+  const cache = new Map(), canvases = new Map();
   return {
+    canvas(id) { this.get(id); return canvases.get(id); },
     get(id) {
       if (cache.has(id)) return cache.get(id);
-      const it = ITEMS[id], c = document.createElement('canvas'); c.width = c.height = S; const ctx = c.getContext('2d');
+      const it = ITEMS[id], c = document.createElement('canvas'); c.width = c.height = S; const ctx = c.getContext('2d'); canvases.set(id, c);
       if (it && it.block) cube(ctx, atlas, BLOCK_BY_NAME[it.block]);
       else if (it && it.tool) tool(ctx, it.tool.type, TIER_COLOR[it.tool.tier]);
       else if (MATERIAL[id]) MATERIAL[id](ctx);

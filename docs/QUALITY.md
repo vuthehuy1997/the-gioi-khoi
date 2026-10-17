@@ -43,3 +43,27 @@ Khoảng cách tìm được khi chụp màn hình và so với Minecraft: trờ
 | Gói chào thế giới | ~71 KB |
 
 Giới hạn của phép đo: headless dùng SwiftShader (GPU phần mềm) nên khung hình đo được (33 ms) bị chặn bởi rasteriser, không đại diện cho GPU thật; những gì chắc chắn là chi phí JS trên luồng chính, thời gian nạp và số tam giác/lệnh vẽ.
+
+## Vòng 3 — sinh vật có đồ hoạ thật, tối ưu theo profiler
+
+Phản hồi: vẫn lag, quái chỉ là các khối màu. Việc làm:
+
+**Đồ hoạ sinh vật.** Thay hộp màu bằng mô hình nhiều khối kiểu Minecraft: mỗi khối có vùng texture riêng (tự xếp), skin vẽ bằng mã (mắt, lông, đốm, răng, giáp, nứt đá...), gắn xương và hoạt hoạ. 8 quái (sói, nai, xác sống, bọ cạp, xương cung thủ, gấu băng, ma băng lơ lửng trong suốt, tượng đá lõi phát sáng), 3 boss (Thủ Lĩnh Sói giáp gai nanh sẹo, Bọ Cạp Chúa vương miện, Băng Đế áo choàng + trượng), người chơi (12 kiểu da/tóc/áo theo uid) và 4 NPC (trưởng làng có râu và gậy, thợ rèn có tạp dề, thương nhân khăn đội đầu và ba lô, ẩn sĩ mũ trùm). Xem tất cả ở `games/the-gioi-khoi/models.html` (`?id=wolf,deer`, `&sheet=1` xem texture).
+
+**Chi phí vẽ.** Mỗi thực thể là một `SkinnedMesh` (một lệnh vẽ) dùng chung geometry/vật liệu theo loại; bóng của tất cả vẽ bằng một `InstancedMesh`; thẻ tên chỉ hiện khi ở gần (tối đa 12); quái ở xa hơn 56 block cập nhật xương thưa hơn, xa hơn 110 block bị ẩn; quái chết ngã ra 0,6 giây rồi mới biến mất.
+
+**Profiler thật (CDP) với 46 thực thể đang chạy:** JS 1,7 ms/khung (p95 2,7 ms), 98 lệnh vẽ; hơn 90% thời gian là vẽ điểm ảnh. Kết luận: nếu máy vẫn lag thì nguyên nhân là vẽ (GPU yếu hoặc **WebGL phần mềm**), nên:
+
+- Nhận diện renderer phần mềm (SwiftShader/llvmpipe...) → tự vào mức Thấp và báo người chơi bật tăng tốc phần cứng.
+- Bảy mức chất lượng (tầm nhìn 3–8, độ phân giải 0,5×–1,25×, mây, hạt); người chơi chọn mức tối đa; bộ điều chỉnh tự **hạ mức sau 2 giây chậm**, nâng lại sau 10 giây mượt.
+- MSAA mặc định tắt; "Cao" không còn tự chọn theo số nhân CPU (lỗi của bản trước: máy nhiều nhân bị đẩy lên mức nặng nhất).
+- F3 hiện renderer, mức, độ phân giải, tam giác, lệnh vẽ.
+
+| Test | Nội dung |
+|---|---|
+| `test_models_exist_for_every_creature_and_every_face_is_painted` | mọi quái/boss/NPC/người chơi có mô hình; không mặt nào của khối nào để trống; ≤ 1400 tam giác, ≤ 32 xương |
+| `test_models_share_geometry_and_use_one_draw_call_each` | geometry/vật liệu dùng chung, xương riêng, một lưới mỗi thực thể |
+| `test_model_animation_walk_attack_and_poses` | mọi mô hình có chuyển động đi và tư thế tấn công, giá trị hữu hạn |
+| `test_entity_view_draw_calls_dying_and_cpu_budget` | 48 thực thể ≤ ~1 lệnh vẽ/thực thể, cập nhật < 2,5 ms/khung, hiệu ứng chết |
+| `test_software_renderer_starts_in_low_quality_and_warns` | renderer phần mềm → mức Thấp + thông báo |
+| `test_visual_camera_fx_fov_bob_tilt_and_governor` | bộ điều chỉnh mức: hạ tới sàn, nâng tới trần, không vượt trần |

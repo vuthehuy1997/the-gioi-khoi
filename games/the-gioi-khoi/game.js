@@ -16,9 +16,8 @@ import { createEntityView } from './render/entities.js';
 import { createSky } from './render/sky.js';
 import { createEffects } from './render/effects.js';
 import { stepCameraFx, newCameraFx, createHand } from './render/camerafx.js';
-import { governRadius } from './render/governor.js';
 import { createIcons } from './ui/icons.js';
-import { PRESETS, presetOf, defaultPreset } from './render/quality.js';
+import { LEVELS, PRESETS, presetOf, defaultPreset, governLevel, isSoftwareRenderer } from './render/quality.js';
 import { sfx } from './sfx.js';
 import { createHud, setIconProvider } from './ui/hud.js';
 import { createPanels } from './ui/panels.js';
@@ -46,7 +45,10 @@ const scene = createScene($('cv'), { aa: params.get('aa') !== '0' && (devicePixe
 const hud = createHud();
 const sky = createSky(scene), fx = createEffects(scene), hand = createHand(scene), camFx = newCameraFx();
 const icons = createIcons(scene.atlasCanvas); setIconProvider(id => icons.get(id));
-let quality = store.get('tgk-quality') || defaultPreset({ cores: navigator.hardwareConcurrency || 4, memory: navigator.deviceMemory || 4 });
+const glInfo = (() => { try { const gl = scene.renderer.getContext(), ext = gl.getExtension('WEBGL_debug_renderer_info'); return ext ? String(gl.getParameter(ext.UNMASKED_RENDERER_WEBGL)) : ''; } catch (e) { return ''; } })();
+const software = isSoftwareRenderer(glInfo) && params.get('hw') !== '1';
+let quality = (software && !store.get('tgk-quality-user') ? 'low' : store.get('tgk-quality')) || defaultPreset({ cores: navigator.hardwareConcurrency || 4, memory: navigator.deviceMemory || 4, software });
+let level = presetOf(quality).level, maxLevel = level;
 const gov = { slow: 0, fast: 0 }, rawDts = []; let maxRadius = 6, wasOnGround = true, stepDist = 0, digSoundT = 0, loadingPhase = true;
 let S = null, game = null, local = null, view = null, ents = null, panels = null;
 let pending = 1, paused = false, wasLocked = false, lastHit = 0, dig = null, digCooldown = 0, lastSel = -1;
@@ -68,12 +70,18 @@ async function newOrSavedGame(fresh) {
   const g = new Game({ seed: randomSeed() }); g.buildStructures(); return g;
 }
 
-function applyQuality(key, setRadius = true) {
-  quality = key; store.set('tgk-quality', key);
-  const q = presetOf(key);
-  if (setRadius && view) { view.setRadius(q.radius); maxRadius = q.radius; }
-  scene.renderer.setPixelRatio(Math.min(devicePixelRatio || 1, q.pixelRatio)); scene.resize();
-  sky.clouds.visible = q.clouds; fx.density = q.particles;
+// Áp một mức cụ thể (tầm nhìn, độ phân giải, mây, hạt).
+function applyLevel(i, setRadius = true) {
+  level = Math.max(0, Math.min(LEVELS.length - 1, i));
+  const L = LEVELS[level];
+  if (setRadius && view) { view.setRadius(L.r); maxRadius = LEVELS[maxLevel].r; }
+  scene.renderer.setPixelRatio(Math.min(devicePixelRatio || 1, L.pr)); scene.resize();
+  sky.clouds.visible = L.clouds; fx.density = L.particles;
+}
+function applyQuality(key, setRadius = true, user = true) {
+  quality = key; store.set('tgk-quality', key); if (user) store.set('tgk-quality-user', '1');
+  maxLevel = presetOf(key).level;
+  applyLevel(maxLevel, setRadius);
   for (const k of Object.keys(PRESETS)) { const b = $('q-' + k); if (b) b.classList.toggle('on', k === key); }
 }
 
@@ -105,8 +113,9 @@ async function begin(session) {
   const p0 = S.pos || (game && game.player(uid));
   local = makePlayer(p0.x, p0.y, p0.z); local.yaw = 0; local.pitch = -0.1;
   view = new ChunkView(S.world, scene, { radius: Number(params.get('r')) || 6 });
-  applyQuality(quality, !params.get('r'));
-  ents = createEntityView(scene);
+  applyQuality(quality, !params.get('r'), false);
+  if (software) hud.toast('Trình duyệt đang vẽ bằng CPU (WebGL phần mềm). Bật tăng tốc phần cứng trong cài đặt trình duyệt để mượt hơn.', 8000);
+  ents = createEntityView(scene, { iconCanvas: id => icons.canvas(id) });
   panels = createPanels({ act: a => S.act(a), onClose: () => { if (S && !S.you.dead) lockPointer(); } });
   S.on('ev', handleEvent);
   S.world.onChange = (x, y, z, prev, id) => {            // hạt khi block vỡ hoặc được đặt
@@ -311,7 +320,8 @@ function debugText() {
   const i = scene.renderer.info, avg = rawDts.length ? rawDts.reduce((a, b) => a + b, 0) / rawDts.length * 1000 : 0;
   return [`FPS ${avg ? (1000 / avg).toFixed(0) : '-'}  (khung ${avg.toFixed(1)} ms, JS ${perf.n ? (perf.sum / perf.n).toFixed(1) : '-'} ms)`,
     `XYZ ${local.x.toFixed(1)} ${local.y.toFixed(1)} ${local.z.toFixed(1)}  vùng ${S.world.regionAt(local.x, local.z)}`,
-    `Chunk mesh ${scene.chunkCount()}  tầm nhìn ${view.radius}/${maxRadius}  chờ ${pending}  chất lượng ${quality}`,
+    `Chunk mesh ${scene.chunkCount()}  tầm nhìn ${view.radius}  mức ${level}/${maxLevel} (${quality})  độ phân giải ${scene.renderer.getPixelRatio()}  chờ ${pending}`,
+    `Renderer ${glInfo || '?'}${software ? '  [PHẦN MỀM]' : ''}`,
     `Tam giác ${i.render.triangles}  lệnh vẽ ${i.render.calls}  hạt ${fx.particleCount}  thực thể ${ents.count()}`,
     S.room ? `Mạng: ${S.room.players.length} người` : 'Chơi một mình'].join('\n');
 }
@@ -347,12 +357,12 @@ function frameBody(dt) {
   const list = [];
   for (const p of interp.ps) if (p.uid !== uid && !p.dead) list.push({ key: 'p:' + p.uid, kind: 'player', ...p });
   for (const e of interp.es) list.push({ key: 'e:' + e.id, ...e });
-  ents.update(list, nowS, dt, [...interp.ps.filter(p => p.uid !== uid), { x: local.x, z: local.z }]);
+  ents.update(list, nowS, dt, [...interp.ps.filter(p => p.uid !== uid), { x: local.x, z: local.z }], scene.camera.position);
   const boss = interp.es.filter(e => e.kind === 'boss').sort((a, b) => Math.hypot(a.x - local.x, a.z - local.z) - Math.hypot(b.x - local.x, b.z - local.z))[0];
   hud.setBoss(boss && Math.hypot(boss.x - local.x, boss.z - local.z) < 70 ? { name: BOSSES[boss.type].name, hp: boss.hp, maxHp: boss.maxHp, phase: boss.phase } : null);
   const r = regionById(S.world.regionAt(local.x, local.z));
   const light = lightLevel(S.time);
-  scene.setEnvironment({ sky: r.sky, fog: r.fog, light });
+  scene.setEnvironment({ sky: r.sky, fog: r.fog, light }); ents.setLight(light);
   const far = view.radius * 16 - 6; scene.setFog(far * 0.5, far);
   const eyeWater = S.world.get(local.x, local.y + 1.62, local.z) === B.WATER;
   $('water').hidden = !eyeWater; if (eyeWater) scene.setFog(0.5, 22);
@@ -365,10 +375,10 @@ function frameBody(dt) {
 
 function loop(now) {
   const raw = (now - last) / 1000, dt = Math.min(0.05, raw); last = now;
-  if (S && !debugOn()) {                                           // tự giảm/tăng tầm nhìn theo độ mượt thực tế
-    rawDts.push(raw); if (rawDts.length > 60) rawDts.shift();
-    const avg = rawDts.reduce((a, b) => a + b, 0) / rawDts.length * 1000, r = governRadius(gov, view.radius, maxRadius, avg, raw);
-    if (r !== view.radius) { view.setRadius(r); rawDts.length = 0; }
+  if (S && (!debugOn() || params.get('gov') === '1')) {              // tự hạ/nâng mức chất lượng theo độ mượt thực tế
+    rawDts.push(raw); if (rawDts.length > 40) rawDts.shift();
+    const avg = rawDts.reduce((a, b) => a + b, 0) / rawDts.length * 1000, nl = rawDts.length >= 20 ? governLevel(gov, level, maxLevel, avg, raw) : level;
+    if (nl !== level) { applyLevel(nl); rawDts.length = 0; }
   }
   try { frame(dt); } catch (e) { console.error(e); }
   requestAnimationFrame(loop);
@@ -385,7 +395,7 @@ requestAnimationFrame(loop);
 if (debugOn()) {
   window.__g = {
     get S() { return S; }, get game() { return game; }, get local() { return local; }, get view() { return view; }, scene, hud, get panels() { return panels; }, get ents() { return ents; },
-    optimistic, handleEvent, get pendingEdits() { return pendingEdits; }, applyQuality, get quality() { return quality; },
+    optimistic, handleEvent, get pendingEdits() { return pendingEdits; }, applyQuality, get quality() { return quality; }, get level() { return level; }, get software() { return software; }, applyLevel, glInfo,
     get pending() { return pending; }, perf, sky, fx, hand, camFx, sfx, icons, gov, get interp() { return interp; }, mouse, keys,
     renderNow: () => frame(0.0001),
     lookAt(x, y, z) { const dx = x - local.x, dy = y - (local.y + 1.62), dz = z - local.z; local.yaw = Math.atan2(-dx, -dz); local.pitch = Math.atan2(dy, Math.hypot(dx, dz)); },

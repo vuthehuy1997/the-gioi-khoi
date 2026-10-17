@@ -13,6 +13,7 @@ export function snapshotFor(g, uid) {
     if (e.kind === 'mob' || e.kind === 'boss') { o.hp = Math.round(e.hp); o.maxHp = e.maxHp; if (e.kind === 'boss') o.phase = e.phase; }
     else if (e.kind === 'npc') { o.npc = e.npc; o.name = e.name; }
     else if (e.kind === 'item') { o.item = e.item; o.n = e.n; }
+    else if (e.kind === 'proj') { o.style = e.style || 'arrow'; o.yaw = r2(Math.atan2(-e.vx, -e.vz)); o.pit = r2(Math.atan2(e.vy, Math.hypot(e.vx, e.vz))); }
     es.push(o);
   }
   return { time: r2(g.time), ps, es };

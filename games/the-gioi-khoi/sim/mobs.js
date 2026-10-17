@@ -99,7 +99,7 @@ const AI = {
 export function shoot(g, from, target, s, ttl = 4) {
   const ox = from.x, oy = from.y + from.h * 0.7, oz = from.z;
   const dx = target.x - ox, dy = (target.y + 1.0) - oy, dz = target.z - oz, len = Math.hypot(dx, dy, dz) || 1;
-  const e = { id: g.nextId++, kind: 'proj', x: ox, y: oy, z: oz, vx: dx / len * s.speed, vy: dy / len * s.speed, vz: dz / len * s.speed, dmg: s.dmg, owner: from.id, ttl, w: 0, h: 0 };
+  const e = { id: g.nextId++, kind: 'proj', x: ox, y: oy, z: oz, vx: dx / len * s.speed, vy: dy / len * s.speed, vz: dz / len * s.speed, dmg: s.dmg, owner: from.id, ttl, w: 0, h: 0, style: s.style || 'arrow' };
   g.ents.set(e.id, e);
   g.emit(null, { t: 'swing', id: from.id });
   return e;

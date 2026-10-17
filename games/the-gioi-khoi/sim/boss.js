@@ -49,7 +49,7 @@ function startMove(g, e, d, name, t) {
     const aim = Math.atan2(t.z - e.z, t.x - e.x), c = m.count;
     for (let i = 0; i < c; i++) {
       const a = aim + (c === 1 ? 0 : (i / (c - 1) - 0.5) * m.spread);
-      shoot(g, e, { x: e.x + Math.cos(a) * 20, y: t.y, z: e.z + Math.sin(a) * 20 }, { dmg: dm, speed: m.speed }, 3);
+      shoot(g, e, { x: e.x + Math.cos(a) * 20, y: t.y, z: e.z + Math.sin(a) * 20 }, { dmg: dm, speed: m.speed, style: m.style }, 3);
     }
   } else if (m.type === 'summon') {
     for (let i = 0; i < m.count; i++) {
