@@ -62,6 +62,7 @@ export function createEntityView(scene, { iconCanvas = null } = {}) {
   const PROJ = {
     arrow: () => { const g = new T.Group(); const sh = new T.Mesh(new T.BoxGeometry(0.05, 0.05, 0.7), new T.MeshBasicMaterial({ color: '#8a6a3c' })), tip = new T.Mesh(new T.BoxGeometry(0.09, 0.09, 0.14), new T.MeshBasicMaterial({ color: '#cfd3da' })); tip.position.z = -0.4; g.add(sh, tip); return g; },
     ice: () => new T.Mesh(new T.OctahedronGeometry(0.2), new T.MeshBasicMaterial({ color: '#9ff0ff' })),
+    fire: () => { const g = new T.Group(); g.add(new T.Mesh(new T.IcosahedronGeometry(0.2), new T.MeshBasicMaterial({ color: '#ff7a1c' })), new T.Mesh(new T.IcosahedronGeometry(0.11), new T.MeshBasicMaterial({ color: '#fff2a0' }))); return g; },
     venom: () => new T.Mesh(new T.IcosahedronGeometry(0.2), new T.MeshBasicMaterial({ color: '#7ad35a' })),
   };
 

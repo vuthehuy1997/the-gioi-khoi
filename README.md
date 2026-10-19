@@ -6,11 +6,11 @@ Game thế giới khối chạy ngay trên trình duyệt, không cần máy ch�
 
 ## Có gì trong game
 
-- **Thế giới voxel** sinh từ seed, ba vùng: Rừng Sương, Sa Mạc Lửa, Núi Băng (địa hình, cây, quái, màu trời khác nhau); hang động, quặng, nước; chu kỳ ngày đêm.
+- **Thế giới voxel** sinh từ seed, sáu vùng: Rừng Sương, Sa Mạc Lửa, Núi Băng và ba vùng mọc thành mảng bên trong chúng: **Đầm Lầy Mục** (trong rừng: thấp, nhiều ao, rêu, bùn, lau sậy, nấm phát sáng), **Núi Lửa Tro** (trong sa mạc: núi tro và bazan, đá nham thạch nóng bỏng chân, hoa lửa), **Vực Pha Lê** (trong núi băng: đỉnh cao, trụ thạch anh tím, hoa pha lê); địa hình, cây, quái, màu trời đều khác nhau; hang động, quặng, nước; chu kỳ ngày đêm.
 - **Đào / đặt block** có độ cứng và bậc công cụ (tay, gỗ, đá, tinh thể, ngọc); kho đồ 36 ô, thanh nhanh 1–9, 15 công thức chế tạo (một số cần đứng gần bàn chế tạo).
-- **8 loại quái** với 4 kiểu AI (đuổi cận chiến, bỏ chạy, bắn xa giữ khoảng cách, canh giữ), sinh theo vùng và ngày/đêm, có bảng rơi đồ. Quái **phải nhìn hoặc nghe thấy bạn** mới đuổi: có nón nhìn theo hướng quay mặt (vòng ra sau lưng thì không bị thấy), tường và cây che tầm nhìn, thanh cảnh giác tăng dần (`?` vàng rồi `!` đỏ trên đầu), tiếng động (đào, đặt, đánh, chạy nước rút) làm quái chạy tới kiểm tra, mất dấu thì lục soát chỗ thấy cuối rồi bỏ cuộc, sói tru gọi cả đàn, bị đánh từ sau thì quay lại truy đuổi. Rón rén (giữ C) giảm một nửa tầm nhìn và không gây tiếng.
+- **18 loại quái** (mỗi vùng có quái riêng: ếch độc, rắn, cá sấu, nấm lang thang ở đầm lầy; thằn lằn nham thạch, linh hỏa ở núi lửa; nhện, thỏ, hộ vệ pha lê ở vực pha lê; cáo ở rừng) với 4 kiểu AI (đuổi cận chiến, bỏ chạy, bắn xa giữ khoảng cách, canh giữ), sinh theo vùng và ngày/đêm, có bảng rơi đồ. Quái **phải nhìn hoặc nghe thấy bạn** mới đuổi: có nón nhìn theo hướng quay mặt (vòng ra sau lưng thì không bị thấy), tường và cây che tầm nhìn, thanh cảnh giác tăng dần (`?` vàng rồi `!` đỏ trên đầu), tiếng động (đào, đặt, đánh, chạy nước rút) làm quái chạy tới kiểm tra, mất dấu thì lục soát chỗ thấy cuối rồi bỏ cuộc, sói tru gọi cả đàn, bị đánh từ sau thì quay lại truy đuổi. Rón rén (giữ C) giảm một nửa tầm nhìn và không gây tiếng.
 - **3 boss nhiều pha** ở đấu trường riêng, mỗi boss có chiêu khác nhau (đánh cận, nhảy đập, gọi quái, bắn loạt, đập vùng có báo hiệu). Máu và sát thương tăng theo số người trong đấu trường. Hạ boss mở an toàn cho vùng kế tiếp (vùng chưa mở có khí độc gặm máu).
-- **4 NPC** ở ba làng, hội thoại dạng đồ thị, hai cửa hàng (mua bán bằng xu), **6 nhiệm vụ** (nhặt, hạ quái, hạ boss, đến vùng).
+- **4 NPC** ở ba làng, hội thoại dạng đồ thị, hai cửa hàng (mua bán bằng xu), **9 nhiệm vụ** (nhặt, hạ quái, hạ boss, đến vùng; ba nhiệm vụ mới dẫn tới ba vùng mới).
 - **Lưu / nạp** thế giới trong IndexedDB, xuất và nhập file `.gz`.
 
 ## Điều khiển
@@ -51,4 +51,4 @@ docs/ACCEPTANCE.md   tiêu chí hoàn thành và trạng thái
 - Host là một trình duyệt: người tạo phòng phải giữ tab ở phía trước và thế giới chỉ chạy khi họ còn mở. Vị trí người chơi do máy khách báo (host chỉ kiểm tra tốc độ), nên không chống gian lận; phù hợp chơi với bạn bè.
 - Kết nối WebRTC qua relay công cộng đôi khi cần thử lại; chưa đo trên nhiều thiết bị khác mạng (xem `docs/superpowers/specs`).
 - Chưa có âm thanh, PvP, cảm ứng/điện thoại.
-- Art là texture tự vẽ bằng mã (không dùng gói ngoài); mô hình quái là hộp màu.
+- Art là texture tự vẽ bằng mã (không dùng gói ngoài); mô hình quái là các khối hộp có xương và texture tự vẽ (xem `games/the-gioi-khoi/models.html?id=wolf,frog` để ngắm từng con).

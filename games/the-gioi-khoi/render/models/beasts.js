@@ -1,9 +1,9 @@
 // Mô hình thú và quái đặc biệt. Quy ước: -z là phía trước; chân đặt ở y=0; đơn vị pixel.
-const SIDES = ['top', 'bottom', 'left', 'front', 'right', 'back'];
-const all = (P, R, id, hex, j = 0.06) => { for (const f of SIDES) P.fill(R(id, f), hex, j); };
+export const SIDES = ['top', 'bottom', 'left', 'front', 'right', 'back'];
+export const all = (P, R, id, hex, j = 0.06) => { for (const f of SIDES) P.fill(R(id, f), hex, j); };
 
 // Bốn chân: trả về parts + bones. size [w,h,d], x/zf/zb vị trí, h chiều cao chân.
-function legs4(size, x, zf, zb, amp = 0.85) {
+export function legs4(size, x, zf, zb, amp = 0.85) {
   const h = size[1];
   return {
     parts: [

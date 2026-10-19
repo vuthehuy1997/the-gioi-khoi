@@ -15,5 +15,8 @@ export const RECIPES = [
   r('crystal_pick', ['crystal_pick', 1], { crystal: 3, stick: 2 }, true),
   r('crystal_sword', ['crystal_sword', 1], { crystal: 2, stick: 1 }, true),
   r('gem_sword', ['gem_sword', 1], { gem: 2, crystal: 1, stick: 1 }, true),
+  r('amethyst_pick', ['amethyst_pick', 1], { amethyst: 3, stick: 2 }, true),
+  r('ember_sword', ['ember_sword', 1], { ember: 3, crystal: 1, stick: 1 }, true),
+  r('stew', ['stew', 1], { mushroom: 2, meat: 1 }),
   r('herb_meal', ['herb', 1], { meat: 1, leaves: 2 }),
 ];

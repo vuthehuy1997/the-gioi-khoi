@@ -267,6 +267,14 @@ export class Game {
           if (this.time - (p.warnAt || -99) > 20) { p.warnAt = this.time; const b = Object.values(BOSSES).find(x => x.flag === r.requires); this.emit(p.uid, { t: 'toast', text: `Khí độc ở ${r.name} đang gặm mòn bạn. Hãy hạ ${b ? b.name : 'boss'} để vào vùng này an toàn.` }); }
         }
       } else p.hazT = 0;
+      // đứng trên đá nham thạch thì bị bỏng
+      if (p.y - Math.floor(p.y) < 0.15 && this.world.get(Math.floor(p.x), Math.floor(p.y) - 1, Math.floor(p.z)) === B.MAGMA) {
+        p.burnT = (p.burnT || 0) + dt;
+        if (p.burnT >= 0.8) {
+          p.burnT -= 0.8; this.hurtPlayer(p, 2, null);
+          if (this.time - (p.burnWarn || -99) > 15) { p.burnWarn = this.time; this.emit(p.uid, { t: 'toast', text: 'Đá nham thạch nóng bỏng chân! Đừng đứng trên nó.' }); }
+        }
+      } else p.burnT = 0;
     }
   }
 

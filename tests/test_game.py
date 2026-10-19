@@ -12,7 +12,7 @@ def test(fn):
 
 JS_HELPERS = """
 const wait = ms => new Promise(r => setTimeout(r, ms));
-const until = async (f, ms = 3000) => { const t = Date.now(); while (!f()) { if (Date.now() - t > ms) throw new Error('hết giờ chờ'); await wait(10); } };
+const until = async (f, ms = 3000) => { const t = Date.now(); while (!f()) { if (Date.now() - t > ms) throw new Error('hết giờ chờ: ' + String(f).slice(0, 110)); await wait(10); } };
 const G = '/games/the-gioi-khoi/';
 const imp = p => import(G + p);
 """
@@ -890,7 +890,7 @@ def test_multiplayer_blocks_positions_mobs_sync(pg):
       await until(() => { const q = b.snap.ps.find(p => p.uid === 'ua'); return q && Math.abs(q.x - (x0 + 3)) < 0.1; });
       await until(() => { const q = b.snap.ps.find(p => p.uid === 'ua'); return q && Math.abs(q.yaw - 1) < 0.01; });
       // quái trên host hiện bên cả hai, và đòn đánh của khách có tác dụng trên host
-      const m = spawnMob(game, 'xac-song', pa.x + 2, pa.y, pa.z); m.frozen = true;
+      const mx = pa.x - 2, m = spawnMob(game, 'xac-song', mx, game.world.surfaceY(Math.floor(mx), Math.floor(pa.z)) + 1, pa.z); m.frozen = true;   // bên không có block vừa đặt
       await until(() => b.snap.es.some(e => e.id === m.id) && a.snap.es.some(e => e.id === m.id));
       game.giveItem('ua', 'gem_sword', 1);
       await until(() => a.you.inv.some(s => s && s.id === 'gem_sword'));
@@ -1253,7 +1253,9 @@ def test_visual_plants_and_terrain_relief(pg):
       const mean = hs.reduce((a, b) => a + b, 0) / hs.length, sd = Math.sqrt(hs.reduce((a, b) => a + (b - mean) ** 2, 0) / hs.length);
       // đi xuyên cỏ
       const { makePlayer, stepPlayer } = await imp('sim/physics.js');
-      const sp = w.findSpawn(), y = w.surfaceY(sp.x, sp.z); w.set(sp.x, y + 1, sp.z, 17); w.set(sp.x + 1, y + 1, sp.z, 17);
+      const sp = w.findSpawn(), y = w.surfaceY(sp.x, sp.z);
+      for (let dx = 0; dx <= 5; dx++) { w.set(sp.x + dx, y, sp.z, 3); w.set(sp.x + dx, y + 1, sp.z, 0); w.set(sp.x + dx, y + 2, sp.z, 0); w.set(sp.x + dx, y + 3, sp.z, 0); }   // hành lang trống để chỉ đo cỏ có cản không
+      w.set(sp.x, y + 1, sp.z, 17); w.set(sp.x + 1, y + 1, sp.z, 17);
       const p = makePlayer(sp.x + 0.5, y + 1, sp.z + 0.5);
       for (let i = 0; i < 20; i++) stepPlayer(w, p, { fx: 1 }, 0.05);
       return { plants, meshPlantVerts: m.plants.positions.length / 3, sd, range: Math.max(...hs) - Math.min(...hs), lakeShare: lake / n, walked: p.x - (sp.x + 0.5) };
@@ -1792,6 +1794,149 @@ def test_e2e_two_players(pg, browser, base):
         for f in traceback.extract_tb(e.__traceback__):
             if f.filename.endswith('test_game.py') and f.name == '_e2e_two_players': print(f'      > dòng {f.lineno}: {f.line}')
         raise
+
+
+# ---------------------------------------------------------------- vùng và quái mới (vòng 5)
+@test
+def test_new_regions_have_their_own_terrain_flora_and_gating(pg):
+    r = ev(pg, r"""
+      const { REGIONS } = await imp('content/regions.js');
+      const { regionAt } = await imp('world/regions.js');
+      const { generateChunk, CHUNK_H } = await imp('world/generate.js');
+      const { BLOCKS } = await imp('world/blocks.js');
+      const name = id => BLOCKS[id].name;
+      const out = {};
+      for (const seed of [777, 12345, 99]) {
+        const hist = {}, flora = {}, heights = {}, cover = {};
+        for (let x = -1500; x <= 1500; x += 40) for (let z = -1500; z <= 1500; z += 40) cover[regionAt(seed, x, z)] = (cover[regionAt(seed, x, z)] || 0) + 1;
+        for (let x = -1500; x <= 1500; x += 37) for (let z = -1500; z <= 1500; z += 37) {
+          const id = regionAt(seed, x, z), cx = Math.floor(x / 16), cz = Math.floor(z / 16), ch = generateChunk(seed, cx, cz), lx = x - cx * 16, lz = z - cz * 16;
+          for (let y = CHUNK_H - 1; y >= 0; y--) {
+            const b = ch[lx + 16 * (lz + 16 * y)];
+            if (b === 0) continue;
+            if (BLOCKS[b].plant) { (flora[id] = flora[id] || new Set()).add(name(b)); continue; }
+            (hist[id] = hist[id] || {})[name(b)] = ((hist[id] || {})[name(b)] || 0) + 1; (heights[id] = heights[id] || []).push(y); break;
+          }
+        }
+        const top = id => Object.entries(hist[id] || {}).sort((a, b) => b[1] - a[1]).slice(0, 3).map(e => e[0]);
+        const avg = id => (heights[id] || []).reduce((a, b) => a + b, 0) / Math.max(1, (heights[id] || []).length);
+        out[seed] = { cover, top: { swamp: top('dam-lay'), volcano: top('hoa-son'), crystal: top('vuc-pha-le') }, flora: Object.fromEntries(Object.entries(flora).map(([k, v]) => [k, [...v]])),
+          h: { swamp: avg('dam-lay'), volcano: avg('hoa-son'), forest: avg('rung-suong'), crystal: avg('vuc-pha-le') } };
+      }
+      return { out, req: Object.fromEntries(REGIONS.map(r => [r.id, r.requires || null])) };
+    """)
+    for seed, o in r['out'].items():
+        for rid in ['dam-lay', 'hoa-son', 'vuc-pha-le']:
+            assert o['cover'].get(rid, 0) >= 150, (seed, rid, o['cover'])           # mỗi vùng phủ ít nhất ~3% bản đồ
+        assert 'moss' in o['top']['swamp'] or 'mud' in o['top']['swamp'], o
+        assert 'ash' in o['top']['volcano'] and 'ice' not in o['top']['volcano'], o
+        assert 'snow' in o['top']['crystal'] and ('amethyst' in o['top']['crystal']), o
+        assert {'reed', 'glow_mushroom'} <= set(o['flora']['dam-lay']), o
+        assert 'ember_bloom' in o['flora']['hoa-son'] and 'crystal_bloom' in o['flora']['vuc-pha-le'], o
+        assert o['h']['swamp'] < o['h']['forest'] - 1.5, o                            # đầm lầy thấp hơn rừng
+        assert o['h']['volcano'] > o['h']['swamp'] + 4 and o['h']['crystal'] > o['h']['forest'], o
+    assert r['req']['hoa-son'] == 'boss:thu-linh-soi' and r['req']['vuc-pha-le'] == 'boss:bo-cap-chua' and r['req']['dam-lay'] is None, r
+
+
+@test
+def test_new_regions_spawn_their_own_mobs_and_old_ones_still_work(pg):
+    r = ev(pg, GAME_JS + r"""
+      const { regionAt } = await imp('world/regions.js');
+      const { MOBS } = await imp('content/mobs.js');
+      const g0 = new Game({ seed: 777, spawning: false });
+      const find = (id) => { for (let x = -3000; x <= 3000; x += 40) for (let z = -3000; z <= 3000; z += 40) if (regionAt(777, x, z) === id && g0.world.surfaceY(x, z) > 21) return { x, z }; return null; };
+      const types = {}, wrong = [];
+      for (const region of ['dam-lay', 'hoa-son', 'vuc-pha-le', 'rung-suong']) {
+        const spot = find(region);
+        const g = new Game({ seed: 777 }); const p = g.addPlayer('u1', 'T');
+        g.world.keepAround([{ x: spot.x, z: spot.z }], 3);
+        p.x = spot.x + 0.5; p.z = spot.z + 0.5; p.y = g.world.surfaceY(spot.x, spot.z) + 1; p.hp = 9999; p.maxHp = 9999; p.hazT = -1e9;
+        g.time = 60;
+        const seen = new Set(), ids = new Set();
+        for (let t = 0; t < 400; t += 0.5) {
+          g.tick(0.5); p.hp = 9999;
+          for (const e of g.ents.values()) if (e.kind === 'mob') {
+            seen.add(e.type);
+            if (!ids.has(e.id)) { ids.add(e.id); const rg = regionAt(777, Math.floor(e.x), Math.floor(e.z)); if (!MOBS[e.type].regions.includes(rg)) wrong.push(e.type + '@' + rg); }   // quái vừa sinh phải hợp vùng
+          }
+          for (const e of [...g.ents.values()]) if (e.kind === 'mob' && Math.hypot(e.x - p.x, e.z - p.z) < 5) g.ents.delete(e.id);
+        }
+        types[region] = [...seen].sort();
+      }
+      return { types, wrong };
+    """)
+    t = r['types']
+    assert r['wrong'] == [], r
+    assert {'ech-doc', 'ran-lay', 'ca-sau', 'nam-di'} & set(t['dam-lay']), r
+    assert {'than-lan-nham', 'linh-hoa'} & set(t['hoa-son']), r
+    assert {'nhen-pha-le', 'tho-pha-le', 'khoi-pha-le'} & set(t['vuc-pha-le']), r
+    assert 'nai' in t['rung-suong'] or 'cao-lua' in t['rung-suong'], r
+
+
+@test
+def test_new_mobs_have_senses_models_drops_and_a_fire_bolt(pg):
+    r = ev(pg, r"""
+      const { MOBS } = await imp('content/mobs.js');
+      const { MOB_MODELS } = await imp('render/models/index.js');
+      const { ITEMS } = await imp('content/items.js');
+      const fresh = ['ech-doc', 'ran-lay', 'ca-sau', 'nam-di', 'than-lan-nham', 'linh-hoa', 'nhen-pha-le', 'tho-pha-le', 'khoi-pha-le', 'cao-lua'];
+      return { count: Object.keys(MOBS).length, fresh: fresh.map(id => { const m = MOBS[id]; return { id, ok: !!m && m.sight > 0 && m.fov > 0 && m.hearing > 0 && m.turn > 0, model: MOB_MODELS && MOB_MODELS[id], drops: (m.drops || []).every(d => ITEMS[d.item]), fire: m.shot && m.shot.style }; }) };
+    """)
+    assert r['count'] >= 18, r
+    for m in r['fresh']:
+        assert m['ok'] and m['model'] and m['drops'], m
+    assert [m['fire'] for m in r['fresh'] if m['id'] == 'linh-hoa'] == ['fire'], r
+
+
+@test
+def test_standing_on_magma_burns_and_new_recipes_use_new_loot(pg):
+    r = ev(pg, GAME_JS + r"""
+      const { B } = await imp('world/blocks.js');
+      const { RECIPES } = await imp('content/recipes.js');
+      const g = new Game({ seed: 777, spawning: false }), p = g.addPlayer('u1', 'Tester');
+      g.flags['boss:thu-linh-soi'] = g.flags['boss:bo-cap-chua'] = true;       // tắt khí độc vùng để chỉ đo bỏng
+      const x = Math.floor(p.x) + 3, z = Math.floor(p.z), y = g.world.surfaceY(x, z);
+      g.world.set(x, y, z, B.MAGMA);
+      p.x = x + 0.5; p.z = z + 0.5; p.y = y + 1; p.vy = 0; p.hp = 20; p.maxHp = 20;
+      const toasts = []; g.onEvent = null;
+      for (let t = 0; t < 4; t += 0.05) { g.tick(0.05); p.x = x + 0.5; p.z = z + 0.5; if (p.y < y + 1) p.y = y + 1; }
+      const burned = 20 - p.hp;
+      // đứng trên đất thường thì không bị bỏng
+      const gx = x + 4; const gy = g.world.surfaceY(gx, z); p.x = gx + 0.5; p.y = gy + 1; p.hp = 20;
+      for (let t = 0; t < 4; t += 0.05) { g.tick(0.05); p.x = gx + 0.5; p.z = z + 0.5; if (p.y < gy + 1) p.y = gy + 1; }
+      return { burned, safe: 20 - p.hp, recipes: ['amethyst_pick', 'ember_sword', 'stew'].map(id => RECIPES.some(r => r.id === id)) };
+    """)
+    assert r['burned'] >= 2 and r['safe'] == 0, r
+    assert all(r['recipes']), r
+
+
+@test
+def test_new_region_quests_need_visit_kills_and_loot_then_pay_out(pg):
+    r = ev(pg, GAME_JS + r"""
+      const { spawnMob } = await imp('sim/mobs.js');
+      const { regionAt } = await imp('world/regions.js');
+      const g = new Game({ seed: 777, spawning: false }); const p = g.addPlayer('u1', 'T');
+      p.inv.fill(null); p.inv[0] = { id: 'gem_sword', n: 1 }; p.sel = 0;
+      g.flags['boss:thu-linh-soi'] = g.flags['boss:bo-cap-chua'] = true;
+      const spot = (id) => { for (let x = -3000; x <= 3000; x += 40) for (let z = -3000; z <= 3000; z += 40) if (regionAt(777, x, z) === id) return { x, z }; };
+      const quests = await imp('sim/quests.js');
+      const out = {};
+      for (const [qid, region, mob, loot] of [['dam-lay-nam', 'dam-lay', 'ech-doc', 'mushroom'], ['than-lua', 'hoa-son', 'than-lan-nham', 'ember'], ['pha-le-tim', 'vuc-pha-le', 'nhen-pha-le', 'amethyst']]) {
+        g.flags['quest:chao-lang'] = true; p.quests.done['chao-lang'] = true;
+        const ok = quests.accept(g, p, qid) !== false;
+        out[qid] = { accepted: g.questState('u1', qid) === 'active' };
+        const s = spot(region); g.world.keepAround([s], 2);
+        p.x = s.x + 0.5; p.z = s.z + 0.5; p.y = g.world.surfaceY(s.x, s.z) + 1;
+        for (let i = 0; i < 6; i++) { const m = spawnMob(g, mob, p.x + 2, p.y, p.z); g.damageEntity(m, 999, p); }
+        g.tick(0.6);
+        out[qid].beforeLoot = g.questState('u1', qid);
+        g.giveItem('u1', loot, 3); g.tick(0.6);
+        out[qid].ready = g.questState('u1', qid);
+      }
+      return out;
+    """)
+    for qid, o in r.items():
+        assert o['accepted'] and o['ready'] == 'ready', (qid, r)
 
 
 if __name__ == '__main__':

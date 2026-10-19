@@ -31,4 +31,19 @@ export const QUESTS = {
     steps: [{ type: 'reach', region: 'nui-bang', text: 'Đến Núi Băng' }, { type: 'boss', boss: 'bang-de', text: 'Hạ Băng Đế' }],
     reward: { items: [{ item: 'xu', n: 200 }, { item: 'gem_sword', n: 1 }] },
   },
+  'dam-lay-nam': {
+    name: 'Nấm của đầm lầy', giver: 'truong-lang', requires: { quest: 'chao-lang' },
+    steps: [{ type: 'reach', region: 'dam-lay', text: 'Đến Đầm Lầy Mục' }, { type: 'kill', mob: 'ech-doc', n: 3, text: 'Hạ 3 con Ếch Độc' }, { type: 'collect', item: 'mushroom', n: 2, text: 'Hái 2 nấm phát sáng (rơi từ Nấm Lang Thang)' }], consume: true,
+    reward: { items: [{ item: 'stew', n: 2 }, { item: 'xu', n: 40 }] },
+  },
+  'than-lua': {
+    name: 'Than hồng của núi lửa', giver: 'thuong-nhan',
+    steps: [{ type: 'reach', region: 'hoa-son', text: 'Đến Núi Lửa Tro' }, { type: 'kill', mob: 'than-lan-nham', n: 3, text: 'Hạ 3 Thằn Lằn Nham Thạch' }, { type: 'collect', item: 'ember', n: 3, text: 'Thu 3 than hồng' }], consume: true,
+    reward: { items: [{ item: 'xu', n: 90 }, { item: 'crystal', n: 2 }] },
+  },
+  'pha-le-tim': {
+    name: 'Ánh tím của vực sâu', giver: 'an-si',
+    steps: [{ type: 'reach', region: 'vuc-pha-le', text: 'Đến Vực Pha Lê' }, { type: 'kill', mob: 'nhen-pha-le', n: 2, text: 'Hạ 2 Nhện Pha Lê' }, { type: 'collect', item: 'amethyst', n: 3, text: 'Thu 3 thạch anh tím' }], consume: true,
+    reward: { items: [{ item: 'amethyst_pick', n: 1 }, { item: 'xu', n: 110 }] },
+  },
 };

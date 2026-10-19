@@ -1,4 +1,4 @@
-// Atlas texture tự vẽ (pixel art 16x16, 8 cột x 3 hàng) từ nhiễu có seed, nên không phụ thuộc gói art ngoài.
+// Atlas texture tự vẽ (pixel art 16x16, 8 cột x 5 hàng) từ nhiễu có seed, nên không phụ thuộc gói art ngoài.
 import { hash } from '../world/noise.js';
 import { TILES, ATLAS_COLS, ATLAS_ROWS } from '../world/blocks.js';
 
@@ -32,6 +32,16 @@ const PAINT = {
   flower_red: (x, y, s) => { if (x === 7 && y > 7) return rgb(60, 130, 40); const d = Math.hypot(x - 7.5, y - 5.5); return d < 2.6 ? (d < 1 ? rgb(255, 214, 80) : rgb(222, 52, 56)) : rgb(0, 0, 0, 0); },
   flower_yellow: (x, y, s) => { if (x === 7 && y > 7) return rgb(60, 130, 40); const d = Math.hypot(x - 7.5, y - 5.5); return d < 2.6 ? (d < 1 ? rgb(190, 110, 30) : rgb(250, 220, 60)) : rgb(0, 0, 0, 0); },
   dead_bush: (x, y, s) => { const t = (x + y) % 5 === 0 || (x - y + 16) % 6 === 0; return t && y > 4 && y < 15 && x > 2 && x < 13 ? jitter(rgb(122, 86, 44), 18, s, x, y) : rgb(0, 0, 0, 0); },
+  glow_mushroom: (x, y, s) => { const cap = Math.hypot(x - 7.5, (y - 6) * 1.5) < 5 && y < 8; if (cap) return hash(s, x >> 1, y >> 1) < 0.25 ? rgb(255, 255, 210) : jitter(rgb(70, 230, 200), 20, s, x, y); return (x === 7 || x === 8) && y >= 8 && y < 15 ? jitter(rgb(215, 235, 225), 10, s, x, y) : rgb(0, 0, 0, 0); },
+  reed: (x, y, s) => { const stem = x === 4 || x === 8 || x === 11; const top = x === 8 ? 1 : x === 4 ? 4 : 3; if (stem && y >= top) return jitter(rgb(110, 140, 62), 18, s, x, y); return (x === 8 || x === 4) && y < top + 3 && y >= top - 1 && y < 5 ? rgb(112, 70, 36) : rgb(0, 0, 0, 0); },
+  ember_bloom: (x, y, s) => { if (x === 7 && y > 8) return rgb(70, 50, 40); const d = Math.hypot(x - 7.5, y - 6); return d < 4 ? (d < 1.6 ? rgb(255, 240, 150) : hash(s, x, y) < 0.5 ? rgb(255, 120, 30) : rgb(230, 60, 20)) : rgb(0, 0, 0, 0); },
+  crystal_bloom: (x, y, s) => { const spike = (cx, h) => Math.abs(x - cx) < (y - (15 - h)) * 0.35 + 0.6 && y >= 15 - h; if (spike(7.5, 11) || spike(3.5, 6) || spike(11.5, 8)) return jitter(y < 9 ? rgb(236, 200, 255) : rgb(170, 110, 230), 20, s, x, y); return rgb(0, 0, 0, 0); },
+  moss_top: (x, y, s) => jitter(rgb(70 + (hash(s, x >> 2, y >> 2) < 0.4 ? 14 : 0), 118, 62), 14, s, x, y),
+  moss_side: (x, y, s) => y < 4 + Math.floor(hash(s, x, 99) * 4) ? jitter(rgb(70, 118, 62), 14, s, x, y) : jitter(rgb(72, 56, 40), 12, s, x, y),
+  mud: (x, y, s) => jitter(rgb(72, 56, 40), 12, s, x, y),
+  ash: (x, y, s) => hash(s + 3, x >> 1, y >> 1) < 0.1 ? jitter(rgb(150, 70, 40), 20, s, x, y) : jitter(rgb(66, 64, 68), 12, s, x, y),
+  basalt: (x, y, s) => (x % 5 === 0) ? jitter(rgb(28, 28, 34), 8, s, x, y) : jitter(rgb(48, 48, 56), 10, s, x, y),
+  amethyst: (x, y, s) => { const f = hash(s, x >> 2, y >> 2); const base = f < 0.3 ? rgb(190, 130, 240) : f < 0.65 ? rgb(150, 90, 215) : rgb(112, 64, 178); return (x + y) % 6 === 0 ? rgb(240, 215, 255) : jitter(base, 14, s, x, y); },
   bench_top: (x, y, s) => (x % 5 === 0 || y % 5 === 0) ? rgb(96, 66, 36) : jitter(rgb(184, 138, 80), 10, s, x, y),
   bench_side: (x, y, s) => (y > 3 && y < 12 && x > 2 && x < 13 && ((x + y) % 4 === 0)) ? rgb(70, 70, 76) : jitter(rgb(150, 108, 60), 10, s, x, y),
 };

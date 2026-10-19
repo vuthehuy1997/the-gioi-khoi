@@ -8,6 +8,6 @@ export const SHOPS = {
   'thuong-nhan': {
     name: 'Quầy thương nhân',
     sells: [{ item: 'meat', price: 4 }, { item: 'herb', price: 10 }, { item: 'sand', price: 1 }, { item: 'crystal_pick', price: 60 }],
-    buys: [{ item: 'venom', price: 8 }, { item: 'cactus', price: 2 }, { item: 'shard', price: 8 }, { item: 'meat', price: 2 }, { item: 'wolf_heart', price: 60 }],
+    buys: [{ item: 'venom', price: 8 }, { item: 'cactus', price: 2 }, { item: 'shard', price: 8 }, { item: 'meat', price: 2 }, { item: 'wolf_heart', price: 60 }, { item: 'scale', price: 6 }, { item: 'ember', price: 9 }, { item: 'silk', price: 7 }, { item: 'amethyst', price: 6 }, { item: 'pelt', price: 4 }, { item: 'frog_leg', price: 2 }],
   },
 };

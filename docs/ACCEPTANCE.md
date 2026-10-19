@@ -50,3 +50,14 @@ Các mục nhỏ còn hoãn: xoá delta khi block trở về nguyên bản (gói
 | J7 | FOV/nhún/nghiêng camera, bộ điều chỉnh tầm nhìn | `test_visual_camera_fx_*` | ✅ |
 | J8 | Âm thanh, icon, dưới nước | `test_audio_icons_and_underwater_tint` | ✅ |
 | J9 | Mức chất lượng, F3, cập nhật lạc quan cho khách | `test_quality_presets_*` | ✅ |
+
+## Mở rộng nội dung (vòng 5: vùng và quái mới)
+
+| # | Tiêu chí | Test | Trạng thái |
+|---|---|---|---|
+| K1 | 3 vùng mới (Đầm Lầy Mục, Núi Lửa Tro, Vực Pha Lê) phủ ≥ 3% bản đồ ở nhiều seed, có block bề mặt, cây cỏ, độ cao riêng; vùng mới trong sa mạc/núi băng bị khóa theo boss | `test_new_regions_have_their_own_terrain_flora_and_gating` | ✅ |
+| K2 | 10 quái mới sinh đúng vùng (mỗi quái vừa sinh nằm trong vùng khai báo của nó) | `test_new_regions_spawn_their_own_mobs_and_old_ones_still_work` | ✅ |
+| K3 | Quái mới có giác quan, mô hình, bảng rơi hợp lệ; Linh Hỏa bắn đạn lửa | `test_new_mobs_have_senses_models_drops_and_a_fire_bolt` | ✅ |
+| K4 | Đá nham thạch gây bỏng; công thức dùng đồ rơi mới | `test_standing_on_magma_burns_and_new_recipes_use_new_loot` | ✅ |
+| K5 | 3 nhiệm vụ mới (đến vùng, hạ quái, nhặt đồ) hoàn thành được | `test_new_region_quests_need_visit_kills_and_loot_then_pay_out` | ✅ |
+
