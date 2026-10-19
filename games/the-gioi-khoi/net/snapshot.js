@@ -10,7 +10,7 @@ export function snapshotFor(g, uid) {
   for (const e of g.ents.values()) {
     if (me && Math.hypot(e.x - me.x, e.z - me.z) > INTEREST) continue;
     const o = { id: e.id, kind: e.kind, type: e.type || null, x: r2(e.x), y: r2(e.y), z: r2(e.z), yaw: r2(e.yaw || 0) };
-    if (e.kind === 'mob' || e.kind === 'boss') { o.hp = Math.round(e.hp); o.maxHp = e.maxHp; if (e.kind === 'boss') o.phase = e.phase; }
+    if (e.kind === 'mob' || e.kind === 'boss') { o.hp = Math.round(e.hp); o.maxHp = e.maxHp; if (e.kind === 'boss') o.phase = e.phase; else { o.st = e.state === 'chase' ? 2 : e.state === 'search' ? 3 : e.state === 'curious' || (e.alert || 0) > 0.15 ? 1 : 0; o.al = Math.round((e.alert || 0) * 10) / 10; } }
     else if (e.kind === 'npc') { o.npc = e.npc; o.name = e.name; }
     else if (e.kind === 'item') { o.item = e.item; o.n = e.n; }
     else if (e.kind === 'proj') { o.style = e.style || 'arrow'; o.yaw = r2(Math.atan2(-e.vx, -e.vz)); o.pit = r2(Math.atan2(e.vy, Math.hypot(e.vx, e.vz))); }

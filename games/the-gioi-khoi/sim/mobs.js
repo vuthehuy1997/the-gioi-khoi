@@ -3,6 +3,7 @@ import { MOBS } from '../content/mobs.js';
 import { moveBody } from './physics.js';
 import { isNight } from './daynight.js';
 import { B, isPlant } from '../world/blocks.js';
+import { perceive, turnToward, angDiff, yawTo } from './perception.js';
 import { WATER_LEVEL } from '../world/generate.js';
 
 export const MOB_CAP = 40, PER_PLAYER_CAP = 12;
@@ -27,7 +28,8 @@ function nearestPlayer(g, e, range) {
   return best && { p: best, d: bd };
 }
 
-function face(e, dx, dz) { e.yaw = Math.atan2(-dx, -dz); }
+// Hướng muốn quay (quái quay dần, không quay tức thì): chính hướng này quyết định nón nhìn.
+function face(e, dx, dz) { e.yawT = yawTo(dx, dz); }
 
 // Đi theo hướng (dx, dz) với tốc độ speed; nhảy nếu vướng bậc 1 block.
 function walk(g, e, dx, dz, speed) {
@@ -41,13 +43,17 @@ function walk(g, e, dx, dz, speed) {
   }
 }
 
-function wander(g, e, d, dt) {
+// Đứng yên và đảo mắt quanh (lục soát hoặc canh gác): quét qua lại để mở rộng vùng nhìn.
+function lookAround(g, e, amp = 1.3) { e.vx = 0; e.vz = 0; if (e.baseYaw === undefined) e.baseYaw = e.yaw; e.yawT = e.baseYaw + Math.sin(g.time * 1.6 + e.id) * amp; }
+
+function wander(g, e, d, dt, P) {
+  if (P && P.suspect && e.watch) { e.vx = 0; e.vz = 0; face(e, e.watch.x - e.x, e.watch.z - e.z); return; }   // nghi ngờ: dừng lại nhìn về phía đó
   e.wanderT -= dt;
   if (e.wanderT <= 0) {
     e.wanderT = 2 + g.rng() * 4;
-    if (g.rng() < 0.4) { e.wdx = 0; e.wdz = 0; } else { const a = g.rng() * Math.PI * 2; e.wdx = Math.cos(a); e.wdz = Math.sin(a); }
+    if (g.rng() < 0.4) { e.wdx = 0; e.wdz = 0; e.baseYaw = e.yaw; } else { const a = g.rng() * Math.PI * 2; e.wdx = Math.cos(a); e.wdz = Math.sin(a); }
   }
-  walk(g, e, e.wdx, e.wdz, d.speed * 0.3);
+  if (e.wdx || e.wdz) walk(g, e, e.wdx, e.wdz, d.speed * 0.3); else lookAround(g, e, 0.7);
 }
 
 function meleeAttack(g, e, d, t) {
@@ -65,34 +71,44 @@ function meleeAttack(g, e, d, t) {
 
 const AI = {
   'chase-melee'(g, e, d, dt) {
-    const t = nearestPlayer(g, e, d.sight);
-    if (!t) return wander(g, e, d, dt);
-    walk(g, e, t.p.x - e.x, t.p.z - e.z, d.speed);
-    meleeAttack(g, e, d, t);
+    const P = perceive(g, e, d, dt), t = P.target;
+    if (P.mode === 'chase' && t) {
+      if (P.seen) { walk(g, e, t.x - e.x, t.z - e.z, d.speed); meleeAttack(g, e, d, { p: t }); }
+      else if (P.goal) walk(g, e, P.goal.x - e.x, P.goal.z - e.z, d.speed * 0.9);        // mất dấu: tới chỗ thấy cuối
+    } else if (P.mode === 'curious' && P.goal) walk(g, e, P.goal.x - e.x, P.goal.z - e.z, d.speed * 0.55);
+    else if (P.mode === 'search') lookAround(g, e, 1.4);
+    else wander(g, e, d, dt, P);
   },
   'flee'(g, e, d, dt) {
-    const t = nearestPlayer(g, e, d.sight);
-    if (!t) return wander(g, e, d, dt);
-    walk(g, e, e.x - t.p.x, e.z - t.p.z, d.speed);
+    const P = perceive(g, e, d, dt), t = P.target;
+    if (P.mode === 'chase' && t) {
+      if (!P.seen && e.lostT > 2.5) { e.state = 'idle'; e.target = null; e.alert = 0; return wander(g, e, d, dt); }
+      const from = P.seen ? t : (P.goal || t); walk(g, e, e.x - from.x, e.z - from.z, d.speed);            // bỏ chạy khỏi kẻ đã thấy
+    } else if (P.mode === 'curious' && P.goal) walk(g, e, e.x - P.goal.x, e.z - P.goal.z, d.speed * 0.8);     // giật mình vì tiếng động: chạy ngược lại
+    else if (P.mode === 'search') lookAround(g, e, 1.6);
+    else wander(g, e, d, dt, P);
   },
   'ranged-kite'(g, e, d, dt) {
-    const t = nearestPlayer(g, e, d.sight);
-    if (!t) return wander(g, e, d, dt);
-    const dx = t.p.x - e.x, dz = t.p.z - e.z;
-    if (t.d < 6) walk(g, e, -dx, -dz, d.speed);
-    else if (t.d > 12) walk(g, e, dx, dz, d.speed);
-    else { walk(g, e, -dz, dx, d.speed * 0.5); face(e, dx, dz); }             // đi vòng quanh
-    if (t.d <= d.shot.range && g.time >= e.atkAt) {
-      e.atkAt = g.time + d.shot.cd;
-      shoot(g, e, t.p, d.shot);
-    }
+    const P = perceive(g, e, d, dt), t = P.target;
+    if (P.mode === 'chase' && t) {
+      if (P.seen) {
+        const dx = t.x - e.x, dz = t.z - e.z, dd = Math.hypot(dx, dz);
+        if (dd < 6) walk(g, e, -dx, -dz, d.speed); else if (dd > 12) walk(g, e, dx, dz, d.speed); else walk(g, e, -dz, dx, d.speed * 0.5);
+        face(e, dx, dz);                                                                  // vừa lùi/đi vòng vừa nhìn mục tiêu
+        const aligned = Math.abs(angDiff(yawTo(dx, dz), e.yaw)) < 0.5;
+        if (dd <= d.shot.range && aligned && g.time >= e.atkAt && g.world.lineClear(e.x, e.y + e.h * 0.8, e.z, t.x, t.y + 1.2, t.z)) { e.atkAt = g.time + d.shot.cd; shoot(g, e, t, d.shot); }
+      } else if (P.goal) walk(g, e, P.goal.x - e.x, P.goal.z - e.z, d.speed);              // không có đường ngắm: tiến lên tìm góc bắn
+    } else if (P.mode === 'curious' && P.goal) walk(g, e, P.goal.x - e.x, P.goal.z - e.z, d.speed * 0.55);
+    else if (P.mode === 'search') lookAround(g, e, 1.3);
+    else wander(g, e, d, dt, P);
   },
   'guard'(g, e, d, dt) {
-    const t = nearestPlayer(g, e, d.sight);
-    const fromHome = Math.hypot(e.x - e.home.x, e.z - e.home.z);
-    if (t && fromHome < d.leash) { walk(g, e, t.p.x - e.x, t.p.z - e.z, d.speed); meleeAttack(g, e, d, t); }
-    else if (fromHome > 1) walk(g, e, e.home.x - e.x, e.home.z - e.z, d.speed);
-    else { e.vx = 0; e.vz = 0; }
+    const P = perceive(g, e, d, dt), t = P.target, fromHome = Math.hypot(e.x - e.home.x, e.z - e.home.z);
+    if (P.mode === 'chase' && t && fromHome < d.leash) {
+      if (P.seen) { walk(g, e, t.x - e.x, t.z - e.z, d.speed); meleeAttack(g, e, d, { p: t }); }
+      else if (P.goal) walk(g, e, P.goal.x - e.x, P.goal.z - e.z, d.speed * 0.9);
+    } else if (fromHome > 1) { if (P.mode === 'chase') { e.state = 'idle'; e.target = null; e.alert = 0; } walk(g, e, e.home.x - e.x, e.home.z - e.z, d.speed); }
+    else lookAround(g, e, 1.0);                                                           // canh gác: đảo mắt quanh chỗ đứng
   },
 };
 
@@ -115,6 +131,7 @@ export function stepMobs(g, dt) {
     if (e.kind !== 'mob') continue;
     const d = MOBS[e.type];
     if (!e.frozen) AI[d.ai](g, e, d, dt); else { e.vx = 0; e.vz = 0; }
+    if (e.yawT !== undefined) e.yaw = turnToward(e.yaw, e.yawT, (d.turn || 5) * dt);
     if (e.kbT > 0) { e.kbT -= dt; e.vx = e.kbx; e.vz = e.kbz; }
     stepBody(g, e, dt);
     if (e.y < -10) g.ents.delete(e.id);

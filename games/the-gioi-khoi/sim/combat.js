@@ -7,8 +7,11 @@ import { B, isSolid } from '../world/blocks.js';
 
 export const HIT_REACH = 4.5, HIT_CD = 0.5, REGEN_AFTER = 8, REGEN_EVERY = 4;
 
+import { aggro } from './perception.js';
+
 export function hurtPlayer(g, p, dmg, src) {
   if (p.dead || dmg <= 0) return;
+  g.makeNoise(p.x, p.y, p.z, 9);
   p.hp = Math.max(0, p.hp - dmg); p.lastHurt = g.time; g.touch(p);
   g.emit(p.uid, { t: 'hurt', hp: p.hp, by: src ? src.id : null });
   if (p.hp <= 0) {
@@ -31,6 +34,7 @@ export function dropLoot(g, e) {
 export function damageEntity(g, e, dmg, src) {
   if (!g.ents.has(e.id) || e.hp <= 0) return false;
   e.hp -= dmg;
+  if (e.kind === 'mob') aggro(g, e, src);                              // bị đánh: biết ngay kẻ tấn công ở đâu, kể cả đánh lén từ sau
   g.emit(null, { t: 'hit', id: e.id, hp: Math.max(0, e.hp) });
   if (src && e.kind === 'mob') {                                      // đẩy lùi nhẹ
     const k = 4 / Math.max(0.1, Math.hypot(e.x - src.x, e.z - src.z));
@@ -54,6 +58,7 @@ export function actHit(g, p, a) {
   const h = g.held(p);
   const dmg = h && h.dmg ? h.dmg : HAND_DAMAGE;
   p.attackAt = g.time + HIT_CD;
+  g.makeNoise(p.x, p.y, p.z, 12);                                        // đánh nhau gây tiếng động
   g.damageEntity(e, dmg, p);
   return { ok: true };
 }

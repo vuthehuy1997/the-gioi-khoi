@@ -363,6 +363,8 @@ const mkArena = (opts = {}) => {
   return { g, p, cx, cz, y0 };
 };
 const dist = (a, b) => Math.hypot(a.x - b.x, a.z - b.z);
+const faceTo = (m, p) => { m.yaw = Math.atan2(-(p.x - m.x), -(p.z - m.z)); m.yawT = m.yaw; return m; };
+const faceAway = (m, p) => { m.yaw = Math.atan2(-(p.x - m.x), -(p.z - m.z)) + Math.PI; m.yawT = m.yaw; return m; };
 const run = (g, secs, dt = 0.05) => { for (let t = 0; t < secs; t += dt) g.tick(dt); };
 """
 
@@ -383,20 +385,20 @@ def test_mob_content_has_variety(pg):
 def test_mob_ai_chase_melee_closes_in_and_bites(pg):
     r = ev(pg, ARENA_JS + r"""
       const { g, p, cx, cz, y0 } = mkArena();
-      const m = spawnMob(g, 'soi-xam', cx + 0.5 + 10, y0 + 1, cz + 0.5);
+      const m = faceTo(spawnMob(g, 'soi-xam', cx + 0.5 + 10, y0 + 1, cz + 0.5), p);
       const d0 = dist(m, p); const hp0 = p.hp;
       run(g, 1.0); const d1 = dist(m, p);
       run(g, 6);
       return { d0, d1, hp0, hp1: p.hp, close: dist(m, p) };
     """)
-    assert r['d1'] < r['d0'] - 2 and r['hp1'] < r['hp0'] and r['close'] < 3, r
+    assert r['d1'] < r['d0'] - 0.8 and r['hp1'] < r['hp0'] and r['close'] < 3, r         # mất ~0,6 giây để nhận ra rồi mới lao tới
 
 
 @test
 def test_mob_ai_flee_runs_away(pg):
     r = ev(pg, ARENA_JS + r"""
       const { g, p, cx, cz, y0 } = mkArena();
-      const m = spawnMob(g, 'nai', cx + 0.5 + 4, y0 + 1, cz + 0.5);
+      const m = faceTo(spawnMob(g, 'nai', cx + 0.5 + 4, y0 + 1, cz + 0.5), p);
       const d0 = dist(m, p); run(g, 3);
       return { d0, d1: dist(m, p), hp: p.hp };
     """)
@@ -407,7 +409,7 @@ def test_mob_ai_flee_runs_away(pg):
 def test_mob_ai_ranged_keeps_distance_and_shoots(pg):
     r = ev(pg, ARENA_JS + r"""
       const { g, p, cx, cz, y0 } = mkArena();
-      const m = spawnMob(g, 'xuong-cung', cx + 0.5 + 4, y0 + 1, cz + 0.5);
+      const m = faceTo(spawnMob(g, 'xuong-cung', cx + 0.5 + 4, y0 + 1, cz + 0.5), p);
       let sawProj = false, minD = 99; const hp0 = p.hp;
       for (let t = 0; t < 8; t += 0.05) { g.tick(0.05); if ([...g.ents.values()].some(e => e.kind === 'proj')) sawProj = true; minD = Math.min(minD, dist(m, p)); p.x = cx + 0.5; p.z = cz + 0.5; }
       return { sawProj, hp0, hp1: p.hp, d: dist(m, p) };
@@ -422,7 +424,7 @@ def test_mob_ai_guard_holds_post_and_returns(pg):
       const m = spawnMob(g, 'tuong-da', cx + 0.5 + 12, y0 + 1, cz + 0.5);
       p.x = cx + 0.5 - 15;                                         // xa tầm nhìn
       run(g, 3); const idle = dist(m, { x: cx + 12.5, z: cz + 0.5 });
-      p.x = cx + 0.5 + 6; run(g, 2); const chased = dist(m, p) < 8 && Math.abs(m.x - (cx + 12.5)) > 0.5;
+      p.x = cx + 0.5 + 6; faceTo(m, p); run(g, 2); const chased = dist(m, p) < 8 && Math.abs(m.x - (cx + 12.5)) > 0.5;
       p.x = cx + 0.5 - 18; run(g, 12);                              // người chơi bỏ đi xa: tượng quay về vị trí gác
       return { idle, chased, back: dist(m, { x: cx + 12.5, z: cz + 0.5 }) };
     """)
@@ -1474,6 +1476,191 @@ def test_software_renderer_starts_in_low_quality_and_warns(pg, browser, base):
     r = pg.evaluate("({ software: __g.software, quality: __g.quality, level: __g.level, pr: __g.scene.renderer.getPixelRatio(), clouds: __g.sky.clouds.visible, toast: document.getElementById('toast').textContent, gl: __g.glInfo })")
     assert r['software'] and r['quality'] == 'low' and r['level'] == 1 and r['pr'] <= 0.75 and not r['clouds'], r
     assert 'CPU' in r['toast'] or 'phần mềm' in r['toast'], r
+
+
+# ---------------------------------------------------------------- P: giác quan của quái (tầm nhìn, che khuất, tiếng động, trí nhớ)
+
+SENSE_JS = ARENA_JS + """
+const wall = (g, cx, cz, y0, x, z0, z1, h = 4) => { for (let z = z0; z <= z1; z++) for (let y = 1; y <= h; y++) g.world.set(x, y0 + y, z, 1); };
+const unwall = (g, cx, cz, y0, x, z0, z1, h = 4) => { for (let z = z0; z <= z1; z++) for (let y = 1; y <= h; y++) g.world.set(x, y0 + y, z, 0); };
+const stateOf = (m) => m.state || 'idle';
+"""
+
+
+@test
+def test_mob_does_not_notice_player_outside_its_field_of_view(pg):
+    r = ev(pg, SENSE_JS + r"""
+      const { g, p, cx, cz, y0 } = mkArena();
+      const m = faceAway(spawnMob(g, 'soi-xam', cx + 0.5 + 7, y0 + 1, cz + 0.5), p);       // quay lưng, cách 7 block (trong tầm 18 nhưng ngoài nón nhìn, xa hơn vùng cảm nhận)
+      m.wdx = 0; m.wdz = 0; m.wanderT = 99;
+      const hp0 = p.hp; run(g, 3);
+      const behind = { state: stateOf(m), hp: p.hp === hp0, d: dist(m, p) };
+      faceTo(m, p); run(g, 2.5);
+      return { behind, front: stateOf(m), hpLost: hp0 - p.hp, closer: dist(m, p) < 6 };
+    """)
+    assert r['behind']['state'] in ('idle', 'curious') and r['behind']['hp'] and r['behind']['d'] > 5, r
+    assert r['front'] in ('chase', 'search') and r['closer'], r
+
+
+@test
+def test_mob_needs_line_of_sight_walls_and_trees_block_vision(pg):
+    r = ev(pg, SENSE_JS + r"""
+      const { g, p, cx, cz, y0 } = mkArena();
+      const m = faceTo(spawnMob(g, 'soi-xam', cx + 0.5 + 8, y0 + 1, cz + 0.5), p); m.wdx = 0; m.wdz = 0; m.wanderT = 99;
+      wall(g, cx, cz, y0, cx + 4, cz - 3, cz + 3);
+      run(g, 3); const blocked = { state: stateOf(m), alert: m.alert || 0, hp: p.hp };
+      unwall(g, cx, cz, y0, cx + 4, cz - 3, cz + 3);
+      faceTo(m, p); m.alert = 0; m.state = 'idle'; run(g, 3);
+      return { blocked, open: stateOf(m), seesNow: g.world.lineClear ? g.world.lineClear(m.x, m.y + 1, m.z, p.x, p.y + 1.5, p.z) : null };
+    """)
+    assert r['blocked']['state'] in ('idle', 'curious') and r['blocked']['alert'] < 0.5 and r['blocked']['hp'] == 20, r
+    assert r['open'] in ('chase', 'search') and r['seesNow'] is True, r
+
+
+@test
+def test_noticing_takes_time_alert_meter_and_snapshot_codes(pg):
+    r = ev(pg, SENSE_JS + r"""
+      const { snapshotFor } = await imp('net/snapshot.js');
+      const { g, p, cx, cz, y0 } = mkArena();
+      const m = faceTo(spawnMob(g, 'soi-xam', cx + 0.5 + 15, y0 + 1, cz + 0.5), p); m.wdx = 0; m.wdz = 0; m.wanderT = 99;
+      run(g, 0.25); const early = { state: stateOf(m), alert: m.alert || 0 };
+      const midSnap = snapshotFor(g, 'u1').es.find(e => e.id === m.id);
+      let t = 0; while (stateOf(m) !== 'chase' && t < 6) { run(g, 0.1); t += 0.1; }
+      const snap = snapshotFor(g, 'u1').es.find(e => e.id === m.id);
+      return { early, mid: midSnap.st, noticed: t, chaseSt: snap.st, alertField: typeof snap.al };
+    """)
+    assert r['early']['state'] != 'chase' and r['early']['alert'] < 0.9, r             # xa 15 block: không nhận ra tức thì
+    assert 0.3 < r['noticed'] < 4.5 and r['chaseSt'] == 2 and r['alertField'] == 'number' and r['mid'] in (0, 1), r
+
+
+@test
+def test_sneaking_shrinks_detection_range_and_sprinting_enlarges_it(pg):
+    r = ev(pg, SENSE_JS + r"""
+      const res = {};
+      for (const mode of ['stand', 'sneak', 'sprint']) {
+        const { g, p, cx, cz, y0 } = mkArena();
+        p.sneak = mode === 'sneak'; p.sprint = mode === 'sprint';
+        const m = faceTo(spawnMob(g, 'soi-xam', cx + 0.5 + 14, y0 + 1, cz + 0.5), p); m.wdx = 0; m.wdz = 0; m.wanderT = 99;   // 14 block: giữa 9 (rón rén) và 18 (đứng) và 24 (chạy)
+        run(g, 5); res[mode] = stateOf(m) === 'chase' || stateOf(m) === 'search';
+      }
+      const S1 = mkArena(); S1.p.sprint = true;
+      const far = faceTo(spawnMob(S1.g, 'soi-xam', S1.cx + 0.5 + 19, S1.y0 + 1, S1.cz + 0.5), S1.p); far.wdx = 0; far.wdz = 0; far.wanderT = 99; run(S1.g, 6);
+      const S2 = mkArena();                                                          // cùng khoảng cách 19 nhưng đứng thường: ngoài tầm 18 nên không thấy
+      const far2 = faceTo(spawnMob(S2.g, 'soi-xam', S2.cx + 0.5 + 19, S2.y0 + 1, S2.cz + 0.5), S2.p); far2.wdx = 0; far2.wdz = 0; far2.wanderT = 99; run(S2.g, 6);
+      return { ...res, farSprint: stateOf(far) === 'chase' || stateOf(far) === 'search', farStand: stateOf(far2) === 'chase' || stateOf(far2) === 'search' };
+    """)
+    assert r['stand'] and not r['sneak'] and r['sprint'] and r['farSprint'] and not r['farStand'], r
+
+
+@test
+def test_noise_makes_mobs_investigate_and_sneaking_is_silent(pg):
+    r = ev(pg, SENSE_JS + r"""
+      const { g, p, cx, cz, y0 } = mkArena();
+      const m = faceAway(spawnMob(g, 'soi-xam', cx + 0.5 - 9, y0 + 1, cz + 0.5 + 6), p); m.wdx = 0; m.wdz = 0; m.wanderT = 99;
+      // đào đá cách ~12 block: tiếng động tới tai sói
+      p.inv.fill(null); p.inv[0] = { id: 'wood_pick', n: 1 }; p.sel = 0;
+      g.world.set(cx + 1, y0, cz, 1); g.world.set(cx + 1, y0 + 1, cz, 1);
+      g.act('u1', { t: 'dig', x: cx + 1, y: y0 + 1, z: cz }); g.tick(2); g.act('u1', { t: 'break', x: cx + 1, y: y0 + 1, z: cz });
+      const heard = { inv: !!m.investigate, state: stateOf(m), alert: m.alert || 0 };
+      const d0 = Math.hypot(m.x - (cx + 1.5), m.z - (cz + 0.5)); run(g, 2.5); const d1 = Math.hypot(m.x - (cx + 1.5), m.z - (cz + 0.5));
+      // người chơi rón rén đi lại: không gây tiếng
+      const B = mkArena(); B.p.sneak = true;
+      const m2 = faceAway(spawnMob(B.g, 'soi-xam', B.cx + 0.5 - 9, B.y0 + 1, B.cz + 0.5 + 6), B.p); m2.wdx = 0; m2.wdz = 0; m2.wanderT = 99;
+      for (let i = 0; i < 40; i++) { B.p.x += 0.1; B.g.applyState('u1', { x: B.p.x, y: B.p.y, z: B.p.z, vx: 2, vy: 0, vz: 0, yaw: 0, pitch: 0, sneak: true, sprint: false, seq: 0 }); B.g.tick(0.05); }
+      return { heard, approached: d1 < d0 - 1, sneakQuiet: !m2.investigate };
+    """)
+    assert r['heard']['inv'] and r['heard']['state'] in ('curious', 'idle') and r['approached'] and r['sneakQuiet'], r
+
+
+@test
+def test_mob_loses_track_searches_last_seen_then_gives_up(pg):
+    r = ev(pg, SENSE_JS + r"""
+      const { g, p, cx, cz, y0 } = mkArena();
+      const m = faceTo(spawnMob(g, 'soi-xam', cx + 0.5 + 9, y0 + 1, cz + 0.5), p);
+      run(g, 3); const chasing = stateOf(m) === 'chase';
+      // người chơi biến mất sau bức tường dày (vẫn trong tầm nhưng bị che) và đứng yên
+      wall(g, cx, cz, y0, cx - 5, cz - 8, cz + 8, 6); wall(g, cx, cz, y0, cx - 6, cz - 8, cz + 8, 6);
+      p.x = cx + 0.5 - 12; const seen = { x: m.x, z: m.z };
+      let t = 0, sawSearch = false; while (t < 20) { run(g, 0.25); t += 0.25; if (stateOf(m) === 'search') sawSearch = true; if (stateOf(m) === 'idle') break; }
+      return { chasing, sawSearch, final: stateOf(m), gaveUpAfter: t, target: m.target || null };
+    """)
+    assert r['chasing'] and r['sawSearch'] and r['final'] == 'idle' and r['gaveUpAfter'] < 19 and not r['target'], r
+
+
+@test
+def test_hit_from_behind_makes_mob_turn_and_chase_and_pack_joins(pg):
+    r = ev(pg, SENSE_JS + r"""
+      const { g, p, cx, cz, y0 } = mkArena();
+      p.inv.fill(null); p.inv[0] = { id: 'stone_sword', n: 1 }; p.sel = 0;
+      const a = faceAway(spawnMob(g, 'soi-xam', cx + 0.5 + 2.5, y0 + 1, cz + 0.5), p); a.wdx = 0; a.wdz = 0; a.wanderT = 99; a.hp = a.maxHp = 100;
+      const b = faceAway(spawnMob(g, 'soi-xam', cx + 0.5 + 9, y0 + 1, cz + 0.5 + 5), p); b.wdx = 0; b.wdz = 0; b.wanderT = 99;      // đồng bọn ở xa phía sau lưng
+      const far = faceAway(spawnMob(g, 'nai', cx + 0.5 + 9, y0 + 1, cz + 0.5 - 6), p);
+      const before = stateOf(a);
+      g.act('u1', { t: 'hit', id: a.id });
+      const after = { state: stateOf(a), target: a.target };
+      run(g, 1.2);
+      const facing = Math.abs(((a.yaw - Math.atan2(-(p.x - a.x), -(p.z - a.z))) + Math.PI * 3) % (Math.PI * 2) - Math.PI);
+      return { before, after, facing, packJoined: !!b.investigate || stateOf(b) !== 'idle', otherSpecies: !far.investigate && stateOf(far) === 'idle' };
+    """)
+    assert r['before'] == 'idle' and r['after']['state'] == 'chase' and r['after']['target'] == 'u1' and r['facing'] < 0.8, r
+    assert r['packJoined'], r
+
+
+@test
+def test_ranged_mob_needs_line_of_sight_and_facing_to_shoot(pg):
+    r = ev(pg, SENSE_JS + r"""
+      const { g, p, cx, cz, y0 } = mkArena();
+      const m = faceTo(spawnMob(g, 'xuong-cung', cx + 0.5 + 9, y0 + 1, cz + 0.5), p);
+      wall(g, cx, cz, y0, cx + 4, cz - 4, cz + 4, 5); wall(g, cx, cz, y0, cx + 5, cz - 4, cz + 4, 5);
+      p.hp = p.maxHp = 9999; let shots = 0;
+      for (let t = 0; t < 5; t += 0.05) { g.tick(0.05); shots = Math.max(shots, [...g.ents.values()].filter(e => e.kind === 'proj').length); }
+      const blocked = { shots, hp: p.hp === 9999 };
+      unwall(g, cx, cz, y0, cx + 4, cz - 4, cz + 4, 5); unwall(g, cx, cz, y0, cx + 5, cz - 4, cz + 4, 5);
+      faceTo(m, p); let shots2 = 0; for (let t = 0; t < 8; t += 0.05) { g.tick(0.05); shots2 = Math.max(shots2, [...g.ents.values()].filter(e => e.kind === 'proj').length); p.x = cx + 0.5; }
+      return { blocked, shots2 };
+    """)
+    assert r['blocked']['shots'] == 0 and r['blocked']['hp'] and r['shots2'] >= 1, r
+
+
+@test
+def test_prey_deer_is_startled_by_noise_but_a_sneaker_can_approach(pg):
+    r = ev(pg, SENSE_JS + r"""
+      // đứng ở 8 block nhưng nai không nhìn thấy (quay lưng): chạy nước rút tạo tiếng động -> nai bị giật mình và bỏ chạy
+      const A = mkArena(); const d1 = faceAway(spawnMob(A.g, 'nai', A.cx + 0.5 + 8, A.y0 + 1, A.cz + 0.5), A.p); d1.wdx = 0; d1.wdz = 0; d1.wanderT = 99;
+      for (let i = 0; i < 40; i++) { A.g.applyState('u1', { x: A.p.x, y: A.p.y, z: A.p.z, vx: 0, vy: 0, vz: 0, yaw: 0, pitch: 0, sprint: true, sneak: false, seq: 0 }); A.g.tick(0.05); }
+      const startled = { inv: !!d1.investigate || stateOf(d1) !== 'idle', away: dist(d1, A.p) };
+      // rón rén ở 7 block (ngoài vùng cảm nhận 4, trong nửa tầm nhìn 6? deer sight 12 -> 6 khi rón rén): không bị phát hiện
+      const B = mkArena(); B.p.sneak = true;
+      const d2 = faceTo(spawnMob(B.g, 'nai', B.cx + 0.5 + 8, B.y0 + 1, B.cz + 0.5), B.p); d2.wdx = 0; d2.wdz = 0; d2.wanderT = 99;
+      run(B.g, 4);
+      return { startled, sneakUnseen: stateOf(d2) === 'idle', sneakDist: dist(d2, B.p) };
+    """)
+    assert r['startled']['inv'] and r['sneakUnseen'] and r['sneakDist'] > 7, r
+
+
+@test
+def test_alert_indicators_and_sneak_key_reach_the_host(pg, browser, base):
+    _open_game(pg, base)
+    r = pg.evaluate("""async () => {
+      const g = __g, v = g.ents, out = {};
+      const e = (st, al) => [{ key: 'e:700', kind: 'mob', type: 'soi-xam', id: 700, x: g.local.x + 3, y: g.local.y, z: g.local.z - 3, yaw: 0, hp: 10, maxHp: 16, st, al }];
+      const ind = () => { const o = v.group.children.find(c => c.children && c.children.some(x => x.isSprite && x.renderOrder === 11)); return o ? o.children.find(x => x.renderOrder === 11) : null; };
+      v.update(e(0, 0), 0, 0.016, [], g.scene.camera.position); out.idle = !ind() || !ind().visible;
+      v.update(e(1, 0.5), 0.1, 0.016, [], g.scene.camera.position); const a = ind(); out.curious = !!a && a.visible && a.material.opacity > 0.3 && a.material.opacity < 1;
+      v.update(e(2, 1), 0.2, 0.016, [], g.scene.camera.position); const b = ind(); out.chase = !!b && b.visible && b.material.opacity === 1 && b.material !== a.material;
+      v.update(e(3, 0.5), 0.3, 0.016, [], g.scene.camera.position); out.search = !!ind() && ind().visible;
+      const far = [{ ...e(2, 1)[0], x: g.local.x + 90 }]; v.update(far, 0.4, 0.016, [], g.scene.camera.position); out.hiddenFar = !ind() || !ind().visible;
+      return out;
+    }""")
+    assert r == {'idle': True, 'curious': True, 'chase': True, 'search': True, 'hiddenFar': True}, r
+    # phím C: rón rén -> máy chủ biết, camera hạ thấp, hiện nhãn; thả ra thì trở lại
+    y0 = pg.evaluate("__g.scene.camera.position.y - __g.local.y")
+    pg.keyboard.down('KeyC'); pg.wait_for_timeout(500)
+    snk = pg.evaluate("({ host: __g.game.player(__g.S.uid).sneak, label: !document.getElementById('sneak').hidden, dy: __g.scene.camera.position.y - __g.local.y })")
+    pg.keyboard.up('KeyC'); pg.wait_for_timeout(500)
+    back = pg.evaluate("({ host: __g.game.player(__g.S.uid).sneak, label: !document.getElementById('sneak').hidden })")
+    assert snk['host'] is True and snk['label'] and snk['dy'] < y0 - 0.15, (y0, snk)
+    assert back['host'] is False and not back['label'], back
 
 
 

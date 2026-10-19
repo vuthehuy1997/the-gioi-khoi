@@ -16,6 +16,7 @@ import { buildStructures, ensureNpcs } from './structures.js';
 import { BOSSES } from '../content/bosses.js';
 import { REGIONS } from '../content/regions.js';
 import { breakTimeFor, canHarvest, nearBench } from './rules.js';
+import { makeNoise } from './perception.js';
 
 export const REACH = 6.5, EYE = 1.62, MAX_HP = 20, RESPAWN_S = 3;
 
@@ -147,6 +148,7 @@ export class Game {
     const hs = p.inv[p.sel];
     this.setBlock(a.x, a.y, a.z, B.AIR);
     p.dig = null;
+    this.makeNoise(a.x + 0.5, a.y + 0.5, a.z + 0.5, def.tool === 'pick' ? 14 : def.tool === 'axe' ? 12 : id === B.LEAVES || isPlant(id) ? 4 : 7);
     if (canHarvest(id, hs ? hs.id : null) && def.drop) this.collect(p, def.drop, 1, a.x + 0.5, a.y + 0.5, a.z + 0.5);
     this.onBlockBroken?.(p, id);
     return { ok: true };
@@ -180,6 +182,7 @@ export class Game {
     if (!nb) return { ok: false, reason: 'floating' };
     if (this.occupied(a.x, a.y, a.z)) return { ok: false, reason: 'blocked' };
     this.setBlock(a.x, a.y, a.z, BLOCK_BY_NAME[it.block].id);
+    this.makeNoise(a.x + 0.5, a.y + 0.5, a.z + 0.5, 7);
     removeItem(p.inv, s.id, 1); this.touch(p);
     return { ok: true };
   }
@@ -215,11 +218,14 @@ export class Game {
     if ((st.seq | 0) < p.tpSeq) return false;                                                 // gói cũ gửi trước lần dịch chuyển gần nhất
     if (dist > 14 * dt + 3) { this.teleportPlayer(p, p.x, p.y, p.z); return false; }          // di chuyển quá nhanh: kéo về
     p.x = st.x; p.y = st.y; p.z = st.z; p.yaw = st.yaw; p.pitch = st.pitch;
+    p.sneak = st.sneak === true; p.sprint = st.sprint === true && !p.sneak;
+    if (p.sprint && this.time >= (p.nextStepNoise || 0)) { p.nextStepNoise = this.time + 0.6; this.makeNoise(p.x, p.y, p.z, 8); }          // chạy nước rút ồn
     p.vx = st.vx || 0; p.vy = st.vy || 0; p.vz = st.vz || 0;
     p.lastState = this.time;
     return true;
   }
 
+  makeNoise(x, y, z, radius) { makeNoise(this, x, y, z, radius); }
   hurtPlayer(p, dmg, src) { combat.hurtPlayer(this, typeof p === 'string' ? this.player(p) : p, dmg, src); }
   damageEntity(e, dmg, src) { return combat.damageEntity(this, e, dmg, src); }
 

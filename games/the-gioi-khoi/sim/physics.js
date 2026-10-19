@@ -1,7 +1,7 @@
 // Vật lý hộp (AABB) so với lưới block. Không phụ thuộc DOM hay mạng.
 import { B, isSolid } from '../world/blocks.js';
 
-export const GRAVITY = 25, JUMP_V = 7.8, WALK = 4.3, SPRINT = 5.6;
+export const GRAVITY = 25, JUMP_V = 7.8, WALK = 4.3, SPRINT = 5.6, SNEAK = 1.7;
 
 export function makeBody(x, y, z, w = 0.6, h = 1.8) {
   return { x, y, z, vx: 0, vy: 0, vz: 0, w, h, onGround: false, inWater: false };
@@ -51,7 +51,7 @@ export function stepPlayer(world, p, input, dt) {
   let fx = input.fx || 0, fz = input.fz || 0;
   const len = Math.hypot(fx, fz);
   if (len > 1) { fx /= len; fz /= len; }
-  const speed = (input.sprint ? SPRINT : WALK) * (water ? 0.6 : 1);
+  const speed = (input.sneak ? SNEAK : input.sprint ? SPRINT : WALK) * (water ? 0.6 : 1);
   const s = Math.sin(p.yaw || 0), c = Math.cos(p.yaw || 0);
   const tvx = (c * fx - s * fz) * speed, tvz = (-s * fx - c * fz) * speed;
   const acc = (p.onGround ? 60 : 14) * dt;

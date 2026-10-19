@@ -241,7 +241,7 @@ $('btn-respawn').onclick = () => S.act({ t: 'respawn' });
 
 function inputNow() {
   return { fx: (keys.has('KeyD') ? 1 : 0) - (keys.has('KeyA') ? 1 : 0), fz: (keys.has('KeyW') ? 1 : 0) - (keys.has('KeyS') ? 1 : 0),
-    jump: keys.has('Space'), sprint: keys.has('ShiftLeft') || keys.has('ShiftRight') };
+    jump: keys.has('Space'), sprint: keys.has('ShiftLeft') || keys.has('ShiftRight'), sneak: keys.has('KeyC') };
 }
 
 // ---------------------------------------------------------------- nhắm và tương tác
@@ -315,7 +315,7 @@ function interpolate(now) {
   interp = { ps: lerpList(a.snap.ps, b.snap.ps, 'uid'), es: lerpList(a.snap.es, b.snap.es, 'id') };
 }
 
-let last = performance.now(), nowS = 0, lastVy = 0, dbgT = 0;
+let last = performance.now(), nowS = 0, lastVy = 0, dbgT = 0, sneakK = 0;
 function debugText() {
   const i = scene.renderer.info, avg = rawDts.length ? rawDts.reduce((a, b) => a + b, 0) / rawDts.length * 1000 : 0;
   return [`FPS ${avg ? (1000 / avg).toFixed(0) : '-'}  (khung ${avg.toFixed(1)} ms, JS ${perf.n ? (perf.sum / perf.n).toFixed(1) : '-'} ms)`,
@@ -339,12 +339,13 @@ function frameBody(dt) {
   if (!S) { scene.render(); return; }
   const y = S.you, ui = inUi();
   if (!y.dead) stepPlayer(S.world, local, ui ? {} : inputNow(), dt);
-  S.sendState({ x: local.x, y: local.y, z: local.z, vx: local.vx, vy: local.vy, vz: local.vz, yaw: local.yaw, pitch: local.pitch });
   const hs = Math.hypot(local.vx, local.vz), inp = ui ? {} : inputNow(), moving = !y.dead && hs > 0.8 && (inp.fx || inp.fz);
+  S.sendState({ x: local.x, y: local.y, z: local.z, vx: local.vx, vy: local.vy, vz: local.vz, yaw: local.yaw, pitch: local.pitch, sneak: !!inp.sneak, sprint: !!(inp.sprint && moving && !inp.sneak) });
+  sneakK += ((inp.sneak ? 1 : 0) - sneakK) * Math.min(1, dt * 12); $('sneak').hidden = !inp.sneak;
   stepCameraFx(camFx, dt, { moving, sprint: !!inp.sprint, onGround: local.onGround, speed: hs });
   const bobY = Math.abs(Math.sin(camFx.bob)) * 0.05 * camFx.bobAmp;
   if (Math.abs(scene.camera.fov - camFx.fov) > 0.05) { scene.camera.fov = camFx.fov; scene.camera.updateProjectionMatrix(); }
-  scene.camera.position.set(local.x, local.y + 1.62 - bobY, local.z);
+  scene.camera.position.set(local.x, local.y + 1.62 - bobY - sneakK * 0.3, local.z);
   scene.camera.rotation.set(local.pitch, local.yaw, camFx.tilt + Math.sin(camFx.bob) * 0.006 * camFx.bobAmp);
   if (moving && local.onGround) { stepDist += hs * dt; if (stepDist > 2.1) { stepDist = 0; sfx.play('step', { block: S.world.get(local.x, local.y - 0.5, local.z) }); } }
   if (local.onGround && !wasOnGround && local.vy > -1 && lastVy < -9) sfx.play('land');

@@ -9,7 +9,7 @@ const MAX_SHADOWS = 128;
 export function createEntityView(scene, { iconCanvas = null } = {}) {
   const T = scene.THREE, group = new T.Group(); scene.scene.add(group);
   const lib = createModelLib(T);
-  const objs = new Map(), tagMats = new Map(), rings = [], itemMats = new Map(), dead = new Set();
+  const objs = new Map(), tagMats = new Map(), rings = [], itemMats = new Map(), dead = new Set(), indMats = {};
   let tagsShown = 0;
 
   // bóng: một InstancedMesh cho tất cả
@@ -34,6 +34,18 @@ export function createEntityView(scene, { iconCanvas = null } = {}) {
     if (!text) return null;
     const s = new T.Sprite(tagMat(text, boss ? '#ffd35a' : e.kind === 'npc' ? '#9fe3ff' : e.kind === 'player' ? '#ffffff' : '#ffb0a8'));
     s.scale.set(boss ? 3.6 : 2.4, boss ? 0.68 : 0.45, 1); s.position.y = h + 0.5; s.renderOrder = 10; s.visible = false; return s;
+  }
+
+  // Dấu cảnh giác trên đầu quái: ? vàng (nghi ngờ, đậm dần theo thanh cảnh giác), ! đỏ (đã thấy, đang đuổi), ? cam (đang lục soát).
+  function indicator(kind) {
+    if (!indMats[kind]) {
+      const c = document.createElement('canvas'); c.width = c.height = 64;
+      const x = c.getContext('2d'); x.font = 'bold 56px sans-serif'; x.textAlign = 'center'; x.textBaseline = 'middle'; x.lineWidth = 7; x.strokeStyle = '#000d';
+      const ch = kind === 'chase' ? '!' : '?'; x.strokeText(ch, 32, 34); x.fillStyle = kind === 'chase' ? '#ff3b30' : kind === 'search' ? '#ff9f0a' : '#ffd60a'; x.fillText(ch, 32, 34);
+      const t = new T.CanvasTexture(c); t.colorSpace = T.SRGBColorSpace;
+      indMats[kind] = new T.SpriteMaterial({ map: t, depthTest: false, transparent: true });
+    }
+    const s = new T.Sprite(indMats[kind].clone()); s.renderOrder = 11; s.scale.set(0.6, 0.6, 1); return s;
   }
 
   function itemObject(e) {
@@ -100,6 +112,15 @@ export function createEntityView(scene, { iconCanvas = null } = {}) {
           o.hp = e.hp;
           if (o.flash > 0) { o.flash -= dt; setFlash(o, true); } else setFlash(o, false);
           if (o.swing > 0) o.swing -= dt;
+          if (e.kind === 'mob') {                                                       // dấu cảnh giác
+            const st = e.st | 0, want = st === 2 ? 'chase' : st === 3 ? 'search' : st === 1 ? 'curious' : null;
+            if (want && dist < 30) {
+              if (!o.ind || o.indKind !== want) { if (o.ind) g.remove(o.ind); o.ind = indicator(want); o.indKind = want; g.add(o.ind); }
+              o.ind.position.y = o.h + 1.15 + Math.sin(t * 7) * (st === 2 ? 0.08 : 0.03);
+              o.ind.material.opacity = st === 1 ? 0.3 + 0.7 * Math.min(1, (e.al || 0)) : 1; o.ind.visible = true;
+              const pulse = st === 2 ? 0.62 + Math.sin(t * 12) * 0.06 : 0.55; o.ind.scale.set(pulse, pulse, 1);
+            } else if (o.ind) o.ind.visible = false;
+          }
           if (o.tag) { const near = e.kind === 'boss' ? dist < 70 : e.kind === 'mob' ? dist < 16 : dist < 30; o.tag.visible = near && tagsShown < 12; if (o.tag.visible) tagsShown++; }
         }
         if (o.radius && g.visible && sh < MAX_SHADOWS) { ps.set(e.x, e.y + 0.03, e.z); sc.set(o.radius, 1, o.radius); mtx.compose(ps, q, sc); shadows.setMatrixAt(sh++, mtx); }

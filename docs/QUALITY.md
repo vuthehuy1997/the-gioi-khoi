@@ -67,3 +67,17 @@ Phản hồi: vẫn lag, quái chỉ là các khối màu. Việc làm:
 | `test_entity_view_draw_calls_dying_and_cpu_budget` | 48 thực thể ≤ ~1 lệnh vẽ/thực thể, cập nhật < 2,5 ms/khung, hiệu ứng chết |
 | `test_software_renderer_starts_in_low_quality_and_warns` | renderer phần mềm → mức Thấp + thông báo |
 | `test_visual_camera_fx_fov_bob_tilt_and_governor` | bộ điều chỉnh mức: hạ tới sàn, nâng tới trần, không vượt trần |
+
+## Vòng 4 — quái nhìn và nghe thay vì chỉ "lại gần là đánh"
+
+Vấn đề: quái chọn mục tiêu theo khoảng cách, không cần nhìn thấy. Giờ mỗi quái có giác quan (`sim/perception.js`):
+
+- **Nhìn:** nón nhìn (`fov`) theo hướng quái đang quay mặt (quay đầu dần, không tức thì), tầm nhìn (`sight`) nhỏ đi khi người chơi rón rén (×0,5) hoặc ngụp nước (×0,4), lớn lên khi chạy nước rút (×1,35); thú ban ngày kém nhìn ban đêm; vùng cảm nhận sát người (`close`) không cần quay mặt nhưng vẫn cần không bị che.
+- **Che khuất:** đường ngắm duyệt từng ô (`World.lineClear`): block đặc và lá che tầm nhìn; cung thủ chỉ bắn khi có đường ngắm và đã quay mặt về mục tiêu.
+- **Phát hiện mất thời gian:** thanh cảnh giác tăng theo khoảng cách (gần ~0,2 giây, xa 1–2 giây); client hiện `?` (nghi ngờ, đậm dần), `!` (đang đuổi), `?` cam (lục soát) trên đầu quái.
+- **Nghe:** đào (7–14 block theo chất liệu), đặt (7), đánh nhau (12), bị thương (9), chạy nước rút (8) làm quái trong tầm nghe (nhân hệ số thính giác của loài) đi tới điểm phát tiếng; rón rén không gây tiếng.
+- **Nhớ:** mất dấu thì tới chỗ thấy cuối, lục soát 5 giây rồi trở về; bị đánh biết ngay kẻ tấn công kể cả từ sau lưng.
+- **Theo loài:** sói (nón 120°, tầm 18, tru gọi đồng bọn), nai (nón 220°, rất thính, hoảng sợ vì tiếng động), xác sống (nón 90°, tai nghễnh ngãng), bọ cạp (mắt kém tầm 8 nhưng cảm nhận rung động nền), xương cung thủ (tầm 22, nón 90°), gấu băng, ma băng (nón 140°, điếc), tượng đá (canh một chỗ, đảo mắt).
+
+Test: `test_mob_does_not_notice_player_outside_its_field_of_view`, `test_mob_needs_line_of_sight_*`, `test_noticing_takes_time_*`, `test_sneaking_shrinks_detection_range_*`, `test_noise_makes_mobs_investigate_*`, `test_mob_loses_track_searches_*`, `test_hit_from_behind_*` (kèm đồng bọn), `test_ranged_mob_needs_line_of_sight_*`, `test_prey_deer_*`, `test_alert_indicators_and_sneak_key_*`.
+Lỗi tìm ra khi viết test: cung thủ vừa lùi vừa quay lưng nên mất người chơi khỏi nón nhìn rồi lại tiến lên (vòng rung); đã sửa bằng nón nhìn rộng hơn khi đang theo dõi mục tiêu và cho cung thủ vừa lùi vừa nhìn.

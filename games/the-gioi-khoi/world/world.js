@@ -1,7 +1,7 @@
 // Thế giới: kho chunk nạp lười từ seed, cộng "delta" (các ô người chơi đã sửa) để lưu và đồng bộ.
 import { generateChunk, CHUNK_W, CHUNK_H, WATER_LEVEL, idx } from './generate.js';
 import { regionAt } from './regions.js';
-import { B, isSolid, isPlant } from './blocks.js';
+import { B, BLOCKS, isSolid, isPlant } from './blocks.js';
 
 const key = (cx, cz) => cx + ',' + cz;                 // khoá chuỗi: dùng cho delta/dirty (ít gọi)
 const nkey = (cx, cz) => ((cx & 0xffff) << 16) | (cz & 0xffff);   // khoá số cho kho chunk (gọi rất nhiều lần)
@@ -161,6 +161,24 @@ export class World {
       else { z += sz; t = tz; tz += dz; n = { x: 0, y: 0, z: -sz }; }
     }
     return null;
+  }
+
+  // Đường thẳng từ A tới B có thông không (không bị block đặc hoặc lá che)? Dùng cho tầm nhìn của quái.
+  lineClear(ax, ay, az, bx, by, bz) {
+    let x = Math.floor(ax), y = Math.floor(ay), z = Math.floor(az);
+    const ex = Math.floor(bx), ey = Math.floor(by), ez = Math.floor(bz);
+    const dx = bx - ax, dy = by - ay, dz = bz - az;
+    const sx = dx > 0 ? 1 : -1, sy = dy > 0 ? 1 : -1, sz = dz > 0 ? 1 : -1;
+    const tdx = dx === 0 ? Infinity : Math.abs(1 / dx), tdy = dy === 0 ? Infinity : Math.abs(1 / dy), tdz = dz === 0 ? Infinity : Math.abs(1 / dz);
+    let tx = dx === 0 ? Infinity : (dx > 0 ? x + 1 - ax : ax - x) * tdx, ty = dy === 0 ? Infinity : (dy > 0 ? y + 1 - ay : ay - y) * tdy, tz = dz === 0 ? Infinity : (dz > 0 ? z + 1 - az : az - z) * tdz;
+    for (let i = 0; i < 256; i++) {
+      if (x === ex && y === ey && z === ez) return true;
+      if (tx < ty && tx < tz) { x += sx; tx += tdx; } else if (ty < tz) { y += sy; ty += tdy; } else { z += sz; tz += tdz; }
+      if (x === ex && y === ey && z === ez) return true;
+      const id = this.get(x, y, z);
+      if (id !== B.AIR && id !== B.WATER && (BLOCKS[id].opaque || id === B.LEAVES)) return false;
+    }
+    return true;
   }
 
   isSolidAt(x, y, z) { return isSolid(this.get(x, y, z)); }

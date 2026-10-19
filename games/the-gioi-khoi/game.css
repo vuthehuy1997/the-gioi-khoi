@@ -63,3 +63,5 @@ html,body{margin:0;height:100%;background:#12141a;color:#eeede8;font-family:'Seg
 .quality button.on{outline:2px solid #fff}
 #debug{position:absolute;left:12px;top:70px;margin:0;padding:6px 8px;background:#000a;color:#e8ffe8;font:12px/1.35 ui-monospace,monospace;border-radius:4px;pointer-events:none}
 #debug[hidden]{display:none}
+#sneak{position:absolute;left:50%;bottom:78px;transform:translateX(-50%);padding:3px 10px;border-radius:12px;background:#000a;color:#bfe9ff;font-size:13px;pointer-events:none}
+#sneak[hidden]{display:none}
