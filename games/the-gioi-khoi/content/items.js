@@ -14,6 +14,7 @@ export const ITEMS = Object.fromEntries([
   ['mushroom', { name: 'Nấm phát sáng', heal: 3 }], ['frog_leg', { name: 'Đùi ếch', heal: 4 }], ['stew', { name: 'Súp nấm', heal: 14 }],
   ['scale', { name: 'Vảy cá sấu' }], ['ember', { name: 'Than hồng' }], ['silk', { name: 'Tơ pha lê' }], ['pelt', { name: 'Da cáo' }],
   ['wolf_heart', { name: 'Tim Thủ Lĩnh Sói' }], ['scorpion_crown', { name: 'Vương miện Bọ Cạp' }], ['frost_core', { name: 'Lõi Băng Đế' }],
+  ['swamp_heart', { name: 'Tim Chúa Đầm Lầy' }], ['magma_core', { name: 'Lõi Nham Thạch' }], ['guardian_prism', { name: 'Lăng kính Hộ Vệ' }],
   tool('wood_pick', 'pick', 1, 2, 2), tool('stone_pick', 'pick', 2, 3.5, 3), tool('crystal_pick', 'pick', 3, 5, 4),
   tool('wood_axe', 'axe', 1, 2, 3), tool('stone_axe', 'axe', 2, 3.5, 4),
   tool('wood_shovel', 'shovel', 1, 2, 2), tool('stone_shovel', 'shovel', 2, 3.5, 3),

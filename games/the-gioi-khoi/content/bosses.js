@@ -48,5 +48,53 @@ export const BOSSES = {
     ],
     drops: [{ item: 'frost_core', min: 1, max: 1, p: 1 }, { item: 'xu', min: 120, max: 160, p: 1 }, { item: 'gem', min: 2, max: 3, p: 1 }],
   },
+  'chua-dam-lay': {
+    name: 'Chúa Đầm Lầy', region: 'dam-lay', hp: 520, w: 2.4, h: 2.0, speed: 3.2, sight: 24, radius: 16, color: '#3a5a2a',
+    flag: 'boss:chua-dam-lay', unlocks: null,
+    moves: {
+      chomp: { type: 'melee', dmg: 8, range: 3.6, cd: 1.3 },
+      pounce: { type: 'leap', dmg: 10, range: 11, cd: 5, radius: 3.2 },
+      spit: { type: 'volley', style: 'venom', dmg: 4, count: 5, spread: 0.6, speed: 11, cd: 4.5 },
+      brood: { type: 'summon', mob: 'ech-doc', count: 3, cd: 14 },
+    },
+    phases: [
+      { from: 1.0, moves: ['chomp', 'pounce'], speedMul: 1, dmgMul: 1 },
+      { from: 0.6, moves: ['chomp', 'pounce', 'spit'], speedMul: 1.1, dmgMul: 1 },
+      { from: 0.3, moves: ['chomp', 'pounce', 'spit', 'brood'], speedMul: 1.3, dmgMul: 1.3 },
+    ],
+    drops: [{ item: 'swamp_heart', min: 1, max: 1, p: 1 }, { item: 'xu', min: 90, max: 130, p: 1 }, { item: 'scale', min: 3, max: 5, p: 1 }],
+  },
+  'vua-nham-thach': {
+    name: 'Vua Nham Thạch', region: 'hoa-son', hp: 700, w: 2.4, h: 2.4, speed: 3.0, sight: 26, radius: 17, color: '#ff8a2a',
+    flag: 'boss:vua-nham-thach', unlocks: null,
+    moves: {
+      maul: { type: 'melee', dmg: 10, range: 3.6, cd: 1.4 },
+      fireball: { type: 'volley', style: 'fire', dmg: 6, count: 5, spread: 0.7, speed: 11, cd: 4.5 },
+      eruption: { type: 'slam', dmg: 13, radius: 6.5, windup: 1.2, cd: 8 },
+      sparks: { type: 'summon', mob: 'linh-hoa', count: 2, cd: 15 },
+    },
+    phases: [
+      { from: 1.0, moves: ['maul', 'fireball'], speedMul: 1, dmgMul: 1 },
+      { from: 0.65, moves: ['maul', 'fireball', 'eruption'], speedMul: 1.1, dmgMul: 1 },
+      { from: 0.3, moves: ['maul', 'fireball', 'eruption', 'sparks'], speedMul: 1.25, dmgMul: 1.35 },
+    ],
+    drops: [{ item: 'magma_core', min: 1, max: 1, p: 1 }, { item: 'xu', min: 140, max: 180, p: 1 }, { item: 'ember', min: 4, max: 6, p: 1 }],
+  },
+  'ho-ve-pha-le': {
+    name: 'Đại Hộ Vệ Pha Lê', region: 'vuc-pha-le', hp: 900, w: 2.0, h: 3.4, speed: 2.6, sight: 28, radius: 18, color: '#c08aff',
+    flag: 'boss:ho-ve-pha-le', unlocks: null,
+    moves: {
+      smash: { type: 'melee', dmg: 12, range: 3.6, cd: 1.6 },
+      prism: { type: 'volley', style: 'ice', dmg: 6, count: 9, spread: 0.9, speed: 10, cd: 4.5 },
+      shatter: { type: 'slam', dmg: 15, radius: 7, windup: 1.3, cd: 8 },
+      weavers: { type: 'summon', mob: 'nhen-pha-le', count: 3, cd: 15 },
+    },
+    phases: [
+      { from: 1.0, moves: ['smash', 'prism'], speedMul: 1, dmgMul: 1 },
+      { from: 0.65, moves: ['smash', 'prism', 'shatter'], speedMul: 1.1, dmgMul: 1 },
+      { from: 0.3, moves: ['smash', 'prism', 'shatter', 'weavers'], speedMul: 1.25, dmgMul: 1.4 },
+    ],
+    drops: [{ item: 'guardian_prism', min: 1, max: 1, p: 1 }, { item: 'xu', min: 180, max: 240, p: 1 }, { item: 'amethyst', min: 4, max: 6, p: 1 }, { item: 'gem', min: 2, max: 4, p: 1 }],
+  },
 };
 export const SCALE_HP = 0.6, SCALE_DMG = 0.15;   // mỗi người thêm trong đấu trường: +60% máu, +15% sát thương

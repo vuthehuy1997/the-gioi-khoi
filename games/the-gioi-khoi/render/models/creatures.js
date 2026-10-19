@@ -60,7 +60,7 @@ export function snakeModel() {
 }
 
 // ---------------- Cá Sấu ----------------
-export function crocModel() {
+export function crocModel({ boss = false } = {}) {
   const L = legs4([3, 4, 3], 5.5, -5, 8, 0.7);
   const T = chain('t', [
     { size: [7, 4, 8], pos: [0, 5.5, 14], pivot: [0, 6, 11] },
@@ -76,17 +76,19 @@ export function crocModel() {
     { id: 'eyeL', bone: 'head', size: [2, 2, 2], pos: [-3, 9.5, -9] }, { id: 'eyeR', bone: 'head', size: [2, 2, 2], pos: [3, 9.5, -9], uvFrom: 'eyeL' },
     ...T.parts, ...L.parts,
   ];
+  if (boss) parts.push(...[-8, -3, 2, 7].map((zz, i) => ({ id: 'spike' + i, bone: 'body', size: [2, 5, 2], pos: [0, 12.5, zz], ...(i ? { uvFrom: 'spike0' } : {}) })),
+    { id: 'hornL', bone: 'head', size: [2, 5, 2], pos: [-3, 11, -9] }, { id: 'hornR', bone: 'head', size: [2, 5, 2], pos: [3, 11, -9], uvFrom: 'hornL' });
   return {
-    id: 'croc', scale: 0.95, TW: 128, parts, bones: [{ id: 'body', pivot: [0, 5, 0] }, { id: 'head', pivot: [0, 6, -8], role: 'head', atk: 0.5 }, ...T.bones, ...L.bones],
+    id: boss ? 'swamp-king' : 'croc', scale: boss ? 2.6 : 0.95, TW: 128, parts, bones: [{ id: 'body', pivot: [0, 5, 0] }, { id: 'head', pivot: [0, 6, -8], role: 'head', atk: 0.5 }, ...T.bones, ...L.bones],
     paint(P, R) {
-      const skin = '#4b6a3a', dark = '#2f4a26', belly = '#cfc98e';
+      const skin = boss ? '#3a5a2a' : '#4b6a3a', dark = boss ? '#1c2e14' : '#2f4a26', belly = boss ? '#b9b070' : '#cfc98e';
       all(P, R, 'body', skin, 0.09); all(P, R, 'head', skin, 0.08); all(P, R, 'snout', skin, 0.08); all(P, R, 'jaw', belly, 0.06); all(P, R, 'ridge0', dark, 0.06); all(P, R, 'legFL', skin, 0.09);
       T.parts.forEach(t => all(P, R, t.id, skin, 0.09));
       P.fill(R('body', 'bottom'), belly, 0.05); P.speckle(R('body', 'top'), dark, 0.22, 3); P.stripes(R('body', 'top'), dark, 4, 1, true);
       T.parts.forEach(t => { P.stripes(R(t.id, 'top'), dark, 3, 1, true); P.fill(R(t.id, 'bottom'), belly, 0.05); });
       for (const f of ['left', 'right', 'front']) P.box(R('snout', f), 0, R('snout', f).h - 1, R('snout', f).w, 1, '#f4f1e0');
       for (const f of ['left', 'right']) P.stripes(R('snout', f), '#f4f1e0', 2, 1, true);
-      all(P, R, 'eyeL', '#d8b81c', 0.04); P.box(R('eyeL', 'front'), 0, 0, 1, 2, '#0c0c0c');
+      all(P, R, 'eyeL', boss ? '#ff4a2a' : '#d8b81c', 0.04); if (boss) { all(P, R, 'spike0', '#8fd04a', 0.08); all(P, R, 'hornL', '#e8e0b0', 0.05); } P.box(R('eyeL', 'front'), 0, 0, 1, 2, '#0c0c0c');
       P.box(R('snout', 'front'), 1, 0, 1, 1, '#0c0c0c'); P.box(R('snout', 'front'), 4, 0, 1, 1, '#0c0c0c');
       for (const f of ['left', 'front', 'right', 'back']) { const l = R('legFL', f); P.box(l, 0, 3, l.w, 1, dark); }
     },
@@ -118,7 +120,7 @@ export function shroomModel() {
 }
 
 // ---------------- Thằn Lằn Nham Thạch ----------------
-export function lizardModel() {
+export function lizardModel({ boss = false } = {}) {
   const L = legs4([3, 5, 3], 5.5, -5, 6, 0.8);
   const T = chain('t', [
     { size: [5, 4, 7], pos: [0, 7, 11], pivot: [0, 8, 8] },
@@ -132,10 +134,14 @@ export function lizardModel() {
     { id: 'eyeL', bone: 'head', size: [1, 1, 1], pos: [-3.2, 10.5, -10], uvFrom: undefined }, { id: 'eyeR', bone: 'head', size: [1, 1, 1], pos: [3.2, 10.5, -10], uvFrom: 'eyeL' },
     ...T.parts, ...L.parts,
   ];
+  if (boss) parts.push({ id: 'hornL', bone: 'head', size: [2, 6, 2], pos: [-2.5, 12.5, -9] }, { id: 'hornR', bone: 'head', size: [2, 6, 2], pos: [2.5, 12.5, -9], uvFrom: 'hornL' },
+    { id: 'maw', bone: 'head', size: [4, 2, 5], pos: [0, 6.5, -14.5] },
+    ...[-6, -2, 2, 6].map((zz, i) => ({ id: 'vent' + i, bone: 'body', size: [3, 3, 2], pos: [0, 14, zz], ...(i ? { uvFrom: 'vent0' } : {}) })));
   return {
-    id: 'lizard', scale: 1.0, TW: 64, parts, bones: [{ id: 'body', pivot: [0, 6, 0] }, { id: 'head', pivot: [0, 8, -7], role: 'head', atk: 0.5 }, ...T.bones, ...L.bones],
+    id: boss ? 'magma-king' : 'lizard', scale: boss ? 2.8 : 1.0, TW: 64, parts, bones: [{ id: 'body', pivot: [0, 6, 0] }, { id: 'head', pivot: [0, 8, -7], role: 'head', atk: 0.5 }, ...T.bones, ...L.bones],
     paint(P, R) {
-      const rock = '#3a2a28', crack = '#ff6a1a', belly = '#7a3a22';
+      const rock = boss ? '#241818' : '#3a2a28', crack = boss ? '#ffb02a' : '#ff6a1a', belly = '#7a3a22';
+      if (boss) { all(P, R, 'hornL', '#e8d0a0', 0.05); all(P, R, 'maw', crack, 0.06); all(P, R, 'vent0', crack, 0.08); }
       all(P, R, 'body', rock, 0.09); all(P, R, 'head', rock, 0.08); all(P, R, 'plate0', '#ff9a2a', 0.08); all(P, R, 'legFL', rock, 0.09); all(P, R, 'eyeL', '#fff2a0', 0.03);
       T.parts.forEach(t => { all(P, R, t.id, rock, 0.09); P.speckle(R(t.id, 'top'), crack, 0.2, 5); P.fill(R(t.id, 'bottom'), belly, 0.05); });
       P.fill(R('body', 'bottom'), belly, 0.05);
@@ -225,7 +231,7 @@ export function crystalRabbitModel() {
 }
 
 // ---------------- Hộ Vệ Pha Lê ----------------
-export function sentinelModel() {
+export function sentinelModel({ boss = false } = {}) {
   const parts = [
     { id: 'legL', bone: 'legL', size: [5, 9, 5], pos: [-3.5, 4.5, 0] }, { id: 'legR', bone: 'legR', size: [5, 9, 5], pos: [3.5, 4.5, 0], uvFrom: 'legL' },
     { id: 'body', bone: 'body', size: [11, 11, 6], pos: [0, 14.5, 0] },
@@ -236,13 +242,17 @@ export function sentinelModel() {
     { id: 'crownA', bone: 'head', size: [2, 6, 2], pos: [0, 29, 0] }, { id: 'crownB', bone: 'head', size: [2, 4, 2], pos: [-2.5, 28, 0], uvFrom: 'crownA' }, { id: 'crownC', bone: 'head', size: [2, 4, 2], pos: [2.5, 28, 0], uvFrom: 'crownA' },
     { id: 'back', bone: 'body', size: [3, 8, 3], pos: [0, 19, 4] },
   ];
+  if (boss) parts.push({ id: 'shL', bone: 'armL', size: [6, 3, 6], pos: [-9, 21.5, 0] }, { id: 'shR', bone: 'armR', size: [6, 3, 6], pos: [9, 21.5, 0], uvFrom: 'shL' },
+    { id: 'halo', bone: 'head', size: [10, 1, 10], pos: [0, 33, 0] },
+    ...[-3, 0, 3].map((x, i) => ({ id: 'wing' + i, bone: 'body', size: [2, 10 - Math.abs(x) * 1.5, 2], pos: [x * 2.2, 20, 7], ...(i ? { uvFrom: 'wing0' } : {}) })));
   return {
-    id: 'sentinel', scale: 1.2, TW: 64, parts,
+    id: boss ? 'crystal-guardian' : 'sentinel', scale: boss ? 2.2 : 1.2, TW: 64, parts,
     bones: [{ id: 'body', pivot: [0, 9, 0] }, { id: 'legL', pivot: [-3.5, 9, 0], role: 'leg', ph: 0, amp: 0.5 }, { id: 'legR', pivot: [3.5, 9, 0], role: 'leg', ph: Math.PI, amp: 0.5 },
       { id: 'armL', pivot: [-7.5, 20, 0], role: 'arm', ph: Math.PI, amp: 0.45, atk: 1.5 }, { id: 'armR', pivot: [7.5, 20, 0], role: 'arm', ph: 0, amp: 0.45, atk: 1.5 },
       { id: 'head', pivot: [0, 20, 0], role: 'head', atk: 0.2 }],
     paint(P, R) {
-      const stone = '#5a4a78', light = '#8a6ac0', glow = '#e1c8ff';
+      const stone = boss ? '#3a2c5c' : '#5a4a78', light = boss ? '#c08aff' : '#8a6ac0', glow = boss ? '#ffe0ff' : '#e1c8ff';
+      if (boss) { all(P, R, 'shL', light, 0.08); all(P, R, 'halo', glow, 0.04); all(P, R, 'wing0', light, 0.08); }
       for (const f of SIDES) for (const id of ['legL', 'body', 'armL', 'head']) P.fill(R(id, f), stone, 0.1);
       for (const f of SIDES) { P.fill(R('core', f), glow, 0.05); P.fill(R('spL', f), light, 0.08); P.fill(R('crownA', f), light, 0.08); P.fill(R('back', f), light, 0.08); }
       for (const id of ['legL', 'body', 'armL']) { P.speckle(R(id, 'front'), light, 0.14, 3); P.speckle(R(id, 'left'), '#2e2444', 0.14, 6); }

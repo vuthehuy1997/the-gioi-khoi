@@ -10,7 +10,7 @@ export { animate };
 export const MOB_MODELS = { 'soi-xam': 'wolf', 'nai': 'deer', 'xac-song': 'zombie', 'bo-cap': 'scorpion', 'xuong-cung': 'skeleton', 'gau-bang': 'bear', 'ma-bang': 'wraith', 'tuong-da': 'golem',
   'ech-doc': 'frog', 'ran-lay': 'snake', 'ca-sau': 'croc', 'nam-di': 'shroom', 'than-lan-nham': 'lizard', 'linh-hoa': 'fire-spirit',
   'nhen-pha-le': 'spider', 'tho-pha-le': 'crystal-rabbit', 'khoi-pha-le': 'sentinel', 'cao-lua': 'fox' };
-const BOSS_MODEL = { 'thu-linh-soi': 'wolf-lord', 'bo-cap-chua': 'scorpion-queen', 'bang-de': 'ice-emperor' };
+const BOSS_MODEL = { 'thu-linh-soi': 'wolf-lord', 'bo-cap-chua': 'scorpion-queen', 'bang-de': 'ice-emperor', 'chua-dam-lay': 'swamp-king', 'vua-nham-thach': 'magma-king', 'ho-ve-pha-le': 'crystal-guardian' };
 
 // Bảng màu người chơi: 12 kiểu để mỗi người nhìn khác nhau (chọn theo uid).
 const SKINS = ['#f1c8a0', '#e0ac7e', '#c68a5c', '#8d5a3a', '#f4d3b8'];
@@ -35,14 +35,14 @@ function definition(id) {
   switch (id) {
     case 'wolf': return wolfModel(); case 'wolf-lord': return wolfModel({ boss: true }); case 'deer': return deerModel();
     case 'zombie': return ZOMBIE; case 'skeleton': return SKELETON; case 'scorpion': return scorpionModel(); case 'scorpion-queen': return scorpionModel({ boss: true });
-    case 'frog': return frogModel(); case 'snake': return snakeModel(); case 'croc': return crocModel(); case 'shroom': return shroomModel(); case 'lizard': return lizardModel();
+    case 'frog': return frogModel(); case 'snake': return snakeModel(); case 'croc': return crocModel(); case 'swamp-king': return crocModel({ boss: true }); case 'magma-king': return lizardModel({ boss: true }); case 'crystal-guardian': return sentinelModel({ boss: true }); case 'shroom': return shroomModel(); case 'lizard': return lizardModel();
     case 'fire-spirit': return fireSpiritModel(); case 'spider': return spiderModel(); case 'crystal-rabbit': return crystalRabbitModel(); case 'sentinel': return sentinelModel(); case 'fox': return foxModel();
     case 'bear': return bearModel(); case 'wraith': return wraithModel(); case 'golem': return golemModel(); case 'ice-emperor': return ICE_EMPEROR;
   }
   throw new Error('không có mô hình: ' + id);
 }
 
-export const ALL_MODEL_IDS = ['wolf', 'deer', 'zombie', 'scorpion', 'skeleton', 'bear', 'wraith', 'golem', 'wolf-lord', 'scorpion-queen', 'ice-emperor',
+export const ALL_MODEL_IDS = ['wolf', 'deer', 'zombie', 'scorpion', 'skeleton', 'bear', 'wraith', 'golem', 'wolf-lord', 'scorpion-queen', 'ice-emperor', 'swamp-king', 'magma-king', 'crystal-guardian',
   'frog', 'snake', 'croc', 'shroom', 'lizard', 'fire-spirit', 'spider', 'crystal-rabbit', 'sentinel', 'fox',
   'npc:truong-lang', 'npc:tho-ren', 'npc:thuong-nhan', 'npc:an-si', 'player:' + '#f1c8a0#2a1c14#3b6fd6#33384a'];
 

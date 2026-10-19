@@ -5,6 +5,7 @@ import { BOSSES } from '../content/bosses.js';
 import { NPCS, VILLAGES } from '../content/npcs.js';
 
 const id = n => BLOCK_BY_NAME[n].id;
+const ARENA = { 'rung-suong': ['stone', 'stone'], 'sa-mac-lua': ['sand', 'stone'], 'nui-bang': ['ice', 'ice'], 'dam-lay': ['moss', 'mud'], 'hoa-son': ['basalt', 'basalt'], 'vuc-pha-le': ['amethyst', 'amethyst'] };
 const FLOOR = { 'sa-mac-lua': 'sand', 'rung-suong': 'grass', 'nui-bang': 'snow' };
 
 // Tìm điểm gần gốc (cx, cz) trong vùng `region`, địa hình đủ phẳng, cách các điểm đã dùng ít nhất minGap.
@@ -49,10 +50,11 @@ function flatten(g, cx, cz, y0, R, floorId, fillId) {
 
 function buildArena(g, bossId, site) {
   const d = BOSSES[bossId], R = d.radius, w = g.world;
-  flatten(g, site.x, site.z, site.y, R, id(d.region === 'rung-suong' ? 'stone' : d.region === 'sa-mac-lua' ? 'sand' : 'ice'), id('stone'));
+  const [floorName, pillarName] = ARENA[d.region];
+  flatten(g, site.x, site.z, site.y, R, id(floorName), id('stone'));
   for (let i = 0; i < 8; i++) {                                              // cột đá quanh sân
     const a = i / 8 * Math.PI * 2, px = site.x + Math.round(Math.cos(a) * (R - 1)), pz = site.z + Math.round(Math.sin(a) * (R - 1));
-    for (let y = 1; y <= 6; y++) w.set(px, site.y + y, pz, id(d.region === 'nui-bang' ? 'ice' : 'stone'));
+    for (let y = 1; y <= 6; y++) w.set(px, site.y + y, pz, id(pillarName));
     w.set(px, site.y + 7, pz, B.MAGMA);
   }
 }

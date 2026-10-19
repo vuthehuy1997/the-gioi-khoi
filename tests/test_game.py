@@ -610,6 +610,57 @@ def test_boss_scaling_with_players_in_arena(pg):
 
 
 @test
+def test_new_region_bosses_have_arenas_in_their_region_moves_and_rewards(pg):
+    r = ev(pg, GAME_JS + r"""
+      const { BOSSES } = await imp('content/bosses.js');
+      const { spawnBoss } = await imp('sim/boss.js');
+      const g = new Game({ seed: 777, spawning: false }); const p = g.addPlayer('u1', 'T'); p.hp = p.maxHp = 99999;
+      g.buildStructures();
+      const out = {};
+      for (const id of ['chua-dam-lay', 'vua-nham-thach', 'ho-ve-pha-le']) {
+        const d = BOSSES[id], site = g.flags.sites.arena[id];
+        p.x = site.x + 200; p.z = site.z + 200; p.y = 60; g.tick(1);
+        p.x = site.x + 0.5; p.z = site.z + 0.5; p.y = site.y + 1; g.tick(1);
+        const b = [...g.ents.values()].find(e => e.kind === 'boss' && e.type === id);
+        const floor = g.world.get(site.x, site.y, site.z);
+        // chiêu: ép từng pha rồi đếm chiêu dùng
+        const seen = new Set(); const evs = [];
+        b.hp = b.maxHp * 0.2; b.frozen = false;
+        for (let i = 0; i < 60 * 40 && g.ents.has(b.id); i++) {
+          p.hp = p.maxHp; g.tick(1 / 20);
+          for (const e of g.ents.values()) if (e.kind === 'proj') seen.add('proj:' + (e.style || ''));
+          for (const e of g.ents.values()) if (e.kind === 'mob' && b.minions.includes(e.id)) seen.add('summon');
+        }
+        out[id] = { region: g.world.regionAt(site.x, site.z), want: d.region, floor, phases: b.phase, seen: [...seen] };
+      }
+      return out;
+    """)
+    for bid, v in r.items():
+        assert v['region'] == v['want'] and v['floor'] != 0, (bid, v)
+        assert v['phases'] == 2, (bid, v)
+    assert any(x.startswith('proj:fire') for x in r['vua-nham-thach']['seen']), r
+    assert 'summon' in r['chua-dam-lay']['seen'] or any(x.startswith('proj:') for x in r['chua-dam-lay']['seen']), r
+
+
+@test
+def test_new_boss_defeat_sets_flag_and_drops_trophy(pg):
+    r = ev(pg, BOSS_JS + r"""
+      const out = {};
+      for (const id of ['chua-dam-lay', 'vua-nham-thach', 'ho-ve-pha-le']) {
+        const { g, p, b } = mkBossFight(id);
+        p.inv.fill(null); p.inv[0] = { id: 'gem_sword', n: 1 }; p.sel = 0;
+        b.frozen = true; g.flags[BOSSES[id].flag] = false;
+        for (let i = 0; i < 250 && g.ents.has(b.id); i++) { run(g, 0.5); g.act('u1', { t: 'hit', id: b.id }); }
+        const drops = [...g.ents.values()].filter(e => e.kind === 'item').map(e => e.item);
+        out[id] = { dead: !g.ents.has(b.id), flag: !!g.flags[BOSSES[id].flag], drops, want: BOSSES[id].drops[0].item };
+      }
+      return out;
+    """)
+    for bid, v in r.items():
+        assert v['dead'] and v['flag'] and v['want'] in v['drops'], (bid, v)
+
+
+@test
 def test_boss_arena_activation_reset_and_one_time(pg):
     r = ev(pg, GAME_JS + r"""
       const { BOSSES } = await imp('content/bosses.js');
@@ -633,7 +684,7 @@ def test_boss_arena_activation_reset_and_one_time(pg):
       return { none, spawned: bosses1.length, region: g.world.regionAt(site.x, site.z), reset, full, after, flat, clear, buildMs, sites: Object.keys(g.flags.sites.arena).sort() };
     """)
     assert r['none'] == 0 and r['spawned'] == 1 and r['region'] == 'rung-suong' and r['reset'] == 0 and r['full'] and r['after'] == 0, r
-    assert r['flat'] and r['clear'] and r['sites'] == ['bang-de', 'bo-cap-chua', 'thu-linh-soi'], r
+    assert r['flat'] and r['clear'] and r['sites'] == ['bang-de', 'bo-cap-chua', 'chua-dam-lay', 'ho-ve-pha-le', 'thu-linh-soi', 'vua-nham-thach'], r
     assert r['buildMs'] < 15000, r
 
 
