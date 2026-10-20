@@ -95,9 +95,15 @@ export const NPCS = {
     nodes: {
       hi: { text: 'Suỵt, nói khẽ thôi. Cá sấu nghe thấy là phiền lắm. Bạn cần gì?', choices: [
         { text: 'Xem hàng.', do: [{ shop: 'ngu-dan' }], goto: null },
+        { text: 'Nhận: Bữa tối của ngư dân.', do: [{ accept: 'ech-cho-ngu-dan' }], goto: 'ok', if: { quest: 'ech-cho-ngu-dan', state: 'none', requires: true } },
+        { text: 'Trả: Bữa tối của ngư dân.', do: [{ turnin: 'ech-cho-ngu-dan' }], goto: 'thanks', if: { quest: 'ech-cho-ngu-dan', state: 'ready' } },
+        { text: 'Nhận: Cá sấu tham lam.', do: [{ accept: 'ca-sau-tham-lam' }], goto: 'ok', if: { quest: 'ca-sau-tham-lam', state: 'none', requires: true } },
+        { text: 'Trả: Cá sấu tham lam.', do: [{ turnin: 'ca-sau-tham-lam' }], goto: 'thanks', if: { quest: 'ca-sau-tham-lam', state: 'ready' } },
         { text: 'Đầm lầy này có gì đáng sợ?', goto: 'lore' },
         { text: 'Tạm biệt.', goto: null },
       ] },
+      ok: { text: 'Tốt lắm. Làm xong thì quay lại báo tôi nhé.', choices: [{ text: 'Được.', goto: null }] },
+      thanks: { text: 'Gọn gàng! Đây là phần thưởng của bạn.', choices: [{ text: 'Cảm ơn.', goto: null }] },
       lore: { text: 'Ếch độc và rắn thì tránh được. Còn Chúa Đầm Lầy ở sân đá giữa đầm thì không: nó nhảy rất xa và gọi cả bầy ếch. Đem súp nấm theo mà ăn.', choices: [{ text: 'Cảm ơn.', goto: 'hi' }] },
     },
   },
@@ -107,9 +113,15 @@ export const NPCS = {
     nodes: {
       hi: { text: 'Nóng chứ? Quen đi. Đừng đứng trên đá nham thạch quá lâu là được.', choices: [
         { text: 'Xem hàng.', do: [{ shop: 'tho-lua' }], goto: null },
+        { text: 'Nhận: Than cho lò rèn.', do: [{ accept: 'than-cho-lo' }], goto: 'ok', if: { quest: 'than-cho-lo', state: 'none', requires: true } },
+        { text: 'Trả: Than cho lò rèn.', do: [{ turnin: 'than-cho-lo' }], goto: 'thanks', if: { quest: 'than-cho-lo', state: 'ready' } },
+        { text: 'Nhận: Lửa không yên.', do: [{ accept: 'linh-hoa-quay-nhieu' }], goto: 'ok', if: { quest: 'linh-hoa-quay-nhieu', state: 'none', requires: true } },
+        { text: 'Trả: Lửa không yên.', do: [{ turnin: 'linh-hoa-quay-nhieu' }], goto: 'thanks', if: { quest: 'linh-hoa-quay-nhieu', state: 'ready' } },
         { text: 'Nói tôi nghe về ngọn núi.', goto: 'lore' },
         { text: 'Tạm biệt.', goto: null },
       ] },
+      ok: { text: 'Tốt lắm. Làm xong thì quay lại báo tôi nhé.', choices: [{ text: 'Được.', goto: null }] },
+      thanks: { text: 'Gọn gàng! Đây là phần thưởng của bạn.', choices: [{ text: 'Cảm ơn.', goto: null }] },
       lore: { text: 'Than hồng ở đây nhiều vô kể, nhưng Vua Nham Thạch trấn giữ đỉnh núi. Khi hắn đập xuống thì sân rung cả lên, nhìn vòng báo hiệu mà chạy ra ngoài.', choices: [{ text: 'Cảm ơn.', goto: 'hi' }] },
     },
   },
@@ -119,9 +131,15 @@ export const NPCS = {
     nodes: {
       hi: { text: 'Ồ, một vị khách hiếm hoi! Ánh tím này không phải ma thuật, chỉ là thạch anh thôi.', choices: [
         { text: 'Xem hàng.', do: [{ shop: 'hoc-gia' }], goto: null },
+        { text: 'Nhận: Tơ của nhện pha lê.', do: [{ accept: 'to-nhen' }], goto: 'ok', if: { quest: 'to-nhen', state: 'none', requires: true } },
+        { text: 'Trả: Tơ của nhện pha lê.', do: [{ turnin: 'to-nhen' }], goto: 'thanks', if: { quest: 'to-nhen', state: 'ready' } },
+        { text: 'Nhận: Nghiên cứu thạch anh.', do: [{ accept: 'nghien-cuu-pha-le' }], goto: 'ok', if: { quest: 'nghien-cuu-pha-le', state: 'none', requires: true } },
+        { text: 'Trả: Nghiên cứu thạch anh.', do: [{ turnin: 'nghien-cuu-pha-le' }], goto: 'thanks', if: { quest: 'nghien-cuu-pha-le', state: 'ready' } },
         { text: 'Hộ Vệ Pha Lê là gì?', goto: 'lore' },
         { text: 'Tạm biệt.', goto: null },
       ] },
+      ok: { text: 'Tốt lắm. Làm xong thì quay lại báo tôi nhé.', choices: [{ text: 'Được.', goto: null }] },
+      thanks: { text: 'Gọn gàng! Đây là phần thưởng của bạn.', choices: [{ text: 'Cảm ơn.', goto: null }] },
       lore: { text: 'Một khối đá được thổi hồn từ thuở xa xưa, chậm nhưng cực đau. Nhện của nó giăng tơ quanh sân. Đừng để bị vây, và nhớ đem bạn bè đi cùng.', choices: [{ text: 'Cảm ơn.', goto: 'hi' }] },
     },
   },

@@ -61,4 +61,34 @@ export const QUESTS = {
     steps: [{ type: 'boss', boss: 'ho-ve-pha-le', text: 'Hạ Đại Hộ Vệ Pha Lê ở đấu trường trong vực' }],
     reward: { items: [{ item: 'gem', n: 6 }, { item: 'xu', n: 350 }] },
   },
+  'ech-cho-ngu-dan': {
+    name: 'Bữa tối của ngư dân', giver: 'ngu-dan',
+    steps: [{ type: 'kill', mob: 'ran-lay', n: 2, text: 'Hạ 2 Rắn Đầm Lầy quanh xóm' }, { type: 'collect', item: 'frog_leg', n: 5, text: 'Mang về 5 đùi ếch' }], consume: true,
+    reward: { items: [{ item: 'stew', n: 3 }, { item: 'xu', n: 50 }] },
+  },
+  'ca-sau-tham-lam': {
+    name: 'Cá sấu tham lam', giver: 'ngu-dan', requires: { quest: 'ech-cho-ngu-dan' },
+    steps: [{ type: 'kill', mob: 'ca-sau', n: 2, text: 'Hạ 2 Cá Sấu' }, { type: 'collect', item: 'scale', n: 3, text: 'Mang về 3 vảy cá sấu' }], consume: true,
+    reward: { items: [{ item: 'gem', n: 1 }, { item: 'xu', n: 80 }] },
+  },
+  'than-cho-lo': {
+    name: 'Than cho lò rèn', giver: 'tho-lua',
+    steps: [{ type: 'collect', item: 'ember', n: 6, text: 'Thu 6 than hồng' }], consume: true,
+    reward: { items: [{ item: 'crystal', n: 2 }, { item: 'xu', n: 70 }] },
+  },
+  'linh-hoa-quay-nhieu': {
+    name: 'Lửa không yên', giver: 'tho-lua', requires: { quest: 'than-cho-lo' },
+    steps: [{ type: 'kill', mob: 'linh-hoa', n: 3, text: 'Hạ 3 Linh Hỏa' }, { type: 'kill', mob: 'than-lan-nham', n: 2, text: 'Hạ 2 Thằn Lằn Nham Thạch' }],
+    reward: { items: [{ item: 'gem', n: 2 }, { item: 'xu', n: 120 }] },
+  },
+  'to-nhen': {
+    name: 'Tơ của nhện pha lê', giver: 'hoc-gia',
+    steps: [{ type: 'kill', mob: 'nhen-pha-le', n: 3, text: 'Hạ 3 Nhện Pha Lê' }, { type: 'collect', item: 'silk', n: 4, text: 'Thu 4 tơ pha lê' }], consume: true,
+    reward: { items: [{ item: 'amethyst', n: 3 }, { item: 'xu', n: 80 }] },
+  },
+  'nghien-cuu-pha-le': {
+    name: 'Nghiên cứu thạch anh', giver: 'hoc-gia', requires: { quest: 'to-nhen' },
+    steps: [{ type: 'kill', mob: 'tho-pha-le', n: 2, text: 'Quan sát và hạ 2 Thỏ Pha Lê' }, { type: 'collect', item: 'amethyst', n: 5, text: 'Đào 5 thạch anh tím' }], consume: true,
+    reward: { items: [{ item: 'gem', n: 2 }, { item: 'xu', n: 130 }] },
+  },
 };

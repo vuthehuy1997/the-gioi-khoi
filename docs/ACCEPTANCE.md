@@ -64,3 +64,4 @@ Các mục nhỏ còn hoãn: xoá delta khi block trở về nguyên bản (gói
 
 | K7 | 3 nhiệm vụ hạ boss vùng mới nối tiếp nhiệm vụ vùng, nhận/trả qua NPC, xong khi boss chết | `test_new_boss_quests_*`, `test_content_valid` | ✅ |
 | K8 | 3 làng + 3 NPC (cửa hàng, hội thoại) ở vùng mới; thế giới đã lưu tự có thêm đấu trường/làng mới mà không dời cái cũ | `test_new_villages_*`, `test_old_save_*` | ✅ |
+| K9 | 6 nhiệm vụ của 3 NPC làng mới: nhận và trả qua hội thoại, đếm quái/đồ, nối tiếp nhau, trả thưởng | `test_new_npc_quests_*`, `test_content_valid` | ✅ |

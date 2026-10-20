@@ -2048,5 +2048,34 @@ def test_old_save_gets_new_arenas_and_villages_without_moving_old_ones(pg):
     assert r['same'] and r['arenas'] == 6 and r['villages'] == 6 and len(r['npcs']) == 7, r
 
 
+@test
+def test_new_npc_quests_chain_through_dialogue_and_pay_out(pg):
+    r = ev(pg, NPC_JS + r"""
+      const { spawnMob } = await imp('sim/mobs.js');
+      const { QUESTS } = await imp('content/quests.js');
+      const T = mkTown(); const { g, p } = T;
+      p.inv.fill(null); p.inv[0] = { id: 'gem_sword', n: 1 }; p.sel = 0; p.hp = p.maxHp = 9999;
+      const xu = () => p.inv.filter(Boolean).filter(s => s.id === 'xu').reduce((a, s) => a + s.n, 0);
+      const pick = (v, prefix, name) => { const d = v.filter(e => e.t === 'dialog').pop(); const c = d && d.choices.find(c => c.text === prefix + ': ' + name + '.'); return c ? c.i : -2; };
+      const plan = [['ngu-dan', 'ech-cho-ngu-dan', [['ran-lay', 2]], [['frog_leg', 5]]], ['ngu-dan', 'ca-sau-tham-lam', [['ca-sau', 2]], [['scale', 3]]],
+                    ['tho-lua', 'than-cho-lo', [], [['ember', 6]]], ['tho-lua', 'linh-hoa-quay-nhieu', [['linh-hoa', 3], ['than-lan-nham', 2]], []],
+                    ['hoc-gia', 'to-nhen', [['nhen-pha-le', 3]], [['silk', 4]]], ['hoc-gia', 'nghien-cuu-pha-le', [['tho-pha-le', 2]], [['amethyst', 5]]]];
+      const out = {};
+      for (const [npc, qid, kills, loot] of plan) {
+        const name = QUESTS[qid].name, o = out[qid] = {};
+        let t = T.talk(npc); o.canAccept = pick(t.v, 'Nhận', name) >= 0;
+        g.act('u1', { t: 'dlg', i: pick(t.v, 'Nhận', name) }); o.active = g.questState('u1', qid) === 'active';
+        for (const [mob, n] of kills) for (let i = 0; i < n; i++) { const m = spawnMob(g, mob, p.x + 2, p.y, p.z); g.damageEntity(m, 9999, p); }
+        for (const [it, n] of loot) g.giveItem('u1', it, n);
+        g.tick(0.6); o.ready = g.questState('u1', qid) === 'ready';
+        const before = xu(); t = T.talk(npc); const ti = pick(t.v, 'Trả', name); o.canTurnIn = ti >= 0;
+        g.act('u1', { t: 'dlg', i: ti }); o.done = g.questState('u1', qid) === 'done'; o.paid = xu() > before;
+      }
+      return out;
+    """)
+    for qid, o in r.items():
+        assert all(o.values()), (qid, o)
+
+
 if __name__ == '__main__':
     run(TESTS)
