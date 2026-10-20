@@ -1990,5 +1990,27 @@ def test_new_region_quests_need_visit_kills_and_loot_then_pay_out(pg):
         assert o['accepted'] and o['ready'] == 'ready', (qid, r)
 
 
+@test
+def test_new_boss_quests_chain_from_region_quests_and_pay_on_boss_kill(pg):
+    r = ev(pg, GAME_JS + r"""
+      const quests = await imp('sim/quests.js');
+      const g = new Game({ seed: 777, spawning: false }); const p = g.addPlayer('u1', 'T');
+      const out = {};
+      for (const [qid, pre, boss] of [['diet-chua-dam', 'dam-lay-nam', 'chua-dam-lay'], ['diet-vua-lua', 'than-lua', 'vua-nham-thach'], ['diet-ho-ve', 'pha-le-tim', 'ho-ve-pha-le']]) {
+        const before = quests.accept(g, p, qid);                       // chưa xong nhiệm vụ trước: bị từ chối
+        p.quests.done[pre] = true;
+        quests.accept(g, p, qid);
+        const active = g.questState('u1', qid) === 'active';
+        g.onBossDefeated.call(g, boss, [p]); g.tick(0.6);
+        const ready = g.questState('u1', qid);
+        const gem0 = g.countItem ? g.countItem('u1', 'gem') : null;
+        out[qid] = { refused: before === false || g.questState('u1', qid) !== 'none', active, ready };
+      }
+      return out;
+    """)
+    for qid, o in r.items():
+        assert o['active'] and o['ready'] == 'ready', (qid, r)
+
+
 if __name__ == '__main__':
     run(TESTS)

@@ -62,3 +62,4 @@ Các mục nhỏ còn hoãn: xoá delta khi block trở về nguyên bản (gói
 | K5 | 3 nhiệm vụ mới (đến vùng, hạ quái, nhặt đồ) hoàn thành được | `test_new_region_quests_need_visit_kills_and_loot_then_pay_out` | ✅ |
 | K6 | 3 boss cho vùng mới: đấu trường nằm trong vùng của boss, đủ pha/chiêu, hạ được thì đặt cờ và rơi chiến lợi phẩm | `test_new_region_bosses_*`, `test_new_boss_defeat_*` | ✅ |
 
+| K7 | 3 nhiệm vụ hạ boss vùng mới nối tiếp nhiệm vụ vùng, nhận/trả qua NPC, xong khi boss chết | `test_new_boss_quests_*`, `test_content_valid` | ✅ |

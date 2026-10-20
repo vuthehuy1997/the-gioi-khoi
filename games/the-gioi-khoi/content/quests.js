@@ -46,4 +46,19 @@ export const QUESTS = {
     steps: [{ type: 'reach', region: 'vuc-pha-le', text: 'Đến Vực Pha Lê' }, { type: 'kill', mob: 'nhen-pha-le', n: 2, text: 'Hạ 2 Nhện Pha Lê' }, { type: 'collect', item: 'amethyst', n: 3, text: 'Thu 3 thạch anh tím' }], consume: true,
     reward: { items: [{ item: 'amethyst_pick', n: 1 }, { item: 'xu', n: 110 }] },
   },
+  'diet-chua-dam': {
+    name: 'Chúa của đầm lầy', giver: 'truong-lang', requires: { quest: 'dam-lay-nam' },
+    steps: [{ type: 'boss', boss: 'chua-dam-lay', text: 'Hạ Chúa Đầm Lầy ở đấu trường trong đầm' }],
+    reward: { items: [{ item: 'stew', n: 4 }, { item: 'gem', n: 3 }, { item: 'xu', n: 150 }] },
+  },
+  'diet-vua-lua': {
+    name: 'Vua của dung nham', giver: 'thuong-nhan', requires: { quest: 'than-lua' },
+    steps: [{ type: 'boss', boss: 'vua-nham-thach', text: 'Hạ Vua Nham Thạch ở đấu trường trên núi lửa' }],
+    reward: { items: [{ item: 'ember_sword', n: 1 }, { item: 'gem', n: 3 }, { item: 'xu', n: 250 }] },
+  },
+  'diet-ho-ve': {
+    name: 'Kẻ canh giữ pha lê', giver: 'an-si', requires: { quest: 'pha-le-tim' },
+    steps: [{ type: 'boss', boss: 'ho-ve-pha-le', text: 'Hạ Đại Hộ Vệ Pha Lê ở đấu trường trong vực' }],
+    reward: { items: [{ item: 'gem', n: 6 }, { item: 'xu', n: 350 }] },
+  },
 };
