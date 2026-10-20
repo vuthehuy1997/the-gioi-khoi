@@ -51,6 +51,7 @@ export class Game {
     g.time = save.time || 0;
     g.rng = makeRng(save.seed ^ 0x5eed ^ Math.floor(g.time * 1000));
     g.savedPlayers = save.players || {};
+    if (g.flags.sites) g.buildStructures();                  // thế giới cũ: dựng thêm đấu trường/làng được bổ sung sau này
     g.ensureNpcs();
     return g;
   }

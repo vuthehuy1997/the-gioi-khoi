@@ -732,7 +732,7 @@ def test_npcs_exist_with_dialogue_graphs(pg):
       T.p.x += 30; const far = T.g.act('u1', { t: 'interact', id: T.npc('truong-lang').id });
       return { count: Object.keys(NPCS).length, ids, ok: t.r.ok, text: ev0 && ev0.text, choices: ev0 && ev0.choices.map(c => c.text), far: far.ok };
     """)
-    assert r['count'] >= 3 and set(r['ids']) == {'truong-lang', 'tho-ren', 'thuong-nhan', 'an-si'} and r['ok'], r
+    assert r['count'] >= 3 and set(r['ids']) == {'truong-lang', 'tho-ren', 'thuong-nhan', 'an-si', 'ngu-dan', 'tho-lua', 'hoc-gia'} and r['ok'], r
     assert 'Chào lữ khách' in r['text'] and len(r['choices']) >= 3 and not r['far'], r
     assert not any('Trả nhiệm vụ' in c for c in r['choices']), r          # chưa có nhiệm vụ sẵn sàng thì ẩn lựa chọn trả
 
@@ -879,7 +879,7 @@ def test_save_load_roundtrip(pg):
                fresh: new Game({ seed: 777, spawning: false }).addPlayer('u9', 'N').hp };
     """)
     assert r['block'] == 8 and r['flag'] and r['sites'] and r['time'] >= 5 and r['inv'] and r['hp'] and r['sel'] == 3, r
-    assert r['quest'] == 'active' and r['prog'] == 3 and r['npcs'] == 4 and r['v'] == 1 and r['pos'] and r['terrain'] and r['spawn'] and r['fresh'] == 20, r
+    assert r['quest'] == 'active' and r['prog'] == 3 and r['npcs'] == 7 and r['v'] == 1 and r['pos'] and r['terrain'] and r['spawn'] and r['fresh'] == 20, r
 
 
 @test
@@ -2010,6 +2010,42 @@ def test_new_boss_quests_chain_from_region_quests_and_pay_on_boss_kill(pg):
     """)
     for qid, o in r.items():
         assert o['active'] and o['ready'] == 'ready', (qid, r)
+
+
+@test
+def test_new_villages_sit_in_their_region_with_npc_lore_and_shop(pg):
+    r = ev(pg, NPC_JS + r"""
+      const { VILLAGES } = await imp('content/npcs.js');
+      const T = mkTown(); const { g, p } = T; const out = {};
+      for (const [vid, nid, region, sell, buy] of [['xom-lau', 'ngu-dan', 'dam-lay', 'stew', 'swamp_heart'], ['trai-lua', 'tho-lua', 'hoa-son', 'ember', 'magma_core'], ['to-pha-le', 'hoc-gia', 'vuc-pha-le', 'amethyst', 'guardian_prism']]) {
+        const s = g.flags.sites.village[vid], n = T.npc(nid);
+        const t = T.talk(nid); const hi = t.v.find(e => e.t === 'dialog');
+        const sh = T.say(0).v.find(e => e.t === 'shop');
+        g.giveItem('u1', 'xu', 500); g.giveItem('u1', buy, 1);
+        const bought = g.act('u1', { t: 'buy', item: sell, n: 1 }).ok, sold = g.act('u1', { t: 'sell', item: buy, n: 1 }).ok;
+        out[vid] = { region: g.world.regionAt(s.x, s.z), want: region, npcNear: !!n && Math.hypot(n.x - s.x, n.z - s.z) < 8, talk: t.r.ok && !!hi, shop: !!sh, bought, sold };
+      }
+      return out;
+    """)
+    for vid, o in r.items():
+        assert o['region'] == o['want'] and o['npcNear'] and o['talk'] and o['shop'] and o['bought'] and o['sold'], (vid, o)
+
+
+@test
+def test_old_save_gets_new_arenas_and_villages_without_moving_old_ones(pg):
+    r = ev(pg, GAME_JS + r"""
+      const g = new Game({ seed: 777, spawning: false }); g.addPlayer('u1', 'T'); g.buildStructures();
+      const old = JSON.parse(JSON.stringify(g.flags.sites));
+      for (const k of ['chua-dam-lay', 'vua-nham-thach', 'ho-ve-pha-le']) delete g.flags.sites.arena[k];
+      for (const k of ['xom-lau', 'trai-lua', 'to-pha-le']) delete g.flags.sites.village[k];
+      const save = g.toSave ? g.toSave() : g.save();
+      const g2 = Game.fromSave(JSON.parse(JSON.stringify(save)), { spawning: false });
+      const s2 = g2.flags.sites;
+      const same = ['thu-linh-soi', 'bo-cap-chua', 'bang-de'].every(k => JSON.stringify(s2.arena[k]) === JSON.stringify(old.arena[k])) && ['khoi-dau', 'oc-dao', 'tram-bang'].every(k => JSON.stringify(s2.village[k]) === JSON.stringify(old.village[k]));
+      const npcs = [...g2.ents.values()].filter(e => e.kind === 'npc').map(e => e.npc).sort();
+      return { same, arenas: Object.keys(s2.arena).length, villages: Object.keys(s2.village).length, npcs };
+    """)
+    assert r['same'] and r['arenas'] == 6 and r['villages'] == 6 and len(r['npcs']) == 7, r
 
 
 if __name__ == '__main__':

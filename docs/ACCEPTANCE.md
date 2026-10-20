@@ -63,3 +63,4 @@ Các mục nhỏ còn hoãn: xoá delta khi block trở về nguyên bản (gói
 | K6 | 3 boss cho vùng mới: đấu trường nằm trong vùng của boss, đủ pha/chiêu, hạ được thì đặt cờ và rơi chiến lợi phẩm | `test_new_region_bosses_*`, `test_new_boss_defeat_*` | ✅ |
 
 | K7 | 3 nhiệm vụ hạ boss vùng mới nối tiếp nhiệm vụ vùng, nhận/trả qua NPC, xong khi boss chết | `test_new_boss_quests_*`, `test_content_valid` | ✅ |
+| K8 | 3 làng + 3 NPC (cửa hàng, hội thoại) ở vùng mới; thế giới đã lưu tự có thêm đấu trường/làng mới mà không dời cái cũ | `test_new_villages_*`, `test_old_save_*` | ✅ |

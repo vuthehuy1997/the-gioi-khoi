@@ -44,7 +44,7 @@ function definition(id) {
 
 export const ALL_MODEL_IDS = ['wolf', 'deer', 'zombie', 'scorpion', 'skeleton', 'bear', 'wraith', 'golem', 'wolf-lord', 'scorpion-queen', 'ice-emperor', 'swamp-king', 'magma-king', 'crystal-guardian',
   'frog', 'snake', 'croc', 'shroom', 'lizard', 'fire-spirit', 'spider', 'crystal-rabbit', 'sentinel', 'fox',
-  'npc:truong-lang', 'npc:tho-ren', 'npc:thuong-nhan', 'npc:an-si', 'player:' + '#f1c8a0#2a1c14#3b6fd6#33384a'];
+  'npc:truong-lang', 'npc:tho-ren', 'npc:thuong-nhan', 'npc:an-si', 'npc:ngu-dan', 'npc:tho-lua', 'npc:hoc-gia', 'player:' + '#f1c8a0#2a1c14#3b6fd6#33384a'];
 
 // Thư viện mô hình gắn với một THREE và document.
 export function createModelLib(T, doc = document) {

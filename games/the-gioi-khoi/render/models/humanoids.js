@@ -130,6 +130,9 @@ export const NPC_MODELS = {
   'truong-lang': npcModel('npc-elder', { robe: '#b88a45', trim: '#7a4e1e', hair: '#e8e8e8', beard: '#efefef', staff: true, gem: '#ffd35a', brow: '#cfcfcf' }),
   'tho-ren': npcModel('npc-smith', { robe: '#5a4a46', pants: '#2c2622', trim: '#3a2a22', apron: true, hat: '#6b6f78', hatH: 3, beard: '#2a1c14', thick: true, brow: '#2a1c14', hair: '#2a1c14' }),
   'thuong-nhan': npcModel('npc-merchant', { robe: '#b8312f', trim: '#e9b949', hat: '#efe6d0', hatH: 6, hatBand: '#c9a23a', nose: true, pack: true, hair: '#3a2a1c', brow: '#3a2a1c' }),
+  'ngu-dan': npcModel('npc-fisher', { robe: '#4f6b3a', trim: '#8fb04a', pants: '#3a3a2a', hat: '#6b5a30', hatH: 4, hatBand: '#8fb04a', pack: true, nose: true, hair: '#3a2a1c', skin: '#c68a5c', brow: '#3a2a1c' }),
+  'tho-lua': npcModel('npc-forger', { robe: '#7a2e1c', trim: '#ff8a2a', pants: '#2a2220', apron: true, thick: true, hat: '#2a2220', hatH: 3, beard: '#2a1c14', skin: '#8d5a3a', brow: '#14100f', hair: '#14100f' }),
+  'hoc-gia': npcModel('npc-scholar', { robe: '#6a4aa8', trim: '#e1c8ff', hair: '#d8d8f0', beard: '#e8e8f8', hat: '#4a3280', hatH: 8, staff: true, gem: '#e1c8ff', brow: '#d8d8f0' }),
   'an-si': npcModel('npc-hermit', { robe: '#8fb7d9', trim: '#e8f4ff', hair: '#f2f6fa', beard: '#f2f6fa', hat: '#6f98bd', hatH: 7, staff: true, gem: '#9fe8ff', skin: '#d9c0a8', brow: '#e0e8f0' }),
 };
 

@@ -6,7 +6,7 @@ import { NPCS, VILLAGES } from '../content/npcs.js';
 
 const id = n => BLOCK_BY_NAME[n].id;
 const ARENA = { 'rung-suong': ['stone', 'stone'], 'sa-mac-lua': ['sand', 'stone'], 'nui-bang': ['ice', 'ice'], 'dam-lay': ['moss', 'mud'], 'hoa-son': ['basalt', 'basalt'], 'vuc-pha-le': ['amethyst', 'amethyst'] };
-const FLOOR = { 'sa-mac-lua': 'sand', 'rung-suong': 'grass', 'nui-bang': 'snow' };
+const FLOOR = { 'sa-mac-lua': 'sand', 'rung-suong': 'grass', 'nui-bang': 'snow', 'dam-lay': 'moss', 'hoa-son': 'basalt', 'vuc-pha-le': 'snow' };
 
 // Tìm điểm gần gốc (cx, cz) trong vùng `region`, địa hình đủ phẳng, cách các điểm đã dùng ít nhất minGap.
 function findSite(g, region, used, opts = {}) {
@@ -80,19 +80,28 @@ function buildVillage(g, vid, site) {
 }
 
 export function buildStructures(g) {
-  if (g.flags.sites) return;
-  const used = [], sites = { arena: {}, village: {} };
-  // làng khởi đầu ngay cạnh điểm xuất hiện, để người chơi mới gặp NPC ngay
-  const sp = g.spawn;
-  const v0 = findSite(g, 'rung-suong', used, { fromX: sp.x, fromZ: sp.z, minGap: 0, flat: 4 });
-  sites.village['khoi-dau'] = v0; used.push(v0);
-  for (const [bid, d] of Object.entries(BOSSES)) { const s = findSite(g, d.region, used, { minGap: 90 }); sites.arena[bid] = s; used.push(s); }
-  for (const [vid, v] of Object.entries(VILLAGES)) { if (vid === 'khoi-dau') continue; const s = findSite(g, v.region, used, { minGap: 90 }); sites.village[vid] = s; used.push(s); }
-  for (const [bid, s] of Object.entries(sites.arena)) buildArena(g, bid, s);
-  for (const [vid, s] of Object.entries(sites.village)) buildVillage(g, vid, s);
+  const fresh = !g.flags.sites;
+  const sites = g.flags.sites || { arena: {}, village: {} };
+  const used = [...Object.values(sites.arena), ...Object.values(sites.village)].filter(Boolean);
+  if (fresh) {
+    // làng khởi đầu ngay cạnh điểm xuất hiện, để người chơi mới gặp NPC ngay
+    const sp = g.spawn;
+    const v0 = findSite(g, 'rung-suong', used, { fromX: sp.x, fromZ: sp.z, minGap: 0, flat: 4 });
+    sites.village['khoi-dau'] = v0; used.push(v0);
+  }
+  // thế giới cũ (đã lưu) chưa có boss/làng thêm sau này: chỉ dựng phần còn thiếu
+  const fresh2 = { arena: [], village: [] };
+  for (const [bid, d] of Object.entries(BOSSES)) if (!sites.arena[bid]) { const s = findSite(g, d.region, used, { minGap: 90 }); if (s) { sites.arena[bid] = s; used.push(s); fresh2.arena.push(bid); } }
+  for (const [vid, v] of Object.entries(VILLAGES)) if (!sites.village[vid]) { const s = findSite(g, v.region, used, { minGap: 90 }); if (s) { sites.village[vid] = s; used.push(s); fresh2.village.push(vid); } }
+  for (const bid of fresh2.arena) buildArena(g, bid, sites.arena[bid]);
+  for (const vid of fresh2.village) buildVillage(g, vid, sites.village[vid]);
+  if (!fresh && !fresh2.arena.length && !fresh2.village.length) return;
   g.flags.sites = sites;
-  g.spawn = { x: v0.x + 4, z: v0.z + 7 };                                   // xuất hiện ở sân làng
-  g.flags.spawn = g.spawn;
+  if (fresh) {
+    const v0 = sites.village['khoi-dau'];
+    g.spawn = { x: v0.x + 4, z: v0.z + 7 };                                 // xuất hiện ở sân làng
+    g.flags.spawn = g.spawn;
+  }
   ensureNpcs(g);
 }
 

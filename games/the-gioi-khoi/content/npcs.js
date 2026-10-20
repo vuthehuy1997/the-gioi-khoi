@@ -89,6 +89,42 @@ export const NPCS = {
       thanks: { text: 'Đỉnh núi đã tan băng. Thanh kiếm này xứng với bạn.', choices: [{ text: 'Cảm ơn.', goto: null }] },
     },
   },
+  'ngu-dan': {
+    name: 'Ngư Dân Đầm Lầy', village: 'xom-lau', color: '#6b8a3a',
+    start: 'hi',
+    nodes: {
+      hi: { text: 'Suỵt, nói khẽ thôi. Cá sấu nghe thấy là phiền lắm. Bạn cần gì?', choices: [
+        { text: 'Xem hàng.', do: [{ shop: 'ngu-dan' }], goto: null },
+        { text: 'Đầm lầy này có gì đáng sợ?', goto: 'lore' },
+        { text: 'Tạm biệt.', goto: null },
+      ] },
+      lore: { text: 'Ếch độc và rắn thì tránh được. Còn Chúa Đầm Lầy ở sân đá giữa đầm thì không: nó nhảy rất xa và gọi cả bầy ếch. Đem súp nấm theo mà ăn.', choices: [{ text: 'Cảm ơn.', goto: 'hi' }] },
+    },
+  },
+  'tho-lua': {
+    name: 'Thợ Lò Nham Thạch', village: 'trai-lua', color: '#c4501e',
+    start: 'hi',
+    nodes: {
+      hi: { text: 'Nóng chứ? Quen đi. Đừng đứng trên đá nham thạch quá lâu là được.', choices: [
+        { text: 'Xem hàng.', do: [{ shop: 'tho-lua' }], goto: null },
+        { text: 'Nói tôi nghe về ngọn núi.', goto: 'lore' },
+        { text: 'Tạm biệt.', goto: null },
+      ] },
+      lore: { text: 'Than hồng ở đây nhiều vô kể, nhưng Vua Nham Thạch trấn giữ đỉnh núi. Khi hắn đập xuống thì sân rung cả lên, nhìn vòng báo hiệu mà chạy ra ngoài.', choices: [{ text: 'Cảm ơn.', goto: 'hi' }] },
+    },
+  },
+  'hoc-gia': {
+    name: 'Học Giả Pha Lê', village: 'to-pha-le', color: '#8a6ac0',
+    start: 'hi',
+    nodes: {
+      hi: { text: 'Ồ, một vị khách hiếm hoi! Ánh tím này không phải ma thuật, chỉ là thạch anh thôi.', choices: [
+        { text: 'Xem hàng.', do: [{ shop: 'hoc-gia' }], goto: null },
+        { text: 'Hộ Vệ Pha Lê là gì?', goto: 'lore' },
+        { text: 'Tạm biệt.', goto: null },
+      ] },
+      lore: { text: 'Một khối đá được thổi hồn từ thuở xa xưa, chậm nhưng cực đau. Nhện của nó giăng tơ quanh sân. Đừng để bị vây, và nhớ đem bạn bè đi cùng.', choices: [{ text: 'Cảm ơn.', goto: 'hi' }] },
+    },
+  },
 };
 
 // Làng: vùng đặt và NPC sinh ra ở đó. buildHuts: số nhà.
@@ -96,4 +132,7 @@ export const VILLAGES = {
   'khoi-dau': { name: 'Làng Mộc', region: 'rung-suong', huts: 2, nearSpawn: true },
   'oc-dao': { name: 'Ốc Đảo', region: 'sa-mac-lua', huts: 1 },
   'tram-bang': { name: 'Trạm Băng', region: 'nui-bang', huts: 1 },
+  'xom-lau': { name: 'Xóm Lau Sậy', region: 'dam-lay', huts: 1 },
+  'trai-lua': { name: 'Trại Lửa', region: 'hoa-son', huts: 1 },
+  'to-pha-le': { name: 'Tổ Pha Lê', region: 'vuc-pha-le', huts: 1 },
 };
