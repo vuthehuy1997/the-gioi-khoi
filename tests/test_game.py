@@ -2077,5 +2077,91 @@ def test_new_npc_quests_chain_through_dialogue_and_pay_out(pg):
         assert all(o.values()), (qid, o)
 
 
+# ---------------------------------------------------------------- L: nhạc và âm thanh
+
+@test
+def test_score_has_a_theme_per_region_and_is_deterministic(pg):
+    r = ev(pg, r"""
+      const sc = await imp('audio/score.js'); const { REGIONS } = await imp('content/regions.js');
+      const seqs = {}, bad = [];
+      for (const id of sc.THEME_IDS) {
+        const all = []; for (let i = 0; i < 128; i++) all.push(sc.stepNotes(id, i, false));
+        const again = []; for (let i = 0; i < 128; i++) again.push(sc.stepNotes(id, i, false));
+        if (JSON.stringify(all) !== JSON.stringify(again)) bad.push('nondeterministic ' + id);
+        for (const st of all) for (const n of st) if (n.kind === 'tone' && !(n.f > 25 && n.f < 5000 && n.len > 0 && n.vol > 0 && n.vol < 0.2)) bad.push('range ' + id + ' ' + JSON.stringify(n));
+        seqs[id] = JSON.stringify(all.map(st => st.filter(n => n.kind === 'tone').map(n => Math.round(n.f))));
+      }
+      const night = sc.THEME_IDS.filter(id => id !== 'boss').map(id => { let a = 0, b = 0; for (let i = 0; i < 512; i++) { a += sc.stepNotes(id, i, false).length; b += sc.stepNotes(id, i, true).length; } return [id, a, b]; });
+      const boss = []; for (let i = 0; i < 16; i++) boss.push(...sc.stepNotes('boss', i, false).map(n => n.kind));
+      return { bad, distinct: new Set(Object.values(seqs)).size, themes: sc.THEME_IDS.length, regionsCovered: REGIONS.every(rg => sc.THEME_IDS.includes(rg.id)),
+               nightQuieter: night.every(([id, a, b]) => b <= a), nightDiff: night.some(([id, a, b]) => b < a), bossDrums: ['kick', 'snare', 'hat'].every(k => boss.includes(k)),
+               bossFast: sc.stepSeconds('boss', false) < sc.stepSeconds('rung-suong', false), nightSlower: sc.stepSeconds('rung-suong', true) > sc.stepSeconds('rung-suong', false),
+               themeFor: [sc.themeFor({ region: 'hoa-son' }), sc.themeFor({ region: 'hoa-son', boss: true }), sc.themeFor({ region: 'khong-co' })] };
+    """)
+    assert not r['bad'] and r['distinct'] == r['themes'] and r['themes'] >= 7 and r['regionsCovered'], r
+    assert r['nightQuieter'] and r['nightDiff'] and r['bossDrums'] and r['bossFast'] and r['nightSlower'], r
+    assert r['themeFor'] == ['hoa-son', 'boss', 'rung-suong'], r
+
+
+@test
+def test_score_player_switches_theme_on_bar_lines_and_boss_at_once(pg):
+    r = ev(pg, r"""
+      const sc = await imp('audio/score.js'); const got = [];
+      const s = sc.createScore((n, t) => got.push(n));
+      s.setContext({ region: 'rung-suong' }); s.playStep(0, 0); const a = s.theme;
+      s.setContext({ region: 'sa-mac-lua' }); s.playStep(3, 0); const mid = s.theme; s.playStep(8, 0); const bar = s.theme;
+      s.setContext({ region: 'sa-mac-lua', boss: true }); s.playStep(9, 0); const boss = s.theme;
+      s.setContext({ region: 'sa-mac-lua', boss: false }); s.playStep(10, 0); const still = s.theme; s.playStep(16, 0); const back = s.theme;
+      const dur = s.playStep(17, 0);
+      return { a, mid, bar, boss, still, back, dur, notes: got.length };
+    """)
+    assert (r['a'], r['mid'], r['bar'], r['boss'], r['still'], r['back']) == ('rung-suong', 'rung-suong', 'sa-mac-lua', 'boss', 'boss', 'sa-mac-lua'), r
+    assert r['dur'] > 0.2 and r['notes'] > 10, r
+
+
+@test
+def test_director_voices_mobs_plays_ambience_and_throttles_hurt(pg):
+    r = ev(pg, r"""
+      const { createDirector } = await imp('audio/director.js'); const { MOB_VOICE, voiceOf } = await imp('sfx.js'); const { MOBS } = await imp('content/mobs.js'); const { BOSSES } = await imp('content/bosses.js');
+      const calls = []; const sfx = { play: (n, o) => calls.push([n, o && o.intent, o && o.type]) };
+      let rr = 0.5; const d = createDirector({ sfx, emit: () => {}, rnd: () => rr, start: false });
+      const mob = (st, dist, hp = 10) => ({ id: 1, type: 'soi-xam', st, hp, dist });
+      d.update(0.1, { region: 'rung-suong', night: false, boss: false, mobs: [mob(0, 10)] });
+      d.update(0.1, { region: 'rung-suong', night: false, boss: false, mobs: [mob(2, 9)] });
+      d.update(0.1, { region: 'rung-suong', night: false, boss: false, mobs: [mob(2, 9)] });
+      const alerts = calls.filter(c => c[0] === 'voice' && c[1] === 'alert').length;
+      for (let i = 0; i < 400; i++) d.update(0.1, { region: 'dam-lay', night: true, boss: false, mobs: [mob(0, 10)] });
+      const idle = calls.filter(c => c[1] === 'idle').length, amb = calls.filter(c => c[0].startsWith('amb:')).length;
+      const far = calls.length; for (let i = 0; i < 400; i++) d.update(0.1, { region: 'dam-lay', night: false, boss: false, mobs: [{ id: 2, type: 'ran-lay', st: 0, hp: 5, dist: 60 }] });
+      const farIdle = calls.slice(far).filter(c => c[1] === 'idle').length;
+      d.update(0.1, { region: 'dam-lay', night: false, boss: false, mobs: [] });
+      const dies = calls.filter(c => c[1] === 'die').length;
+      const h0 = calls.length; d.hurt({ type: 'soi-xam', kind: 'mob', dist: 3 }); d.hurt({ type: 'soi-xam', kind: 'mob', dist: 3 });
+      const hurts = calls.slice(h0).filter(c => c[1] === 'hurt').length;
+      return { alerts, idle, amb, farIdle, dies, hurts, allVoiced: [...Object.keys(MOBS), ...Object.keys(BOSSES)].every(t => !!voiceOf(t)), explicit: Object.keys(MOBS).filter(t => !MOB_VOICE[t]) };
+    """)
+    assert r['alerts'] == 1 and r['idle'] >= 2 and r['amb'] >= 5 and r['farIdle'] == 0 and r['dies'] == 1 and r['hurts'] == 1, r
+    assert r['allVoiced'] and r['explicit'] == [], r
+
+
+@test
+def test_game_runs_music_for_region_and_volume_controls(pg, browser, base):
+    _open_game(pg, base)
+    r = pg.evaluate("""async () => {
+      const g = __g, out = {};
+      await new Promise(r => setTimeout(r, 600));
+      out.theme = g.director.score.theme; out.region = g.S.world.regionAt(g.local.x, g.local.z);
+      const before = JSON.parse(localStorage.getItem('game-hub-settings-v1') || '{}');
+      const el = document.getElementById('vol-music'); el.value = 20; el.dispatchEvent(new Event('input'));
+      out.saved = JSON.parse(localStorage.getItem('game-hub-settings-v1') || '{}').music;
+      window.dispatchEvent(new KeyboardEvent('keydown', { code: 'KeyM' })); out.muted = JSON.parse(localStorage.getItem('game-hub-settings-v1')).music;
+      window.dispatchEvent(new KeyboardEvent('keydown', { code: 'KeyM' })); out.unmuted = JSON.parse(localStorage.getItem('game-hub-settings-v1')).music;
+      g.sfx.play('voice', { type: 'soi-xam', intent: 'alert', dist: 3 }); out.voiceStat = g.sfx.stats['voice:alert'];
+      return out;
+    }""")
+    assert r['theme'] == r['region'], r
+    assert r['saved'] == 20 and r['muted'] == 0 and r['unmuted'] == 20 and r['voiceStat'] == 1, r
+
+
 if __name__ == '__main__':
     run(TESTS)

@@ -19,6 +19,8 @@ import { stepCameraFx, newCameraFx, createHand } from './render/camerafx.js';
 import { createIcons } from './ui/icons.js';
 import { LEVELS, PRESETS, presetOf, defaultPreset, governLevel, isSoftwareRenderer } from './render/quality.js';
 import { sfx } from './sfx.js';
+import { createDirector } from './audio/director.js';
+import { SETTINGS, saveSettings } from '../../platform/core/settings.js';
 import { createHud, setIconProvider } from './ui/hud.js';
 import { createPanels } from './ui/panels.js';
 import { regionById } from './world/regions.js';
@@ -118,6 +120,7 @@ async function begin(session) {
   ents = createEntityView(scene, { iconCanvas: id => icons.canvas(id) });
   panels = createPanels({ act: a => S.act(a), onClose: () => { if (S && !S.you.dead) lockPointer(); } });
   S.on('ev', handleEvent);
+  director.start();
   S.world.onChange = (x, y, z, prev, id) => {            // hạt khi block vỡ hoặc được đặt
     if (prev && BLOCKS[prev] && id === 0) sfx.play('break', { block: prev }); else if (id) sfx.play('place', { block: id });
     if (prev && BLOCKS[prev] && id === 0) fx.burst(x + 0.5, y + 0.5, z + 0.5, BLOCKS[prev].tiles[1], 16);
@@ -156,6 +159,7 @@ function onFail(ev) {
   if (FAIL_TEXT[ev.reason]) hud.toast(FAIL_TEXT[ev.reason], 1800);
 }
 
+const director = createDirector({ sfx });
 let deathTimer = null;
 function refreshYou() {
   const y = S.you; if (!y) return;
@@ -177,15 +181,15 @@ function handleEvent(ev) {
     case 'shop': document.exitPointerLock?.(); panels.showShop(ev, S.you); break;
     case 'quests': hud.setQuests(ev.list); break;
     case 'region': hud.setRegion(ev.name); break;
-    case 'swing': ents.swing('e:' + ev.id); break;
+    case 'swing': { ents.swing('e:' + ev.id); const b = interp.es.find(e => e.id === ev.id); if (b && b.kind === 'boss' && Math.hypot(b.x - local.x, b.z - local.z) < 40) sfx.play('bossSwing'); break; }
     case 'died': if (ev.uid === uid) sfx.play('die'); hud.toast(ev.uid === uid ? 'Bạn đã gục ngã.' : `${ev.name} đã gục ngã.`); break;
     case 'boss-start': sfx.play('boss'); hud.toast(`${ev.name} xuất hiện!`); break;
     case 'boss-defeated': sfx.play('victory'); hud.toast(`${ev.name} đã bị hạ!`, 5000); break;
     case 'pickup': sfx.play('pickup'); hud.toast(`+${ev.n} ${ITEMS[ev.item].name}`, 1200); break;
     case 'fail': onFail(ev); break;
     case 'block': confirmEdit(ev.x, ev.y, ev.z); break;
-    case 'hit': { const e = interp.es.find(x => x.id === ev.id); if (e) { fx.burst(e.x, e.y + 0.8, e.z, [0.9, 0.12, 0.1], 8, 2.2); if (Math.hypot(e.x - local.x, e.z - local.z) < 20) sfx.play('hit'); } break; }
-    case 'telegraph': { const b = interp.es.find(e => e.id === ev.id); ents.telegraph(ev.x, b ? b.y : local.y, ev.z, ev.r, ev.time); break; }
+    case 'hit': { const e = interp.es.find(x => x.id === ev.id); if (e) { fx.burst(e.x, e.y + 0.8, e.z, [0.9, 0.12, 0.1], 8, 2.2); const d = Math.hypot(e.x - local.x, e.z - local.z); if (d < 20) sfx.play('hit'); if (e.kind === 'mob' || e.kind === 'boss') director.hurt({ type: e.type, kind: e.kind, dist: d }); } break; }
+    case 'telegraph': { const b = interp.es.find(e => e.id === ev.id); ents.telegraph(ev.x, b ? b.y : local.y, ev.z, ev.r, ev.time); if (Math.hypot(ev.x - local.x, ev.z - local.z) < 40) sfx.play('warn'); break; }
   }
 }
 
@@ -196,6 +200,7 @@ addEventListener('keydown', e => {
   if (e.target.tagName === 'INPUT') return;
   keys.add(e.code);
   if (!S) return;
+  if (e.code === 'KeyM') { toggleMusic(); return; }
   if (e.code === 'F3') { e.preventDefault(); const d = $('debug'); d.hidden = !d.hidden; return; }
   if (e.code === 'Escape') { if (panels.isOpen) panels.close(); else if (!paused && !S.you.dead) setPause(true); else if (paused) setPause(false); return; }
   if (inUi() && e.code !== 'KeyE') return;
@@ -230,6 +235,12 @@ function setPause(on) {
   if (on) { document.exitPointerLock?.(); mouse.left = false; dig = null; hud.setProgress(null); } else lockPointer();
 }
 $('btn-resume').onclick = () => setPause(false);
+let musicBeforeMute = 60;
+function toggleMusic() {
+  if (SETTINGS.music > 0) { musicBeforeMute = SETTINGS.music; SETTINGS.music = 0; } else SETTINGS.music = musicBeforeMute || 60;
+  saveSettings(); $('vol-music').value = SETTINGS.music; hud.toast(SETTINGS.music ? 'Bật nhạc nền.' : 'Tắt nhạc nền (M để bật lại).', 1500);
+}
+for (const k of ['music', 'sfx']) { const el = $('vol-' + k); el.value = SETTINGS[k]; el.oninput = () => { SETTINGS[k] = Number(el.value); saveSettings(); if (k === 'sfx') sfx.play('click'); }; }
 for (const k of Object.keys(PRESETS)) $('q-' + k).onclick = () => { applyQuality(k); rawDts.length = 0; };
 $('btn-save').onclick = async () => { await saveWorld('main', game.toSave()); $('pause-msg').textContent = 'Đã lưu.'; };
 $('btn-export').onclick = async () => {
@@ -364,6 +375,8 @@ function frameBody(dt) {
   const r = regionById(S.world.regionAt(local.x, local.z));
   const light = lightLevel(S.time);
   scene.setEnvironment({ sky: r.sky, fog: r.fog, light }); ents.setLight(light);
+  const mobs = []; for (const e of interp.es) if (e.kind === 'mob') mobs.push({ id: e.id, type: e.type, st: e.st || 0, hp: e.hp, dist: Math.hypot(e.x - local.x, e.z - local.z) });
+  director.update(dt, { region: r.id, night: light < 0.6, boss: !!(boss && boss.hp > 0 && Math.hypot(boss.x - local.x, boss.z - local.z) < 45), mobs });
   const far = view.radius * 16 - 6; scene.setFog(far * 0.5, far);
   const eyeWater = S.world.get(local.x, local.y + 1.62, local.z) === B.WATER;
   $('water').hidden = !eyeWater; if (eyeWater) scene.setFog(0.5, 22);
@@ -397,7 +410,7 @@ if (debugOn()) {
   window.__g = {
     get S() { return S; }, get game() { return game; }, get local() { return local; }, get view() { return view; }, scene, hud, get panels() { return panels; }, get ents() { return ents; },
     optimistic, handleEvent, get pendingEdits() { return pendingEdits; }, applyQuality, get quality() { return quality; }, get level() { return level; }, get software() { return software; }, applyLevel, glInfo,
-    get pending() { return pending; }, perf, sky, fx, hand, camFx, sfx, icons, gov, get interp() { return interp; }, mouse, keys,
+    get pending() { return pending; }, perf, sky, fx, hand, camFx, sfx, icons, gov, get interp() { return interp; }, mouse, keys, director,
     renderNow: () => frame(0.0001),
     lookAt(x, y, z) { const dx = x - local.x, dy = y - (local.y + 1.62), dz = z - local.z; local.yaw = Math.atan2(-dx, -dz); local.pitch = Math.atan2(dy, Math.hypot(dx, dz)); },
   };

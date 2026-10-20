@@ -65,3 +65,5 @@ html,body{margin:0;height:100%;background:#12141a;color:#eeede8;font-family:'Seg
 #debug[hidden]{display:none}
 #sneak{position:absolute;left:50%;bottom:78px;transform:translateX(-50%);padding:3px 10px;border-radius:12px;background:#000a;color:#bfe9ff;font-size:13px;pointer-events:none}
 #sneak[hidden]{display:none}
+.vols{display:flex;gap:12px;align-items:center;margin:6px 0;font-size:13px}
+.vols input{vertical-align:middle;width:110px}

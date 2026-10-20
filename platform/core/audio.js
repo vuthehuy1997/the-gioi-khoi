@@ -19,14 +19,14 @@ export function tone(f, dur, type = 'square', vol = .06, slide = 0, at = 0, ch =
   o.connect(g).connect(a.destination); o.start(t); o.stop(t + dur + .02);
 }
 // Tiếng ồn lọc dải: va chạm, gió, nổ
-export function noise(dur, vol = .08, freq = 1200) {
-  vol *= SETTINGS.sfx / 100;
+export function noise(dur, vol = .08, freq = 1200, ch = 'sfx', at = 0) {
+  vol *= (ch === 'music' ? SETTINGS.music : SETTINGS.sfx) / 100;
   if (vol <= 0) return; const a = ac(); if (!a) return;
   const len = (a.sampleRate * dur) | 0, buf = a.createBuffer(1, len, a.sampleRate), d = buf.getChannelData(0);
   for (let i = 0; i < len; i++) d[i] = (Math.random() * 2 - 1) * (1 - i / len);
   const s = a.createBufferSource(), f = a.createBiquadFilter(), g = a.createGain();
   f.type = 'bandpass'; f.frequency.value = freq; g.gain.value = vol;
-  s.buffer = buf; s.connect(f).connect(g).connect(a.destination); s.start();
+  s.buffer = buf; s.connect(f).connect(g).connect(a.destination); s.start(at || 0);
 }
 // Nhạc nền theo bước: playStep(step, t) phát các nốt của bước thứ `step` tại thời điểm t (dùng tone(..., t, 'music'))
 // và trả về độ dài bước tính bằng giây.

@@ -65,3 +65,8 @@ Các mục nhỏ còn hoãn: xoá delta khi block trở về nguyên bản (gói
 | K7 | 3 nhiệm vụ hạ boss vùng mới nối tiếp nhiệm vụ vùng, nhận/trả qua NPC, xong khi boss chết | `test_new_boss_quests_*`, `test_content_valid` | ✅ |
 | K8 | 3 làng + 3 NPC (cửa hàng, hội thoại) ở vùng mới; thế giới đã lưu tự có thêm đấu trường/làng mới mà không dời cái cũ | `test_new_villages_*`, `test_old_save_*` | ✅ |
 | K9 | 6 nhiệm vụ của 3 NPC làng mới: nhận và trả qua hội thoại, đếm quái/đồ, nối tiếp nhau, trả thưởng | `test_new_npc_quests_*`, `test_content_valid` | ✅ |
+| L1 | Nhạc nền: chủ đề riêng cho mỗi vùng + boss, tất định, đổi đúng nhịp, đêm thưa hơn | `test_score_*` | ✅ |
+| L2 | Tiếng kêu theo loài (báo động, đau, gục, rảnh), âm môi trường, giới hạn tần suất | `test_director_*` | ✅ |
+| L3 | Game chạy nhạc theo vùng, thanh âm lượng và phím M lưu vào cài đặt | `test_game_runs_music_*` | ✅ |
+
+Chưa kiểm chứng bằng tai: độ hay, độ to cân bằng giữa nhạc và hiệu ứng.
