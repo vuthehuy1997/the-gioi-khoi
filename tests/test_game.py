@@ -355,7 +355,7 @@ const { MOBS } = await imp('content/mobs.js');
 const { spawnMob } = await imp('sim/mobs.js');
 // Sân phẳng bằng đá ở nơi xa (không cây), mặt sân ở y=30, trần thoáng.
 const mkArena = (opts = {}) => {
-  const g = new Game({ seed: 777, spawning: false, ...opts }); const p = g.addPlayer('u1', 'T');
+  const g = new Game({ seed: 777, spawning: false, env: false, ...opts }); const p = g.addPlayer('u1', 'T');
   g.flags['boss:thu-linh-soi'] = true; g.flags['boss:bo-cap-chua'] = true;      // mở các vùng, không bị khí độc
   const cx = 2000, cz = 2000, y0 = 30;
   for (let dx = -20; dx <= 20; dx++) for (let dz = -20; dz <= 20; dz++) { g.world.set(cx + dx, y0, cz + dz, 1); for (let dy = 1; dy <= 8; dy++) g.world.set(cx + dx, y0 + dy, cz + dz, 0); }
@@ -699,6 +699,7 @@ def test_locked_region_hurts_until_boss_defeated(pg):
       for (let t = 0; t < 10; t += 0.05) { g.tick(0.05); p.y = g.world.surfaceY(spot.x, spot.z) + 1; }
       const hurt = p.hp; const toasts = g.drain().filter(e => e.ev.t === 'toast').length;
       g.flags['boss:thu-linh-soi'] = true; p.hp = 20; p.lastHurt = 99999;
+      for (const id of ['chitin_helm', 'chitin_chest']) { g.giveItem('u1', id, 1); g.act('u1', { t: 'equip', i: p.inv.findIndex(s => s && s.id === id) }); }   // hết khí độc, còn cái nóng của sa mạc: có đồ chống nóng thì không sao
       for (let t = 0; t < 10; t += 0.05) { g.tick(0.05); p.y = g.world.surfaceY(spot.x, spot.z) + 1; }
       return { hurt, toasts, after: p.hp };
     """)
@@ -1944,8 +1945,8 @@ def test_standing_on_magma_burns_and_new_recipes_use_new_loot(pg):
     r = ev(pg, GAME_JS + r"""
       const { B } = await imp('world/blocks.js');
       const { RECIPES } = await imp('content/recipes.js');
-      const g = new Game({ seed: 777, spawning: false }), p = g.addPlayer('u1', 'Tester');
-      g.flags['boss:thu-linh-soi'] = g.flags['boss:bo-cap-chua'] = true;       // tắt khí độc vùng để chỉ đo bỏng
+      const g = new Game({ seed: 777, spawning: false, env: false }), p = g.addPlayer('u1', 'Tester');
+      g.flags['boss:thu-linh-soi'] = g.flags['boss:bo-cap-chua'] = true;       // tắt khí độc và nóng lạnh của vùng để chỉ đo bỏng
       const x = Math.floor(p.x) + 3, z = Math.floor(p.z), y = g.world.surfaceY(x, z);
       g.world.set(x, y, z, B.MAGMA);
       p.x = x + 0.5; p.z = z + 0.5; p.y = y + 1; p.vy = 0; p.hp = 20; p.maxHp = 20;
@@ -2161,6 +2162,333 @@ def test_game_runs_music_for_region_and_volume_controls(pg, browser, base):
     }""")
     assert r['theme'] == r['region'], r
     assert r['saved'] == 20 and r['muted'] == 0 and r['unmuted'] == 20 and r['voiceStat'] == 1, r
+
+
+# ---------------------------------------------------------------- M: chế tạo sâu, trang bị, môi trường, xây dựng
+
+CRAFT_JS = GAME_JS + """
+const { RECIPES, recipeById, canCraft, craft } = await imp('sim/crafting.js');
+const { ITEMS } = await imp('content/items.js');
+const { B, BLOCKS } = await imp('world/blocks.js');
+const { REGIONS } = await imp('content/regions.js');
+const { regionAt } = await imp('world/regions.js');
+const mkSolo = (seed = 777) => { const g = new Game({ seed, spawning: false }); const p = g.addPlayer('u1', 'T'); p.hp = p.maxHp = 20; return { g, p }; };
+const goTo = (g, p, regionId) => {
+  for (let x = -3000; x <= 3000; x += 40) for (let z = -3000; z <= 3000; z += 40) if (regionAt(g.seed, x, z) === regionId && g.world.surfaceY(x, z) > 21) {
+    g.teleportPlayer(p, x + 0.5, g.world.surfaceY(x, z) + 1, z + 0.5); p.region = regionId; return true; }
+  return false;
+};
+const tickFor = (g, secs, dt = 0.25) => { for (let t = 0; t < secs; t += dt) g.tick(dt); };
+"""
+
+
+@test
+def test_stations_gate_recipes_and_smelting_chain(pg):
+    r = ev(pg, CRAFT_JS + r"""
+      const { makeInventory, addItem, countItem } = await imp('sim/inventory.js');
+      const inv = makeInventory();
+      addItem(inv, 'log', 2); addItem(inv, 'iron_ore', 3); addItem(inv, 'sand', 2); addItem(inv, 'stick', 2);
+      const wb = { workbench: true }, fu = { furnace: true }, an = { anvil: true };
+      const out = {};
+      out.charcoalNoStation = canCraft(inv, 'charcoal', false);
+      out.charcoalWorkbench = canCraft(inv, 'charcoal', wb);
+      out.charcoal = craft(inv, 'charcoal', fu) && craft(inv, 'charcoal', fu);
+      out.ingot = craft(inv, 'iron_ingot', fu); out.ingot2 = craft(inv, 'iron_ingot', fu);
+      out.glass = craft(inv, 'glass', fu);
+      out.have = { charcoal: countItem(inv, 'charcoal'), ingot: countItem(inv, 'iron_ingot'), glass: countItem(inv, 'glass') };
+      addItem(inv, 'iron_ingot', 4); addItem(inv, 'planks', 3);
+      out.swordAtWorkbench = canCraft(inv, 'iron_sword', wb); out.swordAtAnvil = canCraft(inv, 'iron_sword', an);
+      out.legacyTrue = canCraft(inv, 'wood_pick', true);     // true cũ = bàn chế tạo
+      out.anvilRecipesNeedAnvil = RECIPES.filter(r => r.bench === 'anvil').length;
+      out.furnaceRecipes = RECIPES.filter(r => r.bench === 'furnace').length;
+      return out;
+    """)
+    assert not r['charcoalNoStation'] and not r['charcoalWorkbench'] and r['charcoal'] and r['ingot'] and r['ingot2'] and r['glass'], r
+    assert r['have']['ingot'] == 2 and r['have']['glass'] == 2, r
+    assert not r['swordAtWorkbench'] and r['swordAtAnvil'] and r['legacyTrue'], r
+    assert r['anvilRecipesNeedAnvil'] >= 20 and r['furnaceRecipes'] >= 4, r
+
+
+@test
+def test_stations_are_detected_near_player_and_iron_ore_exists_underground(pg):
+    r = ev(pg, CRAFT_JS + r"""
+      const { nearStations } = await imp('sim/rules.js');
+      const { g, p } = mkSolo();
+      const x = Math.floor(p.x), y = Math.floor(p.y), z = Math.floor(p.z);
+      const none = nearStations(g.world, p.x, p.y, p.z);
+      g.world.set(x + 2, y, z, B.FURNACE); g.world.set(x, y, z + 3, B.ANVIL);
+      const near = nearStations(g.world, p.x, p.y, p.z);
+      const far = nearStations(g.world, p.x + 30, p.y, p.z);
+      // quặng sắt nằm dưới lòng đất ở mọi vùng, và cần cuốc đá
+      const { generateChunk } = await imp('world/generate.js');
+      let iron = 0, regions = new Set();
+      for (let cx = -20; cx <= 20; cx += 2) for (let cz = -20; cz <= 20; cz += 2) {
+        const ch = generateChunk(777, cx, cz); for (let i = 0; i < ch.length; i++) if (ch[i] === B.IRON_ORE) { iron++; regions.add(regionAt(777, cx * 16 + 8, cz * 16 + 8)); break; }
+      }
+      const def = BLOCKS[B.IRON_ORE];
+      return { none, near, far, iron, regions: regions.size, drop: def.drop, tier: def.tier, tool: def.tool };
+    """)
+    assert r['none'] == {'workbench': False, 'furnace': False, 'anvil': False}, r
+    assert r['near']['furnace'] and r['near']['anvil'] and not r['near']['workbench'] and not r['far']['furnace'], r
+    assert r['iron'] > 40 and r['regions'] >= 2 and r['drop'] == 'iron_ore' and r['tier'] == 2 and r['tool'] == 'pick', r
+
+
+@test
+def test_armor_sets_have_four_pieces_resists_and_relics_need_boss_trophies(pg):
+    r = ev(pg, CRAFT_JS + r"""
+      const { BOSSES } = await imp('content/bosses.js'); const { MOBS } = await imp('content/mobs.js');
+      const sets = {};
+      for (const it of Object.values(ITEMS)) if (it.armor) (sets[it.armor.set] = sets[it.armor.set] || []).push(it);
+      const slots = Object.fromEntries(Object.entries(sets).map(([k, v]) => [k, v.map(i => i.armor.slot).sort().join(',')]));
+      const defs = Object.fromEntries(Object.entries(sets).map(([k, v]) => [k, v.reduce((a, i) => a + i.armor.def, 0)]));
+      const resist = Object.fromEntries(Object.entries(sets).map(([k, v]) => [k, [...new Set(v.map(i => i.armor.resist).filter(Boolean))].join(',')]));
+      const mobDrops = new Set(Object.values(MOBS).flatMap(m => (m.drops || []).map(d => d.item)));
+      const trophies = Object.values(BOSSES).flatMap(b => (b.drops || []).map(d => d.item)).filter(i => i !== 'xu' && !mobDrops.has(i));
+      const relics = RECIPES.filter(r => ITEMS[r.out.item] && ITEMS[r.out.item].relic);
+      const relicNeed = relics.map(r => Object.keys(r.in).filter(k => trophies.includes(k)).length);
+      const used = new Set(relics.flatMap(r => Object.keys(r.in)));
+      const missingTrophies = ['wolf_heart', 'scorpion_crown', 'frost_core', 'swamp_heart', 'magma_core', 'guardian_prism'].filter(t => !used.has(t) || !trophies.includes(t));
+      const regionsEnv = Object.fromEntries(REGIONS.filter(r => r.env).map(r => [r.id, r.env.kind + ':' + r.env.power]));
+      const fireproof = Object.values(ITEMS).filter(i => i.armor && i.armor.fireproof).map(i => i.id);
+      return { missingTrophies, names: Object.keys(sets).sort(), slots, defs, resist, relicNeed, regionsEnv, fireproof };
+    """)
+    assert r['names'] == ['chitin', 'ember', 'crystal', 'fur', 'iron', 'scale'] or sorted(r['names']) == sorted(['chitin', 'ember', 'crystal', 'fur', 'iron', 'scale']), r
+    assert all(v == 'chest,feet,head,legs' for v in r['slots'].values()), r
+    assert r['resist']['fur'] == 'cold' and r['resist']['chitin'] == 'heat' and r['resist']['scale'] == 'toxic' and r['resist']['ember'] == 'heat' and r['resist']['crystal'] == 'cold' and r['resist']['iron'] == '', r
+    assert r['defs']['crystal'] > r['defs']['ember'] > r['defs']['scale'] > r['defs']['iron'] > r['defs']['fur'], r
+    assert len(r['relicNeed']) >= 6 and all(n >= 1 for n in r['relicNeed']) and r['missingTrophies'] == [], r
+    assert r['regionsEnv'] == {'sa-mac-lua': 'heat:2', 'nui-bang': 'cold:2', 'dam-lay': 'toxic:2', 'hoa-son': 'heat:3', 'vuc-pha-le': 'cold:3'}, r
+    assert r['fireproof'] == ['ember_boots'], r
+
+
+@test
+def test_equip_armor_reduces_damage_swaps_and_persists(pg):
+    r = ev(pg, CRAFT_JS + r"""
+      const { g, p } = mkSolo();
+      g.giveItem('u1', 'iron_helm', 1); g.giveItem('u1', 'iron_chest', 1); g.giveItem('u1', 'stone', 3);
+      const slotOf = id => p.inv.findIndex(s => s && s.id === id);
+      const out = {};
+      out.notArmor = g.act('u1', { t: 'equip', i: slotOf('stone') }).ok;
+      out.eq1 = g.act('u1', { t: 'equip', i: slotOf('iron_helm') }).ok; out.eq2 = g.act('u1', { t: 'equip', i: slotOf('iron_chest') }).ok;
+      out.armor = { head: p.armor.head, chest: p.armor.chest };
+      out.left = p.inv.filter(s => s && s.id.startsWith('iron_')).length;
+      p.hp = 20; g.hurtPlayer(p, 10, { id: 99 }); out.afterMelee = p.hp;               // 10 sát thương, giáp 2+5 = 7 điểm
+      p.hp = 20; g.hurtPlayer(p, 1, { id: 99 }); out.minOne = p.hp;
+      // đổi sang mũ khác: mũ cũ quay lại kho ở đúng ô
+      g.giveItem('u1', 'fur_helm', 1); const i = slotOf('fur_helm'); g.act('u1', { t: 'equip', i });
+      out.swapped = { head: p.armor.head, back: p.inv[i] && p.inv[i].id };
+      // lưu và nạp
+      const save = JSON.parse(JSON.stringify(g.toSave())); const g2 = Game.fromSave(save, { spawning: false }); const q = g2.addPlayer('u1', 'T');
+      out.saved = q.armor;
+      out.unequip = g.act('u1', { t: 'unequip', slot: 'chest' }).ok; out.chestBack = p.inv.some(s => s && s.id === 'iron_chest'); out.chestNow = p.armor.chest;
+      const full = mkSolo(); full.p.inv.fill({ id: 'dirt', n: 64 }); full.p.armor.head = 'iron_helm';
+      out.unequipFull = full.g.act('u1', { t: 'unequip', slot: 'head' }).ok;
+      return out;
+    """)
+    assert not r['notArmor'] and r['eq1'] and r['eq2'] and r['armor'] == {'head': 'iron_helm', 'chest': 'iron_chest'} and r['left'] == 0, r
+    assert r['afterMelee'] in (13, 14) and r['afterMelee'] > 10 and r['minOne'] == 19, r
+    assert r['swapped'] == {'head': 'fur_helm', 'back': 'iron_helm'}, r
+    assert r['saved']['head'] == 'fur_helm' and r['saved']['chest'] == 'iron_chest', r
+    assert r['unequip'] and r['chestBack'] and r['chestNow'] is None and not r['unequipFull'], r
+
+
+@test
+def test_region_environment_hurts_without_matching_gear(pg):
+    r = ev(pg, CRAFT_JS + r"""
+      const out = {};
+      const run = (region, pieces, { kind } = {}) => {
+        const { g, p } = mkSolo(); g.flags['boss:thu-linh-soi'] = true; g.flags['boss:bo-cap-chua'] = true;
+        goTo(g, p, region);
+        for (const id of pieces) { g.giveItem('u1', id, 1); g.act('u1', { t: 'equip', i: p.inv.findIndex(s => s && s.id === id) }); }
+        tickFor(g, 0.5); const hp0 = p.hp; tickFor(g, 24); return { lost: hp0 - p.hp };
+      };
+      out.forest = run('rung-suong', []);
+      out.coldBare = run('nui-bang', []);
+      out.coldFur2 = run('nui-bang', ['fur_helm', 'fur_chest']);
+      out.coldFur1 = run('nui-bang', ['fur_helm']);
+      out.heatBare = run('sa-mac-lua', []);
+      out.heatChitin2 = run('sa-mac-lua', ['chitin_helm', 'chitin_chest']);
+      out.lavaChitin2 = run('hoa-son', ['chitin_helm', 'chitin_chest']);
+      out.lavaChitin3 = run('hoa-son', ['chitin_helm', 'chitin_chest', 'chitin_legs']);
+      out.swampBare = run('dam-lay', []);
+      out.swampScale2 = run('dam-lay', ['scale_helm', 'scale_chest']);
+      out.crystalFur2 = run('vuc-pha-le', ['fur_helm', 'fur_chest']); out.crystalFur3 = run('vuc-pha-le', ['fur_helm', 'fur_chest', 'fur_legs']);
+      out.crystalFurWrongKind = run('vuc-pha-le', ['chitin_helm', 'chitin_chest', 'chitin_legs', 'chitin_boots']);
+      out.crystalFur4 = run('vuc-pha-le', ['fur_helm', 'fur_chest', 'fur_legs', 'fur_boots']);
+      return out;
+    """)
+    assert r['forest']['lost'] == 0, r
+    assert r['coldBare']['lost'] >= 6 and r['coldFur2']['lost'] == 0 and 0 < r['coldFur1']['lost'] < r['coldBare']['lost'], r
+    assert r['heatBare']['lost'] >= 6 and r['heatChitin2']['lost'] == 0, r
+    assert r['lavaChitin2']['lost'] > 0 and r['lavaChitin3']['lost'] == 0, r
+    assert r['swampBare']['lost'] >= 6 and r['swampScale2']['lost'] == 0, r
+    assert r['crystalFur2']['lost'] > 0 and r['crystalFur3']['lost'] == 0 and r['crystalFur4']['lost'] == 0 and r['crystalFurWrongKind']['lost'] > 0, r
+
+
+@test
+def test_ember_boots_make_magma_safe_and_armor_does_not_soften_environment(pg):
+    r = ev(pg, CRAFT_JS + r"""
+      const stand = (boots) => {
+        const { g, p } = mkSolo(); g.flags['boss:thu-linh-soi'] = true; goTo(g, p, 'rung-suong');
+        const x = Math.floor(p.x), z = Math.floor(p.z), y = g.world.surfaceY(x, z);
+        g.world.set(x, y, z, B.MAGMA); g.world.set(x, y + 1, z, 0); g.world.set(x, y + 2, z, 0); g.teleportPlayer(p, x + 0.5, y + 1, z + 0.5);
+        if (boots) { g.giveItem('u1', boots, 1); g.act('u1', { t: 'equip', i: p.inv.findIndex(s => s && s.id === boots) }); }
+        const hp0 = p.hp; for (let t = 0; t < 6; t += 0.25) { g.teleportPlayer(p, x + 0.5, y + 1, z + 0.5); g.tick(0.25); } return hp0 - p.hp;
+      };
+      // sát thương môi trường là "thuần": giáp thường không làm nhẹ đi
+      const { g, p } = mkSolo(); g.giveItem('u1', 'iron_chest', 1); g.act('u1', { t: 'equip', i: p.inv.findIndex(s => s && s.id === 'iron_chest') });
+      p.hp = 20; g.hurtPlayer(p, 2, null, { pure: true });
+      return { bare: stand(null), ironBoots: stand('iron_boots'), emberBoots: stand('ember_boots'), pure: p.hp };
+    """)
+    assert r['bare'] >= 4 and r['ironBoots'] >= 4 and r['emberBoots'] == 0 and r['pure'] == 18, r
+
+
+@test
+def test_torch_door_chest_bed_glass_and_brick(pg):
+    r = ev(pg, CRAFT_JS + r"""
+      const { spawnTick } = await imp('sim/mobs.js');
+      const { g, p } = mkSolo();
+      const x = Math.floor(p.x) + 2, z = Math.floor(p.z), y = g.world.surfaceY(x, z);
+      const put = (id, item, dx = 0, dz = 0) => { g.world.set(x + dx, y + 1, z + dz, 0); g.giveItem('u1', item, 1); p.sel = p.inv.findIndex(s => s && s.id === item); return g.act('u1', { t: 'place', x: x + dx, y: y + 1, z: z + dz }); };
+      const out = {};
+      out.torch = put(B.TORCH, 'torch').ok; out.torchBlock = g.world.get(x, y + 1, z) === B.TORCH;
+      // phá đuốc: nhận lại đuốc
+      g.act('u1', { t: 'dig', x, y: y + 1, z }); g.tick(0.5); g.act('u1', { t: 'break', x, y: y + 1, z });
+      out.torchBack = p.inv.some(s => s && s.id === 'torch'); out.torchGone = g.world.get(x, y + 1, z) === 0;
+      // cửa: bấm để mở/đóng, mở thì đi xuyên được
+      out.door = put(B.DOOR, 'door').ok; const solid = () => BLOCKS[g.world.get(x, y + 1, z)].solid;
+      out.closedSolid = solid(); out.toggle1 = g.act('u1', { t: 'toggle', x, y: y + 1, z }).ok; out.openSolid = solid(); out.openBlock = g.world.get(x, y + 1, z) === B.DOOR_OPEN;
+      g.act('u1', { t: 'toggle', x, y: y + 1, z }); out.closedAgain = g.world.get(x, y + 1, z) === B.DOOR;
+      out.toggleStone = g.act('u1', { t: 'toggle', x, y, z }).ok;
+      // rương
+      out.chest = put(B.CHEST, 'chest', 1).ok; const cx = x + 1;
+      g.giveItem('u1', 'xu', 120); const xuSlot = p.inv.findIndex(s => s && s.id === 'xu');
+      g.drain(); out.open = g.act('u1', { t: 'chest-open', x: cx, y: y + 1, z }).ok;
+      const openEv = g.drain().find(e => e.ev.t === 'chest'); out.openEv = !!openEv && openEv.ev.inv.length === 27;
+      out.put = g.act('u1', { t: 'chest-move', x: cx, y: y + 1, z, from: 'inv', slot: xuSlot }).ok;
+      out.xuInInv = p.inv.filter(s => s && s.id === 'xu').reduce((a, s) => a + s.n, 0);
+      const save = JSON.parse(JSON.stringify(g.toSave())); const g2 = Game.fromSave(save, { spawning: false }); g2.addPlayer('u1', 'T');
+      out.saved = JSON.stringify(g2.chests).includes('xu');
+      out.take = g.act('u1', { t: 'chest-move', x: cx, y: y + 1, z, from: 'chest', slot: 0 }).ok; out.xuBack = p.inv.filter(s => s && s.id === 'xu').reduce((a, s) => a + s.n, 0);
+      g.act('u1', { t: 'chest-move', x: cx, y: y + 1, z, from: 'inv', slot: p.inv.findIndex(s => s && s.id === 'xu') });
+      g.act('u1', { t: 'dig', x: cx, y: y + 1, z }); g.tick(2); g.act('u1', { t: 'break', x: cx, y: y + 1, z });
+      out.dropsContents = [...g.ents.values()].some(e => e.kind === 'item' && e.item === 'xu');
+      out.farChest = g.act('u1', { t: 'chest-open', x: cx + 40, y: y + 1, z }).ok;
+      // giường đặt điểm hồi sinh
+      out.bed = put(B.BED, 'bed', 0, 3).ok; out.sleep = g.act('u1', { t: 'sleep', x, y: y + 1, z: z + 3 }).ok;
+      p.dead = true; p.respawnAt = 0; g.tick(0.1); g.act('u1', { t: 'respawn' });
+      out.atBed = Math.hypot(p.x - (x + 0.5), p.z - (z + 3 + 0.5)) < 1.5;
+      g.world.set(x, y + 1, z + 3, 0); p.dead = true; p.respawnAt = 0; g.act('u1', { t: 'respawn' });
+      out.bedGoneUsesSpawn = Math.hypot(p.x - (g.spawn.x + 0.5), p.z - (g.spawn.z + 0.5)) < 1.5;
+      // kính và gạch
+      out.glassTransparent = !BLOCKS[B.GLASS].opaque && BLOCKS[B.GLASS].solid; out.brick = BLOCKS[B.STONE_BRICK].solid && BLOCKS[B.STONE_BRICK].drop === 'stone_brick';
+      return out;
+    """)
+    assert r['torch'] and r['torchBlock'] and r['torchBack'] and r['torchGone'], r
+    assert r['door'] and r['closedSolid'] and r['toggle1'] and not r['openSolid'] and r['openBlock'] and r['closedAgain'] and not r['toggleStone'], r
+    assert r['chest'] and r['open'] and r['openEv'] and r['put'] and r['xuInInv'] == 0 and r['saved'] and r['take'] and r['xuBack'] == 120, r
+    assert r['dropsContents'] and not r['farChest'], r
+    assert r['bed'] and r['sleep'] and r['atBed'] and r['bedGoneUsesSpawn'], r
+    assert r['glassTransparent'] and r['brick'], r
+
+
+@test
+def test_torches_keep_monsters_from_spawning_nearby(pg):
+    r = ev(pg, CRAFT_JS + r"""
+      const { spawnTick } = await imp('sim/mobs.js');
+      const count = (withTorch) => {
+        const g = new Game({ seed: 777, spawning: false }); const p = g.addPlayer('u1', 'T'); g.time = 60 * 12;     // đêm
+        if (withTorch) for (let dx = -32; dx <= 32; dx += 6) for (let dz = -32; dz <= 32; dz += 6) { const x = Math.floor(p.x) + dx, z = Math.floor(p.z) + dz, y = g.world.surfaceY(x, z); g.world.set(x, y + 1, z, B.TORCH); }
+        for (let i = 0; i < 400; i++) { g.tickNo++; spawnTick(g, 1); if (i % 40 === 39) for (const e of [...g.ents.values()]) if (e.kind === 'mob') g.ents.delete(e.id) && (g._n = (g._n || 0) + 1); }
+        return (g._n || 0) + [...g.ents.values()].filter(e => e.kind === 'mob').length;
+      };
+      return { open: count(false), lit: count(true) };
+    """)
+    assert r['open'] > 5 and r['lit'] < r['open'] * 0.3, r
+
+
+@test
+def test_new_weapons_and_tools_scale_by_material(pg):
+    r = ev(pg, CRAFT_JS + r"""
+      const d = id => ITEMS[id].dmg;
+      return { wood: d('wood_sword'), stone: d('stone_sword'), iron: d('iron_sword'), crystal: d('crystal_sword'), gem: d('gem_sword'),
+               relics: ['wolf_blade', 'scorpion_blade', 'frost_axe', 'swamp_club', 'magma_blade', 'prism_blade'].map(id => d(id)),
+               ironPick: ITEMS.iron_pick.tool, stonePick: ITEMS.stone_pick.tool };
+    """)
+    assert r['stone'] < r['iron'] < r['crystal'] and r['gem'] > r['iron'], r
+    assert r['relics'] == sorted(r['relics']) and r['relics'][0] >= 9 and r['relics'][-1] >= 13, r
+    assert r['ironPick']['tier'] == r['stonePick']['tier'] and r['ironPick']['speed'] > r['stonePick']['speed'], r
+
+
+UI_SETUP = """
+      const g = __g, uid = g.S.uid, game = g.game, me = game.player(uid);
+      const key = code => window.dispatchEvent(new KeyboardEvent('keydown', { code }));
+      const wait = ms => new Promise(r => setTimeout(r, ms));
+      const slotOf = id => me.inv.findIndex(s => s && s.id === id);
+"""
+
+
+@test
+def test_ui_inventory_shows_equipment_stations_and_equips_by_right_click(pg, browser, base):
+    _open_game(pg, base)
+    r = pg.evaluate("""async () => {""" + UI_SETUP + """
+      const out = {};
+      game.giveItem(uid, 'iron_helm', 1); game.giveItem(uid, 'iron_ingot', 9); game.giveItem(uid, 'stick', 4);
+      await wait(200); key('KeyE'); await wait(250);
+      const root = document.getElementById('panel');
+      out.open = !root.hidden; out.equipSlots = root.querySelectorAll('.slot.eq').length; out.info0 = root.querySelector('.eqinfo').textContent;
+      out.groups = [...root.querySelectorAll('.recipes summary')].map(h => h.textContent);
+      // bấm phải vào mũ sắt trong kho: mặc vào
+      const slots = [...root.querySelectorAll('.grid .slot')]; const i = slotOf('iron_helm');
+      slots[i].dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true })); await wait(300);
+      out.head = me.armor.head; out.info1 = document.querySelector('#panel .eqinfo').textContent;
+      // không có đe: không chế được kiếm sắt; đặt đe gần bên thì chế được
+      const sword = () => [...document.querySelectorAll('#panel .rec')].find(r => r.textContent.includes('Kiếm sắt'));
+      out.swordBtnBefore = !sword().querySelector('button').disabled;
+      const x = Math.floor(me.x) + 2, z = Math.floor(me.z), y = game.world.surfaceY(x, z) + 1;
+      game.setBlock(x, y, z, 32); await wait(500);
+      out.near = [...document.querySelectorAll('#panel .recipes h3')].map(h => h.textContent).join('|');
+      out.swordBtnAfter = !sword().querySelector('button').disabled;
+      sword().querySelector('button').click(); await wait(300);
+      out.sword = me.inv.some(s => s && s.id === 'iron_sword');
+      // vẽ lại (đổi kho) không làm nhóm đang mở bị đóng; nhóm người chơi tự đóng thì giữ đóng
+      const grp = () => [...document.querySelectorAll('#panel .recgroup')];
+      out.openBefore = grp().map(d => d.open).join(',');
+      game.giveItem(uid, 'dirt', 1); await wait(300);
+      out.openAfterRefresh = grp().map(d => d.open).join(',');
+      grp()[0].open = false; await wait(100); game.giveItem(uid, 'dirt', 1); await wait(300);
+      out.closedStays = grp()[0].open;
+      // bấm vào ô trang bị để cởi
+      document.querySelector('#panel .slot.eq').click(); await wait(300); out.headAfter = me.armor.head;
+      return out;
+    }""")
+    assert r['open'] and r['equipSlots'] == 4 and 'Giáp 0' in r['info0'], r
+    assert len(r['groups']) == 4 and r['groups'][0].startswith('Thủ công') and all('chưa ở gần' in g for g in r['groups'][1:]), r
+    assert r['head'] == 'iron_helm' and 'Giáp 2' in r['info1'] and '8%' in r['info1'], r
+    assert not r['swordBtnBefore'] and r['swordBtnAfter'] and 'Đe rèn' in r['near'] and r['sword'], r
+    assert r['headAfter'] is None, r
+    assert r['openBefore'] == r['openAfterRefresh'] and r['openBefore'].split(',')[0] == 'true' and r['closedStays'] is False, r
+
+
+@test
+def test_ui_right_click_opens_chest_door_and_bed_and_moves_items(pg, browser, base):
+    _open_game(pg, base)
+    r = pg.evaluate("""async () => {""" + UI_SETUP + """
+      const out = {};
+      const x = Math.floor(me.x), z = Math.floor(me.z), y = game.world.surfaceY(x, z + 3);
+      game.setBlock(x, y + 1, z + 3, 33);                                 // rương trước mặt
+      game.giveItem(uid, 'xu', 50); await wait(200);
+      g.S.act({ t: 'chest-open', x, y: y + 1, z: z + 3 }); await wait(300);
+      const root = document.getElementById('panel'); out.kind = !root.hidden && root.querySelectorAll('.grid').length;
+      out.chestSlots = root.querySelectorAll('.grid')[0].children.length;
+      const mine = [...root.querySelectorAll('.grid')[1].children]; mine[slotOf('xu')].click(); await wait(350);
+      out.inChest = JSON.stringify(game.chests).includes('xu'); out.stillChestPanel = root.querySelectorAll('.grid').length === 2;
+      out.firstSlotShows = root.querySelectorAll('.grid')[0].children[0].querySelector('img') !== null;
+      root.querySelectorAll('.grid')[0].children[0].click(); await wait(350);
+      out.back = me.inv.some(s => s && s.id === 'xu' && s.n === 50);
+      return out;
+    }""")
+    assert r['kind'] == 2 and r['chestSlots'] == 27 and r['inChest'] and r['stillChestPanel'] and r['firstSlotShows'] and r['back'], r
 
 
 if __name__ == '__main__':

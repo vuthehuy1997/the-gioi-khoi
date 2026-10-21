@@ -6,12 +6,14 @@ export const B = {
   TALL_GRASS: 17, FLOWER_RED: 18, FLOWER_YELLOW: 19, DEAD_BUSH: 20,
   GLOW_MUSHROOM: 21, REED: 22, EMBER_BLOOM: 23, CRYSTAL_BLOOM: 24,          // cây cỏ mới (id >= TALL_GRASS là cây cỏ)
   MOSS: 25, MUD: 26, ASH: 27, BASALT: 28, AMETHYST: 29,
+  IRON_ORE: 30, FURNACE: 31, ANVIL: 32, CHEST: 33, BED: 34, DOOR: 35, DOOR_OPEN: 36, TORCH: 37, GLASS: 38, STONE_BRICK: 39,
 };
 
 export const TILES = ['stone', 'dirt', 'grass_top', 'grass_side', 'sand', 'snow', 'snow_side', 'log_side', 'log_top', 'leaves',
   'planks', 'ore', 'water', 'cactus_side', 'cactus_top', 'ice', 'bedrock', 'magma', 'bench_top', 'bench_side', 'gem_ore', 'tall_grass', 'flower_red', 'flower_yellow', 'dead_bush',
-  'glow_mushroom', 'reed', 'ember_bloom', 'crystal_bloom', 'moss_top', 'moss_side', 'mud', 'ash', 'basalt', 'amethyst'];
-export const ATLAS_COLS = 8, ATLAS_ROWS = 5;
+  'glow_mushroom', 'reed', 'ember_bloom', 'crystal_bloom', 'moss_top', 'moss_side', 'mud', 'ash', 'basalt', 'amethyst',
+  'iron_ore', 'furnace_side', 'furnace_top', 'anvil_top', 'anvil_side', 'chest_top', 'chest_side', 'bed_top', 'bed_side', 'door', 'door_open', 'torch', 'glass', 'stone_brick'];
+export const ATLAS_COLS = 8, ATLAS_ROWS = 7;
 const T = Object.fromEntries(TILES.map((n, i) => [n, i]));
 
 const def = (id, name, o) => ({ id, name, solid: true, opaque: true, hardness: 1, tool: null, tier: 0, drop: name, ...o });
@@ -45,9 +47,21 @@ export const BLOCKS = [
   def(B.ASH, 'ash', { hardness: 0.5, tool: 'shovel', tiles: [T.ash, T.ash, T.ash] }),
   def(B.BASALT, 'basalt', { hardness: 2, tool: 'pick', tier: 1, tiles: [T.basalt, T.basalt, T.basalt] }),
   def(B.AMETHYST, 'amethyst', { hardness: 2.5, tool: 'pick', tier: 2, drop: 'amethyst', tiles: [T.amethyst, T.amethyst, T.amethyst] }),
+  def(B.IRON_ORE, 'iron_ore', { hardness: 3, tool: 'pick', tier: 2, tiles: [T.iron_ore, T.iron_ore, T.iron_ore] }),
+  def(B.FURNACE, 'furnace', { hardness: 3, tool: 'pick', tier: 1, tiles: [T.furnace_top, T.furnace_side, T.furnace_top] }),
+  def(B.ANVIL, 'anvil', { hardness: 4, tool: 'pick', tier: 1, tiles: [T.anvil_top, T.anvil_side, T.anvil_side] }),
+  def(B.CHEST, 'chest', { hardness: 1.5, tool: 'axe', tiles: [T.chest_top, T.chest_side, T.chest_top] }),
+  def(B.BED, 'bed', { hardness: 0.8, tiles: [T.bed_top, T.bed_side, T.planks] }),
+  def(B.DOOR, 'door', { hardness: 1.2, tool: 'axe', tiles: [T.door, T.door, T.door] }),
+  def(B.DOOR_OPEN, 'door_open', { solid: false, opaque: false, plant: true, deco: true, hardness: 1.2, tool: 'axe', drop: 'door', tiles: [T.door_open, T.door_open, T.door_open] }),
+  def(B.TORCH, 'torch', { solid: false, opaque: false, plant: true, deco: true, hardness: 0.05, tiles: [T.torch, T.torch, T.torch] }),
+  def(B.GLASS, 'glass', { hardness: 0.4, opaque: false, tiles: [T.glass, T.glass, T.glass] }),
+  def(B.STONE_BRICK, 'stone_brick', { hardness: 1.8, tool: 'pick', tier: 1, tiles: [T.stone_brick, T.stone_brick, T.stone_brick] }),
 ];
 
 export const BLOCK_BY_NAME = Object.fromEntries(BLOCKS.map(b => [b.name, b]));
 export const isPlant = id => !!BLOCKS[id] && !!BLOCKS[id].plant;
+// Đặt block được lên ô này (không phá): không khí, nước, cây cỏ thường. Đuốc và cửa mở là cây cỏ "trang trí" nên không bị đè.
+export const isReplaceable = id => id === B.AIR || id === B.WATER || (isPlant(id) && !BLOCKS[id].deco);
 export const isSolid = id => !!BLOCKS[id] && BLOCKS[id].solid;
 export const isOpaque = id => !!BLOCKS[id] && BLOCKS[id].opaque;

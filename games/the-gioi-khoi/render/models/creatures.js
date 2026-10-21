@@ -38,23 +38,28 @@ export function frogModel() {
 
 // ---------------- Rắn Đầm Lầy ----------------
 export function snakeModel() {
-  const dims = [[4, 3, 5], [4, 3, 5], [3, 3, 5], [3, 2, 5], [2, 2, 5], [2, 1, 5]];
+  const dims = [[5, 4, 5], [5, 4, 5], [4, 4, 5], [4, 3, 5], [3, 2, 5], [2, 2, 5]];
   let z = 1;
   const segs = dims.map((s, i) => { const c = z + s[2] / 2; z += s[2]; return { size: s, pos: [0, s[1] / 2, c], pivot: [0, s[1] / 2, c - s[2] / 2] }; });
   const C = chain('s', segs, { ph: 0.9 });
   const parts = [
-    { id: 'head', bone: 'head', size: [5, 3, 5], pos: [0, 1.5, -3.5] },
-    { id: 'tongue', bone: 'head', size: [1, 1, 3], pos: [0, 1, -7.5] },
-    { id: 'eyeL', bone: 'head', size: [1, 1, 1], pos: [-2.5, 3, -4.5] }, { id: 'eyeR', bone: 'head', size: [1, 1, 1], pos: [2.5, 3, -4.5], uvFrom: 'eyeL' },
+    { id: 'head', bone: 'head', size: [6, 4, 6], pos: [0, 2, -4] },
+    { id: 'hood', bone: 'head', size: [10, 6, 1], pos: [0, 5, -0.5] },
+    { id: 'fangL', bone: 'head', size: [1, 2, 1], pos: [-2, 0, -6.6] }, { id: 'fangR', bone: 'head', size: [1, 2, 1], pos: [2, 0, -6.6], uvFrom: 'fangL' },
+    { id: 'tongue', bone: 'head', size: [1, 1, 3], pos: [0, 1, -8.5] },
+    { id: 'eyeL', bone: 'head', size: [1, 1, 1], pos: [-3.2, 3.5, -5.2] }, { id: 'eyeR', bone: 'head', size: [1, 1, 1], pos: [3.2, 3.5, -5.2], uvFrom: 'eyeL' },
     ...C.parts,
   ];
   return {
-    id: 'snake', scale: 1.1, TW: 64, parts, bones: [{ id: 'head', pivot: [0, 1, -1], role: 'head', atk: 0.6 }, ...C.bones],
+    id: 'snake', scale: 1.7, TW: 64, parts, bones: [{ id: 'head', pivot: [0, 1, -1], role: 'head', atk: 0.6 }, ...C.bones],
     paint(P, R) {
       const a = '#4d7a30', b = '#c8b64a', dark = '#2c4a1c';
       all(P, R, 'head', a, 0.07); all(P, R, 'tongue', '#d6283a', 0.04); all(P, R, 'eyeL', '#ff3a1a', 0.03);
-      P.box(R('head', 'front'), 0, 0, 5, 1, dark); P.speckle(R('head', 'top'), b, 0.18, 2);
-      segs.forEach((_, i) => { const id = 's' + i; all(P, R, id, a, 0.08); P.stripes(R(id, 'top'), b, 3, 1); P.stripes(R(id, 'left'), dark, 2, 1); P.stripes(R(id, 'right'), dark, 2, 1); P.fill(R(id, 'bottom'), '#d9d49a', 0.05); });
+      P.box(R('head', 'front'), 0, 0, 6, 1, dark); P.speckle(R('head', 'top'), b, 0.18, 2);
+      all(P, R, 'hood', '#3b6226', 0.07); all(P, R, 'fangL', '#f4f1e0', 0.03);
+      const hb = R('hood', 'back'), hfr = R('hood', 'front'); P.box(hfr, 2, 1, 2, 2, b); P.box(hfr, 6, 1, 2, 2, b); P.box(hfr, 2, 1, 1, 2, dark); P.box(hfr, 7, 1, 1, 2, dark); P.box(hb, 3, 0, 4, 6, b);
+      segs.forEach((_, i) => { const id = 's' + i; all(P, R, id, a, 0.08); P.stripes(R(id, 'top'), b, 3, 1);
+        const tp = R(id, 'top'); P.box(tp, 1, 1, tp.w - 2, 1, dark); P.box(tp, 2, 3, Math.max(1, tp.w - 4), 1, b); P.stripes(R(id, 'left'), dark, 2, 1); P.stripes(R(id, 'right'), dark, 2, 1); P.fill(R(id, 'bottom'), '#d9d49a', 0.05); });
     },
   };
 }
@@ -69,7 +74,7 @@ export function crocModel({ boss = false } = {}) {
   ], { ph: 0.9 });
   const parts = [
     { id: 'body', bone: 'body', size: [9, 5, 18], pos: [0, 6, 2] },
-    ...[-4, 0, 4, 8].map((zz, i) => ({ id: 'ridge' + i, bone: 'body', size: [2, 2, 2], pos: [0, 9.5, zz], ...(i ? { uvFrom: 'ridge0' } : {}) })),
+    ...[-4, 0, 4, 8].map((zz, i) => ({ id: 'ridge' + i, bone: 'body', size: [2, 3, 2], pos: [0, 10, zz], ...(i ? { uvFrom: 'ridge0' } : {}) })),
     { id: 'head', bone: 'head', size: [8, 4, 6], pos: [0, 6.5, -10] },
     { id: 'snout', bone: 'head', size: [6, 2, 9], pos: [0, 5.5, -17.5] },
     { id: 'jaw', bone: 'head', size: [6, 1, 8], pos: [0, 3.5, -17] },
@@ -79,7 +84,7 @@ export function crocModel({ boss = false } = {}) {
   if (boss) parts.push(...[-8, -3, 2, 7].map((zz, i) => ({ id: 'spike' + i, bone: 'body', size: [2, 5, 2], pos: [0, 12.5, zz], ...(i ? { uvFrom: 'spike0' } : {}) })),
     { id: 'hornL', bone: 'head', size: [2, 5, 2], pos: [-3, 11, -9] }, { id: 'hornR', bone: 'head', size: [2, 5, 2], pos: [3, 11, -9], uvFrom: 'hornL' });
   return {
-    id: boss ? 'swamp-king' : 'croc', scale: boss ? 2.6 : 0.95, TW: 128, parts, bones: [{ id: 'body', pivot: [0, 5, 0] }, { id: 'head', pivot: [0, 6, -8], role: 'head', atk: 0.5 }, ...T.bones, ...L.bones],
+    id: boss ? 'swamp-king' : 'croc', scale: boss ? 2.6 : 1.35, TW: 128, parts, bones: [{ id: 'body', pivot: [0, 5, 0] }, { id: 'head', pivot: [0, 6, -8], role: 'head', atk: 0.5 }, ...T.bones, ...L.bones],
     paint(P, R) {
       const skin = boss ? '#3a5a2a' : '#4b6a3a', dark = boss ? '#1c2e14' : '#2f4a26', belly = boss ? '#b9b070' : '#cfc98e';
       all(P, R, 'body', skin, 0.09); all(P, R, 'head', skin, 0.08); all(P, R, 'snout', skin, 0.08); all(P, R, 'jaw', belly, 0.06); all(P, R, 'ridge0', dark, 0.06); all(P, R, 'legFL', skin, 0.09);
@@ -157,12 +162,14 @@ export function fireSpiritModel() {
   const parts = [
     { id: 'head', bone: 'head', size: [6, 6, 6], pos: [0, 19, 0] },
     { id: 'f1', bone: 'head', size: [2, 5, 2], pos: [-2, 24, 0] }, { id: 'f2', bone: 'head', size: [2, 7, 2], pos: [0, 25, 0], uvFrom: 'f1' }, { id: 'f3', bone: 'head', size: [2, 5, 2], pos: [2, 24, 0], uvFrom: 'f1' },
+    { id: 'f4', bone: 'head', size: [2, 5, 2], pos: [-4, 22, 0], rot: [0, 0, 0.5], uvFrom: 'f1' }, { id: 'f5', bone: 'head', size: [2, 5, 2], pos: [4, 22, 0], rot: [0, 0, -0.5], uvFrom: 'f1' },
+    { id: 'ember1', bone: 'body', size: [2, 2, 2], pos: [-9, 8, 2], uvFrom: 'f1' }, { id: 'ember2', bone: 'body', size: [2, 2, 2], pos: [9, 17, -2], uvFrom: 'f1' }, { id: 'ember3', bone: 'body', size: [2, 2, 2], pos: [-8, 21, 3], uvFrom: 'f1' },
     { id: 'core', bone: 'body', size: [8, 7, 6], pos: [0, 12, 0] },
     { id: 'wisp1', bone: 'wisp1', size: [6, 5, 5], pos: [0, 5.5, 0] }, { id: 'wisp2', bone: 'wisp2', size: [3, 4, 3], pos: [0, 0, 0] },
     { id: 'armL', bone: 'armL', size: [2, 7, 2], pos: [-6, 13, 0] }, { id: 'armR', bone: 'armR', size: [2, 7, 2], pos: [6, 13, 0], uvFrom: 'armL' },
   ];
   return {
-    id: 'fire-spirit', scale: 0.95, TW: 64, parts, hover: 6,
+    id: 'fire-spirit', scale: 1.2, TW: 64, parts, hover: 6,
     bones: [{ id: 'body', pivot: [0, 9, 0] }, { id: 'head', pivot: [0, 16, 0], role: 'head' },
       { id: 'wisp1', pivot: [0, 8, 0], role: 'sway', amp: 0.2, ph: 0 }, { id: 'wisp2', pivot: [0, 3, 0], parent: 'wisp1', role: 'sway', amp: 0.35, ph: 1 },
       { id: 'armL', pivot: [-6, 17, 0], role: 'flap', amp: 0.4, ph: 0 }, { id: 'armR', pivot: [6, 17, 0], role: 'flap', amp: -0.4, ph: 0 }],

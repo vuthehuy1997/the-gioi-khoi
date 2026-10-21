@@ -23,3 +23,13 @@ export function nearBench(world, x, y, z) {
   }
   return false;
 }
+
+// Các trạm chế tạo trong vòng 4 block ngang, ±2 dọc: { workbench, furnace, anvil }.
+export function nearStations(world, x, y, z) {
+  const out = { workbench: false, furnace: false, anvil: false };
+  for (let dy = -2; dy <= 2; dy++) for (let dz = -4; dz <= 4; dz++) for (let dx = -4; dx <= 4; dx++) {
+    const id = world.get(Math.floor(x) + dx, Math.floor(y) + dy, Math.floor(z) + dz);
+    if (id === B.WORKBENCH) out.workbench = true; else if (id === B.FURNACE) out.furnace = true; else if (id === B.ANVIL) out.anvil = true;
+  }
+  return out;
+}

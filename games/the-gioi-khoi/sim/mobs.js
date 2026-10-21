@@ -139,6 +139,12 @@ export function stepMobs(g, dt) {
 }
 
 // Mỗi giây thử sinh quái quanh từng người chơi theo vùng, ngày/đêm và giới hạn số lượng.
+const TORCH_R = 8;
+function torchNear(world, x, y, z) {
+  for (let dy = -2; dy <= 4; dy++) for (let dz = -TORCH_R; dz <= TORCH_R; dz++) for (let dx = -TORCH_R; dx <= TORCH_R; dx++) if (world.get(x + dx, y + dy, z + dz) === B.TORCH) return true;
+  return false;
+}
+
 export function spawnTick(g, dt) {
   g.spawnAcc = (g.spawnAcc || 0) + dt;
   if (g.spawnAcc < 1) return;
@@ -157,6 +163,7 @@ export function spawnTick(g, dt) {
     const sy = g.world.surfaceY(x, z);
     const free = id => id === B.AIR || isPlant(id);
     if (sy <= WATER_LEVEL || !free(g.world.get(x, sy + 1, z)) || !free(g.world.get(x, sy + 2, z))) continue;
+    if (torchNear(g.world, x, sy, z)) continue;                // đuốc đuổi quái: không sinh quái trong 8 block quanh đuốc
     const region = g.world.regionAt(x, z);
     const options = Object.entries(MOBS).filter(([, d]) => d.weight > 0 && d.regions.includes(region) && (d.when === 'any' || (d.when === 'night') === night));
     if (!options.length) continue;

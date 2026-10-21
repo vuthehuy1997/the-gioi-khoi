@@ -70,3 +70,17 @@ Các mục nhỏ còn hoãn: xoá delta khi block trở về nguyên bản (gói
 | L3 | Game chạy nhạc theo vùng, thanh âm lượng và phím M lưu vào cài đặt | `test_game_runs_music_*` | ✅ |
 
 Chưa kiểm chứng bằng tai: độ hay, độ to cân bằng giữa nhạc và hiệu ứng.
+
+## Chế tạo sâu, trang bị, môi trường, xây dựng (vòng 7)
+
+| # | Tiêu chí | Test | Trạng thái |
+|---|---|---|---|
+| M1 | Công thức gắn với trạm (bàn, lò nung, đe rèn); chuỗi luyện: gỗ → than củi, quặng sắt + than → thỏi sắt, cát → kính; true cũ = bàn | `test_stations_gate_recipes_and_smelting_chain`, `test_stations_are_detected_*` | ✅ |
+| M2 | Quặng sắt sinh dưới lòng đất ở nhiều vùng, cần cuốc đá | `test_stations_are_detected_near_player_and_iron_ore_exists_underground` | ✅ |
+| M3 | 6 bộ trang bị × 4 món, mỗi bộ một loại chống chịu và điểm giáp tăng dần; vũ khí di vật cần chiến lợi phẩm boss | `test_armor_sets_*`, `test_new_weapons_*` | ✅ |
+| M4 | Mặc/cởi/đổi trang bị, giáp giảm sát thương quái (tối thiểu 1), lưu và nạp | `test_equip_armor_*` | ✅ |
+| M5 | Nóng/lạnh/độc theo vùng: không đồ thì mất máu, đủ món chống đúng loại thì miễn nhiễm; giày than hồng đi được trên nham thạch; sát thương môi trường không bị giáp thường làm nhẹ | `test_region_environment_*`, `test_ember_boots_*` | ✅ |
+| M6 | Đuốc, cửa, rương, giường, kính, gạch đá; đuốc đuổi quái; rương lưu/nạp và rơi đồ khi phá; giường đặt điểm hồi sinh | `test_torch_door_chest_bed_*`, `test_torches_keep_monsters_*` | ✅ |
+| M7 | Giao diện: ô trang bị và thông số giáp, công thức chia nhóm theo trạm (cập nhật khi đặt/đi gần trạm), bấm phải để mặc, bảng rương | `test_ui_*` | ✅ |
+
+Chưa làm: bậc thang và nửa khối, ánh sáng động từ đuốc, trang bị hiện trên người chơi khác, hiệu ứng riêng cho vũ khí di vật.

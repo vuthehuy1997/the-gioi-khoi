@@ -178,13 +178,16 @@ export function wraithModel() {
   const parts = [
     { id: 'head', bone: 'head', size: [8, 8, 8], pos: [0, 26, 0] },
     { id: 'spike1', bone: 'head', size: [2, 5, 2], pos: [-3, 32, 0] }, { id: 'spike2', bone: 'head', size: [2, 7, 2], pos: [0, 33, 0], uvFrom: 'spike1' }, { id: 'spike3', bone: 'head', size: [2, 5, 2], pos: [3, 32, 0], uvFrom: 'spike1' },
+    { id: 'hornL', bone: 'head', size: [2, 5, 2], pos: [-5, 29, 0], rot: [0, 0, 0.5], uvFrom: 'spike1' }, { id: 'hornR', bone: 'head', size: [2, 5, 2], pos: [5, 29, 0], rot: [0, 0, -0.5], uvFrom: 'spike1' },
+    { id: 'cape', bone: 'body', size: [11, 18, 1], pos: [0, 15, 3.5] },
+    { id: 'padL', bone: 'armL', size: [5, 3, 5], pos: [-7.5, 24, 0] }, { id: 'padR', bone: 'armR', size: [5, 3, 5], pos: [7.5, 24, 0], uvFrom: 'padL' },
     { id: 'chest', bone: 'body', size: [9, 8, 5], pos: [0, 18, 0] }, { id: 'waist', bone: 'body', size: [7, 7, 4], pos: [0, 11, 0] },
     { id: 'wisp1', bone: 'wisp1', size: [5, 6, 3], pos: [0, 5.5, 0] }, { id: 'wisp2', bone: 'wisp2', size: [3, 5, 2], pos: [0, 0, 0] },
     { id: 'armL', bone: 'armL', size: [3, 11, 3], pos: [-7, 17, 0] }, { id: 'armR', bone: 'armR', size: [3, 11, 3], pos: [7, 17, 0], uvFrom: 'armL' },
     { id: 'clawL', bone: 'armL', size: [4, 3, 2], pos: [-7, 10, -1] }, { id: 'clawR', bone: 'armR', size: [4, 3, 2], pos: [7, 10, -1], uvFrom: 'clawL' },
   ];
   return {
-    id: 'wraith', scale: 0.95, TW: 64, parts, hover: 8, transparent: true,
+    id: 'wraith', scale: 1.15, TW: 64, parts, hover: 8, transparent: true,
     bones: [
       { id: 'body', pivot: [0, 12, 0] }, { id: 'head', pivot: [0, 22, 0], role: 'head' },
       { id: 'wisp1', pivot: [0, 8, 0], role: 'sway', amp: 0.18, ph: 0 }, { id: 'wisp2', pivot: [0, 3, 0], parent: 'wisp1', role: 'sway', amp: 0.3, ph: 1 },
@@ -194,6 +197,8 @@ export function wraithModel() {
       const body = '#9fd8ff', deep = '#5aa8e0', glow = '#e8fbff';
       for (const f of SIDES) { P.fill(R('head', f), body, 0.07); P.fill(R('chest', f), deep, 0.07); P.fill(R('waist', f), deep, 0.07); P.fill(R('wisp1', f), '#7cc0ee', 0.07); P.fill(R('wisp2', f), '#9fd8ff', 0.07); P.fill(R('armL', f), body, 0.07); P.fill(R('clawL', f), glow, 0.05); P.fill(R('spike1', f), glow, 0.05); }
       const hf = R('head', 'front'); P.box(hf, 1, 3, 2, 3, '#0b2a4a'); P.box(hf, 5, 3, 2, 3, '#0b2a4a'); P.box(hf, 1, 4, 2, 1, '#ffffff'); P.box(hf, 5, 4, 2, 1, '#ffffff'); P.box(hf, 2, 6, 4, 2, '#0b2a4a'); P.dot(hf, 1, 6, '#0b2a4a'); P.dot(hf, 6, 6, '#0b2a4a'); P.box(hf, 3, 6, 2, 1, '#e8fbff');
+      for (const f of SIDES) { P.fill(R('cape', f), '#3f86c4', 0.08); P.fill(R('padL', f), glow, 0.06); }
+      for (const f of ['front', 'back']) { const c = R('cape', f); P.vgrad(c, '#6fb4e8', '#2a5c94', 0.06); for (let x = 0; x < c.w; x += 2) P.box(c, x, c.h - 1 - (x % 4), 1, 1 + (x % 4), '#2a5c94'); }
       P.stripes(R('chest', 'front'), glow, 3, 1); P.speckle(R('chest', 'front'), '#ffffff', 0.16, 4); P.speckle(R('waist', 'front'), glow, 0.12, 6);
       for (const f of ['front', 'back', 'left', 'right']) P.speckle(R('wisp1', f), glow, 0.12, 9);
     },

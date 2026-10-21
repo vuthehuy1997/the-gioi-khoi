@@ -1,9 +1,10 @@
 // Lõi mô phỏng của một thế giới: người chơi, kho đồ, đào/đặt block. Chạy ở host (hoặc một mình); không biết gì về DOM hay mạng.
 // Mọi thay đổi cần báo cho người chơi được đẩy vào hàng đợi sự kiện, lấy ra bằng drain().
 import { World } from '../world/world.js';
-import { BLOCKS, BLOCK_BY_NAME, B, isPlant } from '../world/blocks.js';
+import { BLOCKS, BLOCK_BY_NAME, B, isPlant, isReplaceable } from '../world/blocks.js';
 import { ITEMS, HAND_DAMAGE } from '../content/items.js';
-import { makeInventory, addItem, removeItem, countItem, HOTBAR } from './inventory.js';
+import { makeInventory, addItem, removeItem, countItem, canFit, HOTBAR, SLOTS } from './inventory.js';
+import { emptyArmor, armorStats, ARMOR_SLOTS, equip } from './armor.js';
 import { craft, canCraft } from './crafting.js';
 import { makePlayer, stepPlayer } from './physics.js';
 import { makeRng } from './rng.js';
@@ -15,14 +16,19 @@ import { stepBosses, stepArenas, bossDef } from './boss.js';
 import { buildStructures, ensureNpcs } from './structures.js';
 import { BOSSES } from '../content/bosses.js';
 import { REGIONS } from '../content/regions.js';
-import { breakTimeFor, canHarvest, nearBench } from './rules.js';
+import { breakTimeFor, canHarvest, nearBench, nearStations } from './rules.js';
 import { makeNoise } from './perception.js';
 
-export const REACH = 6.5, EYE = 1.62, MAX_HP = 20, RESPAWN_S = 3;
+const ENV_TEXT = {
+  heat: n => `Cái nóng ở ${n} thiêu đốt bạn. Mặc đồ chống nóng (vỏ bọ cạp, than hồng) để chịu được.`,
+  cold: n => `Giá lạnh ở ${n} cắt da bạn. Mặc đồ chống lạnh (lông thú, pha lê) để chịu được.`,
+  toxic: n => `Hơi độc ở ${n} làm bạn yếu đi. Mặc đồ chống độc (vảy cá sấu) để chịu được.`,
+};
+export const REACH = 6.5, EYE = 1.62, MAX_HP = 20, RESPAWN_S = 3, CHEST_SLOTS = 27, ENV_TICK = 4;
 
 export class Game {
-  constructor({ seed, world, spawning = true } = {}) {
-    this.seed = seed; this.spawning = spawning;
+  constructor({ seed, world, spawning = true, env = true } = {}) {
+    this.seed = seed; this.spawning = spawning; this.env = env;       // env: false tắt nóng/lạnh/độc của vùng (dùng khi thử nghiệm)
     this.world = world || new World(seed);
     this.rng = makeRng(seed ^ 0x5eed);
     this.time = 0; this.tickNo = 0;
@@ -32,17 +38,18 @@ export class Game {
     this.out = [];
     this.spawn = this.world.findSpawn();
     this.savedPlayers = {};
+    this.chests = {};                                    // 'x,y,z' -> mảng CHEST_SLOTS ô của rương đặt trong thế giới
   }
 
   // ---- lưu / nạp ----
   toSave() {
     const players = { ...this.savedPlayers };
     for (const p of this.players.values()) players[p.uid] = this.playerSave(p);
-    return { v: 1, seed: this.seed, time: this.time, flags: this.flags, delta: this.world.exportDelta(), players };
+    return { v: 1, seed: this.seed, time: this.time, flags: this.flags, delta: this.world.exportDelta(), players, chests: this.chests };
   }
 
   // Người đang gục lưu ở điểm hồi sinh (không để họ hiện lại ngay tại xác).
-  playerSave(p) { const at = p.dead ? { x: this.spawn.x + 0.5, y: this.world.surfaceY(this.spawn.x, this.spawn.z) + 1, z: this.spawn.z + 0.5 } : p; return { name: p.name, x: at.x, y: at.y, z: at.z, hp: p.dead ? p.maxHp : p.hp, maxHp: p.maxHp, inv: p.inv, sel: p.sel, quests: p.quests, region: null }; }
+  playerSave(p) { const at = p.dead ? { x: this.spawn.x + 0.5, y: this.world.surfaceY(this.spawn.x, this.spawn.z) + 1, z: this.spawn.z + 0.5 } : p; return { name: p.name, x: at.x, y: at.y, z: at.z, hp: p.dead ? p.maxHp : p.hp, maxHp: p.maxHp, inv: p.inv, sel: p.sel, quests: p.quests, armor: p.armor, home: p.home || null, region: null }; }
 
   static fromSave(save, opts = {}) {
     const g = new Game({ seed: save.seed, ...opts });
@@ -51,6 +58,7 @@ export class Game {
     g.time = save.time || 0;
     g.rng = makeRng(save.seed ^ 0x5eed ^ Math.floor(g.time * 1000));
     g.savedPlayers = save.players || {};
+    g.chests = save.chests || {};
     if (g.flags.sites) g.buildStructures();                  // thế giới cũ: dựng thêm đấu trường/làng được bổ sung sau này
     g.ensureNpcs();
     return g;
@@ -65,7 +73,7 @@ export class Game {
     const sx = this.spawn.x, sz = this.spawn.z;
     const p = makePlayer(sx + 0.5, this.world.surfaceY(sx, sz) + 1, sz + 0.5);
     Object.assign(p, { uid, name: String(name || 'Khách').slice(0, 16), hp: MAX_HP, maxHp: MAX_HP, inv: makeInventory(), sel: 0, rev: 1,
-      dead: false, respawnAt: 0, tpSeq: 0, lastHurt: -99, attackAt: 0, dig: null, lastState: this.time, quests: { active: {}, done: {} }, region: null });
+      armor: emptyArmor(), home: null, dead: false, respawnAt: 0, tpSeq: 0, lastHurt: -99, attackAt: 0, dig: null, lastState: this.time, quests: { active: {}, done: {} }, region: null });
     saved = saved || (Object.hasOwn(this.savedPlayers, uid) ? this.savedPlayers[uid] : null);
     if (saved) Object.assign(p, JSON.parse(JSON.stringify(saved)), { uid, dead: false, name: p.name });
     this.players.set(uid, p);
@@ -121,6 +129,12 @@ export class Game {
       case 'place': return this.actPlace(p, a);
       case 'craft': return this.actCraft(p, a);
       case 'swap': return this.actSwap(p, a);
+      case 'equip': { const r = equip(p, a.i); if (r.ok) this.touch(p); return r; }
+      case 'unequip': return this.actUnequip(p, a);
+      case 'toggle': return this.actToggle(p, a);
+      case 'sleep': return this.actSleep(p, a);
+      case 'chest-open': return this.actChestOpen(p, a);
+      case 'chest-move': return this.actChestMove(p, a);
       case 'hit': return combat.actHit(this, p, a);
       case 'use': return combat.actUse(this, p);
       case 'respawn': return combat.actRespawn(this, p);
@@ -151,6 +165,7 @@ export class Game {
     p.dig = null;
     this.makeNoise(a.x + 0.5, a.y + 0.5, a.z + 0.5, def.tool === 'pick' ? 14 : def.tool === 'axe' ? 12 : id === B.LEAVES || isPlant(id) ? 4 : 7);
     if (canHarvest(id, hs ? hs.id : null) && def.drop) this.collect(p, def.drop, 1, a.x + 0.5, a.y + 0.5, a.z + 0.5);
+    if (id === B.CHEST) this.spillChest(a.x, a.y, a.z);
     this.onBlockBroken?.(p, id);
     return { ok: true };
   }
@@ -175,7 +190,7 @@ export class Game {
     if (!it.block) return { ok: false, reason: 'not-block' };
     if (!this.inReach(p, a.x, a.y, a.z)) return { ok: false, reason: 'reach' };
     const cur = this.world.get(a.x, a.y, a.z);
-    if (cur !== B.AIR && cur !== B.WATER && !isPlant(cur)) return { ok: false, reason: 'occupied' };
+    if (!isReplaceable(cur)) return { ok: false, reason: 'occupied' };
     if (a.y < 1 || a.y >= 63) return { ok: false, reason: 'bounds' };
     const nb = [[1, 0, 0], [-1, 0, 0], [0, 1, 0], [0, -1, 0], [0, 0, 1], [0, 0, -1]].some(([dx, dy, dz]) => {
       const id = this.world.get(a.x + dx, a.y + dy, a.z + dz); return id !== B.AIR && id !== B.WATER && !isPlant(id);
@@ -189,6 +204,7 @@ export class Game {
   }
 
   nearBench(p) { return nearBench(this.world, p.x, p.y, p.z); }
+  nearStations(p) { return nearStations(this.world, p.x, p.y, p.z); }
 
   actSwap(p, a) {
     const ok = i => Number.isInteger(i) && i >= 0 && i < p.inv.length;
@@ -198,9 +214,69 @@ export class Game {
   }
 
   actCraft(p, a) {
-    if (!craft(p.inv, a.id, this.nearBench(p))) return { ok: false, reason: 'cannot-craft' };
+    if (!craft(p.inv, a.id, this.nearStations(p))) return { ok: false, reason: 'cannot-craft' };
     this.touch(p);
     return { ok: true };
+  }
+
+  actUnequip(p, a) {
+    const id = ARMOR_SLOTS.includes(a.slot) ? p.armor[a.slot] : null;
+    if (!id) return { ok: false, reason: 'empty' };
+    if (!canFit(p.inv, id, 1)) return { ok: false, reason: 'full' };
+    addItem(p.inv, id, 1); p.armor[a.slot] = null; this.touch(p);
+    return { ok: true };
+  }
+
+  // Cửa: bấm để đóng/mở (mở thì đi xuyên được). Bấm khi có người đứng trong ô thì không đóng được.
+  actToggle(p, a) {
+    if (!this.inReach(p, a.x, a.y, a.z)) return { ok: false, reason: 'reach' };
+    const id = this.world.get(a.x, a.y, a.z);
+    if (id !== B.DOOR && id !== B.DOOR_OPEN) return { ok: false, reason: 'not-door' };
+    if (id === B.DOOR_OPEN && this.occupied(a.x, a.y, a.z)) return { ok: false, reason: 'blocked' };
+    this.setBlock(a.x, a.y, a.z, id === B.DOOR ? B.DOOR_OPEN : B.DOOR);
+    return { ok: true };
+  }
+
+  // Giường: đặt điểm hồi sinh. Giường bị phá thì lần sau hồi sinh ở điểm gốc.
+  actSleep(p, a) {
+    if (!this.inReach(p, a.x, a.y, a.z)) return { ok: false, reason: 'reach' };
+    if (this.world.get(a.x, a.y, a.z) !== B.BED) return { ok: false, reason: 'not-bed' };
+    p.home = { x: a.x, y: a.y, z: a.z }; this.touch(p);
+    this.emit(p.uid, { t: 'toast', text: 'Đã đặt điểm hồi sinh ở giường này.' });
+    return { ok: true };
+  }
+
+  // Điểm hồi sinh: giường còn nguyên thì lên trên giường, không thì điểm gốc của thế giới.
+  respawnPoint(p) {
+    const h = p.home;
+    if (h && this.world.get(h.x, h.y, h.z) === B.BED) return { x: h.x + 0.5, y: h.y + 1, z: h.z + 0.5 };
+    return { x: this.spawn.x + 0.5, y: this.world.surfaceY(this.spawn.x, this.spawn.z) + 1, z: this.spawn.z + 0.5 };
+  }
+
+  // ---- rương ----
+  chestKey(a) { return a.x + ',' + a.y + ',' + a.z; }
+  chestOf(p, a) {
+    if (![a.x, a.y, a.z].every(Number.isInteger)) return null;
+    if (!this.inReach(p, a.x, a.y, a.z) || this.world.get(a.x, a.y, a.z) !== B.CHEST) return null;
+    const k = this.chestKey(a); return this.chests[k] || (this.chests[k] = new Array(CHEST_SLOTS).fill(null));
+  }
+  sendChest(p, a, inv) { this.emit(p.uid, { t: 'chest', x: a.x, y: a.y, z: a.z, inv }); }
+  actChestOpen(p, a) { const c = this.chestOf(p, a); if (!c) return { ok: false, reason: 'reach' }; this.sendChest(p, a, c); return { ok: true }; }
+  // Chuyển cả chồng ở ô `slot` giữa kho người chơi (from: 'inv') và rương (from: 'chest'); phần không vừa ở lại chỗ cũ.
+  actChestMove(p, a) {
+    const c = this.chestOf(p, a); if (!c) return { ok: false, reason: 'reach' };
+    const src = a.from === 'chest' ? c : a.from === 'inv' ? p.inv : null, dst = src === c ? p.inv : c;
+    if (!src || !Number.isInteger(a.slot) || a.slot < 0 || a.slot >= src.length || !src[a.slot]) return { ok: false, reason: 'bad-slot' };
+    const s = src[a.slot], left = addItem(dst, s.id, s.n);
+    if (left === s.n) return { ok: false, reason: 'full' };
+    if (left) s.n = left; else src[a.slot] = null;
+    this.touch(p); this.sendChest(p, a, c);
+    return { ok: true };
+  }
+  spillChest(x, y, z) {
+    const k = x + ',' + y + ',' + z, c = this.chests[k]; if (!c) return;
+    for (const s of c) if (s) this.dropItem(s.id, s.n, x + 0.5, y + 0.5, z + 0.5);
+    delete this.chests[k];
   }
 
   // ---- trạng thái người chơi do client báo (vị trí do client mô phỏng, host chỉ kiểm tra tốc độ) ----
@@ -227,7 +303,7 @@ export class Game {
   }
 
   makeNoise(x, y, z, radius) { makeNoise(this, x, y, z, radius); }
-  hurtPlayer(p, dmg, src) { combat.hurtPlayer(this, typeof p === 'string' ? this.player(p) : p, dmg, src); }
+  hurtPlayer(p, dmg, src, opts) { combat.hurtPlayer(this, typeof p === 'string' ? this.player(p) : p, dmg, src, opts); }
   damageEntity(e, dmg, src) { return combat.damageEntity(this, e, dmg, src); }
 
   // ---- công trình, nhiệm vụ, boss ----
@@ -268,8 +344,17 @@ export class Game {
           if (this.time - (p.warnAt || -99) > 20) { p.warnAt = this.time; const b = Object.values(BOSSES).find(x => x.flag === r.requires); this.emit(p.uid, { t: 'toast', text: `Khí độc ở ${r.name} đang gặm mòn bạn. Hãy hạ ${b ? b.name : 'boss'} để vào vùng này an toàn.` }); }
         }
       } else p.hazT = 0;
-      // đứng trên đá nham thạch thì bị bỏng
-      if (p.y - Math.floor(p.y) < 0.15 && this.world.get(Math.floor(p.x), Math.floor(p.y) - 1, Math.floor(p.z)) === B.MAGMA) {
+      // nóng/lạnh/độc của vùng: mỗi món trang bị chống đúng loại giảm 1 điểm sát thương mỗi nhịp
+      const st = armorStats(p.armor), hit = r.env && this.env ? r.env.power - st.resist[r.env.kind] : 0;
+      if (hit > 0) {
+        p.envT = (p.envT || 0) + dt;
+        if (p.envT >= ENV_TICK) {
+          p.envT -= ENV_TICK; this.hurtPlayer(p, hit, null, { pure: true });
+          if (this.time - (p.envWarn || -99) > 20) { p.envWarn = this.time; this.emit(p.uid, { t: 'toast', text: ENV_TEXT[r.env.kind](r.name) }); }
+        }
+      } else p.envT = 0;
+      // đứng trên đá nham thạch thì bị bỏng (giày than hồng thì không)
+      if (!st.fireproof && p.y - Math.floor(p.y) < 0.15 && this.world.get(Math.floor(p.x), Math.floor(p.y) - 1, Math.floor(p.z)) === B.MAGMA) {
         p.burnT = (p.burnT || 0) + dt;
         if (p.burnT >= 0.8) {
           p.burnT -= 0.8; this.hurtPlayer(p, 2, null);

@@ -60,6 +60,7 @@ export function generateChunk(seed, cx, cz) {
         if (y > 2 && y < h - 4 && noise3(seed + 55, wx * 0.07, y * 0.09, wz * 0.07) > 0.8) b = B.AIR;     // hang động
         else if (y < 14 && hash(seed + 8, wx, y, wz) < 0.004) b = B.GEM_ORE;
         else if (hash(seed + 7, wx, y, wz) < 0.014) b = B.ORE;
+        else if (y < 46 && hash(seed + 9, wx, y, wz) < 0.011) b = B.IRON_ORE;
         else if (y < 7 && noise3(seed + 77, wx * 0.1, y * 0.1, wz * 0.1) > 0.82) b = B.MAGMA;
       }
       out[idx(lx, y, lz)] = b;

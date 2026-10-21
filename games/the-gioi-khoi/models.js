@@ -22,6 +22,13 @@ const rows = Math.ceil(ids.length / cols), W = cols * gap;
 const dist = Number(params.get('dist')) || Math.max(4.5, cols * gap * 0.62 + 2.2 + rows), look = Number(params.get('look')) || 1.3;
 camera.position.set(0, look + 1.2 + rows * 0.5, dist);
 camera.lookAt(0, look, -(rows - 1) * gap * 0.55);
+if (params.get('fit') && rigs.length === 1) {              // khung vừa một thực thể (dùng khi xuất ảnh thiết kế)
+  rigs[0].g.rotation.y = Number(params.get('yaw')) || 0; rigs[0].g.updateMatrixWorld(true);
+  const bb = new THREE.Box3().setFromObject(rigs[0].g), c = bb.getCenter(new THREE.Vector3()), sz = bb.getSize(new THREE.Vector3());
+  const r = Math.max(sz.x, sz.y, sz.z) * 0.5 + 0.2, d = r / Math.tan(camera.fov * Math.PI / 360) * 1.3;
+  camera.position.set(c.x, c.y, c.z + d); camera.lookAt(c);
+  document.getElementById('info').remove(); scene.remove(ref);
+}
 const walking = params.get('walk') !== '0', attack = params.get('attack') === '1';
 let t = 0;
 function frame() {

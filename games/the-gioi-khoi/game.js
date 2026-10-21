@@ -6,7 +6,7 @@ import { cleanName } from '../../platform/net/protocol.js';
 import { World } from './world/world.js';
 import { Game } from './sim/game.js';
 import { makePlayer, stepPlayer } from './sim/physics.js';
-import { breakTimeFor, nearBench } from './sim/rules.js';
+import { breakTimeFor, nearStations } from './sim/rules.js';
 import { lightLevel } from './sim/daynight.js';
 import { HostSession } from './net/host.js';
 import { ClientSession } from './net/client.js';
@@ -159,6 +159,7 @@ function onFail(ev) {
   if (FAIL_TEXT[ev.reason]) hud.toast(FAIL_TEXT[ev.reason], 1800);
 }
 
+let stationPoll = 0, stationSig = '';
 const director = createDirector({ sfx });
 let deathTimer = null;
 function refreshYou() {
@@ -166,7 +167,7 @@ function refreshYou() {
   hud.setHp(y.hp, y.maxHp); hud.setHotbar(y.inv, y.sel);
   if (y.dead) { if (!deathTimer) { document.exitPointerLock?.(); panels.close(); panels.showDeath(false); deathTimer = setTimeout(() => panels.showDeath(true), 3000); } }
   else if (deathTimer || !$('death').hidden) { clearTimeout(deathTimer); deathTimer = null; panels.hideDeath(); lockPointer(); }
-  if (panels.isOpen) panels.refresh({ you: y, nearBench: nearBench(S.world, local.x, local.y, local.z) });
+  if (panels.isOpen) panels.refresh({ you: y, near: nearStations(S.world, local.x, local.y, local.z) });
 }
 
 function handleEvent(ev) {
@@ -179,6 +180,7 @@ function handleEvent(ev) {
     case 'dialog': document.exitPointerLock?.(); sfx.play('talk'); panels.showDialog(ev); break;
     case 'dialog-end': panels.endDialog(); break;
     case 'shop': document.exitPointerLock?.(); panels.showShop(ev, S.you); break;
+    case 'chest': document.exitPointerLock?.(); panels.showChest(ev, { you: S.you, near: nearStations(S.world, local.x, local.y, local.z) }); break;
     case 'quests': hud.setQuests(ev.list); break;
     case 'region': hud.setRegion(ev.name); break;
     case 'swing': { ents.swing('e:' + ev.id); const b = interp.es.find(e => e.id === ev.id); if (b && b.kind === 'boss' && Math.hypot(b.x - local.x, b.z - local.z) < 40) sfx.play('bossSwing'); break; }
@@ -204,7 +206,7 @@ addEventListener('keydown', e => {
   if (e.code === 'F3') { e.preventDefault(); const d = $('debug'); d.hidden = !d.hidden; return; }
   if (e.code === 'Escape') { if (panels.isOpen) panels.close(); else if (!paused && !S.you.dead) setPause(true); else if (paused) setPause(false); return; }
   if (inUi() && e.code !== 'KeyE') return;
-  if (e.code === 'KeyE') { if (panels.kind === 'inventory') panels.close(); else if (!inUi()) { document.exitPointerLock?.(); panels.openInventory({ you: S.you, nearBench: nearBench(S.world, local.x, local.y, local.z) }); } return; }
+  if (e.code === 'KeyE') { if (panels.kind === 'inventory') panels.close(); else if (!inUi()) { document.exitPointerLock?.(); panels.openInventory({ you: S.you, near: nearStations(S.world, local.x, local.y, local.z) }); } return; }
   const m = /^Digit([1-9])$/.exec(e.code);
   if (m) S.act({ t: 'sel', i: Number(m[1]) - 1 });
 });
@@ -281,9 +283,15 @@ function pickEntity(o, d, maxD) {
 
 function heldId() { const s = S.you.inv[S.you.sel]; return s ? s.id : null; }
 
+const USABLE = {
+  [B.DOOR]: p => ({ t: 'toggle', ...p }), [B.DOOR_OPEN]: p => ({ t: 'toggle', ...p }),
+  [B.CHEST]: p => ({ t: 'chest-open', ...p }), [B.BED]: p => ({ t: 'sleep', ...p }),
+};
+
 function useItem() {
   const o = eyeOf(), d = dirOf(), blk = S.world.raycast(o, d, 6), en = pickEntity(o, d, 5);
   if (en && en.e.kind === 'npc' && (!blk || en.t < blk.dist)) { S.act({ t: 'interact', id: en.e.id }); return; }
+  if (blk && !keys.has('KeyC') && USABLE[blk.id]) { S.act(USABLE[blk.id](blk.pos)); hand.swing(); return; }      // cửa, rương, giường (giữ C để đặt block cạnh chúng)
   const h = heldId() && ITEMS[heldId()];
   if (h && h.block && blk) {
     const px = blk.pos.x + blk.normal.x, py = blk.pos.y + blk.normal.y, pz = blk.pos.z + blk.normal.z;
@@ -376,6 +384,11 @@ function frameBody(dt) {
   const light = lightLevel(S.time);
   scene.setEnvironment({ sky: r.sky, fog: r.fog, light }); ents.setLight(light);
   const mobs = []; for (const e of interp.es) if (e.kind === 'mob') mobs.push({ id: e.id, type: e.type, st: e.st || 0, hp: e.hp, dist: Math.hypot(e.x - local.x, e.z - local.z) });
+  stationPoll -= dt;                                                // đang mở kho đồ: cập nhật bàn/lò/đe ở gần khi người chơi đi hoặc đặt block
+  if (stationPoll <= 0 && panels.isOpen && (panels.kind === 'inventory' || panels.kind === 'chest')) {
+    stationPoll = 0.4; const near = nearStations(S.world, local.x, local.y, local.z), sig = JSON.stringify(near);
+    if (sig !== stationSig) { stationSig = sig; panels.refresh({ you: S.you, near }); }
+  }
   director.update(dt, { region: r.id, night: light < 0.6, boss: !!(boss && boss.hp > 0 && Math.hypot(boss.x - local.x, boss.z - local.z) < 45), mobs });
   const far = view.radius * 16 - 6; scene.setFog(far * 0.5, far);
   const eyeWater = S.world.get(local.x, local.y + 1.62, local.z) === B.WATER;

@@ -57,8 +57,15 @@ export function playerModel(opts = {}) {
 // ---- Xác sống ----
 export const ZOMBIE = humanoid({
   id: 'zombie', armRest: [-1.45, 0, 0], armAmp: 0.12, bones: [],
+  extra: [
+    { id: 'ragF', bone: 'body', size: [8, 5, 1], pos: [0, 9.5, -2.6] }, { id: 'ragB', bone: 'body', size: [8, 5, 1], pos: [0, 9.5, 2.6], uvFrom: 'ragF' },
+    { id: 'scarf', bone: 'head', size: [9, 2, 9], pos: [0, 24.5, 0] },
+  ],
   paint(P, R) {
     const skin = '#62904d', dark = '#4b7340';
+    for (const fc of ['top', 'bottom', 'left', 'front', 'right', 'back']) { P.fill(R('ragF', fc), '#3d5a7a', 0.08); P.fill(R('scarf', fc), '#6b2a2a', 0.08); }
+    const rg = R('ragF', 'front'); for (let x = 1; x < 8; x += 2) P.box(rg, x, 3 + (x % 3), 1, 2, '#3d5a7a'); P.stripes(rg, '#2b3a52', 2, 1, true);
+    P.speckle(R('scarf', 'front'), '#3a1414', 0.2, 2);
     for (const f of ['top', 'bottom', 'left', 'front', 'right', 'back']) P.fill(R('head', f), skin, 0.07);
     P.speckle(R('head', 'front'), dark, 0.18, 3); P.speckle(R('head', 'top'), '#2e4a28', 0.12, 4);
     const f = R('head', 'front');

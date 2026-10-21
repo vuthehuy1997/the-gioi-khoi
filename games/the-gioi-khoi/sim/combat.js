@@ -9,8 +9,12 @@ export const HIT_REACH = 4.5, HIT_CD = 0.5, REGEN_AFTER = 8, REGEN_EVERY = 4;
 
 import { aggro } from './perception.js';
 
-export function hurtPlayer(g, p, dmg, src) {
+import { reduceDamage } from './armor.js';
+
+// src: kẻ gây sát thương (quái, đạn); không có src hoặc opts.pure (khí độc, nóng lạnh, bỏng) thì giáp không làm nhẹ đi.
+export function hurtPlayer(g, p, dmg, src, opts = {}) {
   if (p.dead || dmg <= 0) return;
+  if (src && !opts.pure) dmg = reduceDamage(dmg, p.armor);
   g.makeNoise(p.x, p.y, p.z, 9);
   p.hp = Math.max(0, p.hp - dmg); p.lastHurt = g.time; g.touch(p);
   g.emit(p.uid, { t: 'hurt', hp: p.hp, by: src ? src.id : null });
@@ -79,7 +83,7 @@ export function actRespawn(g, p) {
   if (!p.dead) return { ok: false, reason: 'alive' };
   if (g.time < p.respawnAt) return { ok: false, reason: 'too-soon' };
   p.dead = false; p.hp = p.maxHp; p.lastHurt = -99; g.touch(p);
-  g.teleportPlayer(p, g.spawn.x + 0.5, g.world.surfaceY(g.spawn.x, g.spawn.z) + 1, g.spawn.z + 0.5);
+  const at = g.respawnPoint(p); g.teleportPlayer(p, at.x, at.y, at.z);
   g.emit(p.uid, { t: 'hurt', hp: p.hp, by: null });
   return { ok: true };
 }

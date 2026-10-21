@@ -19,4 +19,4 @@ export function snapshotFor(g, uid) {
   return { time: r2(g.time), ps, es };
 }
 
-export const youOf = p => ({ hp: p.hp, maxHp: p.maxHp, dead: p.dead, inv: p.inv, sel: p.sel });
+export const youOf = p => ({ hp: p.hp, maxHp: p.maxHp, dead: p.dead, inv: p.inv, sel: p.sel, armor: p.armor, home: p.home || null });
