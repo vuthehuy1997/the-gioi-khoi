@@ -1,0 +1,537 @@
+<title>Thiết Kế Thế Giới Khối</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@400;500;600&family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700&family=JetBrains+Mono:wght@400;500&display=swap">
+<style>
+/* Bố cục: thanh điều hướng trái + vùng nội dung; thẻ thực thể xếp lưới, chi tiết và ô chỉnh sửa nằm bên phải.
+   Giao diện như bàn vẽ bản đồ của người dựng thế giới: nền xanh mực, nhấn xanh cỏ voxel, đồng thau cho số liệu. */
+:root {
+  --bg: #eef1f3; --panel: #ffffff; --panel2: #f4f6f8; --line: #d7dde3; --fg: #18212b; --dim: #5b6978; --faint: #8a96a3;
+  --accent: #2f8a3a; --accent-fg: #ffffff; --accent-soft: #dff0e0; --brass: #96651a; --brass-soft: #f3e6cf;
+  --ok: #2f8a3a; --review: #a96a00; --change: #2a6fc4; --remove: #b83232;
+  --ok-soft: #dff0e0; --review-soft: #fbecc9; --change-soft: #dce9f9; --remove-soft: #f8dcdc;
+  --f-display: 'Bricolage Grotesque', 'Be Vietnam Pro', system-ui, sans-serif; --f-body: 'Be Vietnam Pro', system-ui, sans-serif; --f-mono: 'JetBrains Mono', ui-monospace, monospace;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  --bg: #0f151c; --panel: #171f29; --panel2: #1d2733; --line: #2a3644; --fg: #e4e9ee; --dim: #9aa7b5; --faint: #6f7d8c;
+  --accent: #8fd36a; --accent-fg: #0d1a08; --accent-soft: #1f3322; --brass: #e0b45a; --brass-soft: #34291a;
+  --ok: #8fd36a; --review: #f0b445; --change: #7db3f2; --remove: #f08585;
+  --ok-soft: #1f3322; --review-soft: #3a2f16; --change-soft: #1b2c44; --remove-soft: #3d2020; color-scheme: dark; } }
+:root[data-theme="dark"] {
+  --bg: #0f151c; --panel: #171f29; --panel2: #1d2733; --line: #2a3644; --fg: #e4e9ee; --dim: #9aa7b5; --faint: #6f7d8c;
+  --accent: #8fd36a; --accent-fg: #0d1a08; --accent-soft: #1f3322; --brass: #e0b45a; --brass-soft: #34291a;
+  --ok: #8fd36a; --review: #f0b445; --change: #7db3f2; --remove: #f08585;
+  --ok-soft: #1f3322; --review-soft: #3a2f16; --change-soft: #1b2c44; --remove-soft: #3d2020; color-scheme: dark; }
+* { box-sizing: border-box; }
+body { background: var(--bg); color: var(--fg); font: 14px/1.55 var(--f-body); padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); padding-block: 0; }
+h1, h2, h3, h4 { font-family: var(--f-display); margin: 0; text-wrap: balance; line-height: 1.2; }
+h2 { font-size: 22px; } h3 { font-size: 16px; } h4 { font-size: 13px; text-transform: uppercase; letter-spacing: .06em; color: var(--dim); font-family: var(--f-body); font-weight: 600; }
+p { margin: 0; } button, input, select, textarea { font: inherit; color: inherit; }
+button { cursor: pointer; }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.mono { font-family: var(--f-mono); font-size: 12px; }
+.dim { color: var(--dim); } .faint { color: var(--faint); }
+
+.shell { max-width: 1320px; margin: 0 auto; display: grid; grid-template-columns: 208px minmax(0, 1fr); gap: 24px; padding-block: 16px 48px; }
+.side { position: sticky; top: env(safe-area-inset-top, 0px); align-self: start; display: flex; flex-direction: column; gap: 4px; padding-top: 8px; }
+.brand { display: flex; align-items: center; gap: 10px; padding: 4px 8px 14px; }
+.brand b { font-family: var(--f-display); font-size: 18px; line-height: 1.1; }
+.brand small { display: block; color: var(--dim); font-size: 11px; font-weight: 400; }
+.cube { width: 28px; height: 28px; background: linear-gradient(135deg, var(--accent) 0 50%, var(--brass) 50% 100%); border-radius: 4px; flex: none; }
+.nav { display: flex; align-items: center; gap: 10px; text-align: left; background: none; border: 0; padding: 8px 10px; border-radius: 6px; color: var(--dim); }
+.nav:hover { background: var(--panel2); color: var(--fg); }
+.nav[aria-current="page"] { background: var(--panel); color: var(--fg); box-shadow: inset 3px 0 0 var(--accent); font-weight: 500; }
+.nav .n { margin-left: auto; font: 500 11px var(--f-mono); background: var(--review-soft); color: var(--review); padding: 1px 7px; border-radius: 10px; }
+.sync { margin-top: 14px; padding: 10px; border: 1px dashed var(--line); border-radius: 6px; font-size: 12px; color: var(--dim); }
+.main { min-width: 0; display: flex; flex-direction: column; gap: 20px; }
+.page-head { display: flex; flex-wrap: wrap; align-items: end; gap: 8px 16px; justify-content: space-between; }
+.page-head p { color: var(--dim); max-width: 70ch; }
+
+.card { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 16px; min-width: 0; }
+.card.flat { background: var(--panel2); }
+.grid { display: grid; gap: 12px; }
+.g2 { grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); }
+.g3 { grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); }
+.stack { display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+.row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; min-width: 0; }
+.sp { justify-content: space-between; }
+
+.tile { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 12px 14px; text-align: left; display: flex; flex-direction: column; gap: 2px; }
+.tile:hover { border-color: var(--accent); }
+.tile b { font: 700 26px var(--f-display); font-variant-numeric: tabular-nums; }
+.tile span { color: var(--dim); font-size: 12px; }
+
+.pill { display: inline-flex; align-items: center; gap: 5px; font-size: 11px; font-weight: 500; padding: 1px 8px; border-radius: 10px; background: var(--panel2); color: var(--dim); border: 1px solid var(--line); white-space: nowrap; }
+.pill.ok { background: var(--ok-soft); color: var(--ok); border-color: transparent; } .pill.review { background: var(--review-soft); color: var(--review); border-color: transparent; }
+.pill.change { background: var(--change-soft); color: var(--change); border-color: transparent; } .pill.remove { background: var(--remove-soft); color: var(--remove); border-color: transparent; }
+.chip { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; padding: 2px 8px 2px 4px; border-radius: 6px; background: var(--panel2); border: 1px solid var(--line); }
+.chip img { width: 18px; height: 18px; image-rendering: pixelated; }
+.chip.link { cursor: pointer; } .chip.link:hover { border-color: var(--accent); }
+.sw { width: 12px; height: 12px; border-radius: 3px; border: 1px solid #0003; display: inline-block; }
+
+.field { width: 100%; background: var(--panel2); border: 1px solid var(--line); border-radius: 6px; padding: 8px 10px; resize: vertical; }
+.field:focus { border-color: var(--accent); outline: none; }
+.btn { background: var(--panel2); border: 1px solid var(--line); border-radius: 6px; padding: 6px 12px; }
+a.btn { color: var(--fg); text-decoration: none; display: inline-block; }
+.stack > .pill { align-self: flex-start; }
+.btn:hover { border-color: var(--accent); }
+.btn.pri { background: var(--accent); color: var(--accent-fg); border-color: transparent; font-weight: 500; }
+.btn.sm { padding: 2px 8px; font-size: 12px; }
+.btn[disabled] { opacity: .5; cursor: default; }
+.seg { display: inline-flex; border: 1px solid var(--line); border-radius: 6px; overflow: hidden; flex-wrap: wrap; }
+.seg button { background: var(--panel2); border: 0; padding: 4px 10px; font-size: 12px; border-right: 1px solid var(--line); color: var(--dim); }
+.seg button:last-child { border-right: 0; }
+.seg button[aria-pressed="true"] { background: var(--accent); color: var(--accent-fg); font-weight: 500; }
+.seg button.s-review[aria-pressed="true"] { background: var(--review); color: #fff; } .seg button.s-change[aria-pressed="true"] { background: var(--change); color: #fff; } .seg button.s-remove[aria-pressed="true"] { background: var(--remove); color: #fff; }
+
+.tabs { display: flex; flex-wrap: wrap; gap: 4px; border-bottom: 1px solid var(--line); }
+.tab { background: none; border: 0; padding: 8px 14px; color: var(--dim); border-bottom: 2px solid transparent; margin-bottom: -1px; }
+.tab[aria-selected="true"] { color: var(--fg); border-bottom-color: var(--accent); font-weight: 500; }
+
+.split { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.05fr); gap: 16px; align-items: start; }
+.list { display: grid; grid-template-columns: repeat(auto-fill, minmax(132px, 1fr)); gap: 8px; }
+.ent { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 8px; text-align: left; display: flex; flex-direction: column; gap: 4px; position: relative; }
+.ent:hover { border-color: var(--accent); }
+.ent[aria-current="true"] { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent-soft); }
+.ent .img { aspect-ratio: 1; border-radius: 6px; background: var(--panel2); display: grid; place-items: center; overflow: hidden; }
+.ent .img img { width: 100%; height: 100%; object-fit: cover; } .ent .img.px img { width: 56%; height: 56%; object-fit: contain; image-rendering: pixelated; }
+.ent b { font-weight: 500; font-size: 13px; line-height: 1.25; } .ent small { color: var(--faint); font-size: 11px; }
+.ent .dot { position: absolute; top: 8px; right: 8px; width: 10px; height: 10px; border-radius: 50%; box-shadow: 0 0 0 2px var(--panel); }
+.dot.review { background: var(--review); } .dot.change { background: var(--change); } .dot.remove { background: var(--remove); }
+.detail { position: sticky; top: 12px; display: flex; flex-direction: column; gap: 14px; max-height: calc(100vh - 24px); overflow: auto; }
+.hero-img { width: 112px; height: 112px; border-radius: 8px; background: var(--panel2); object-fit: cover; flex: none; }
+.kv { display: grid; grid-template-columns: max-content 1fr; gap: 3px 14px; font-size: 13px; }
+.kv dt { color: var(--dim); } .kv dd { margin: 0; font-family: var(--f-mono); font-size: 12px; min-width: 0; overflow-wrap: anywhere; }
+table { border-collapse: collapse; width: 100%; font-size: 13px; }
+th { text-align: left; font-weight: 500; color: var(--dim); font-size: 12px; } th, td { padding: 5px 8px; border-bottom: 1px solid var(--line); vertical-align: top; }
+.scroll-x { overflow-x: auto; }
+.node { border-left: 3px solid var(--line); padding-left: 12px; }
+.node.hasp { border-left-color: var(--change); }
+.quote { background: var(--panel2); border-radius: 6px; padding: 8px 10px; }
+.choice { font-size: 12px; color: var(--dim); display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
+.flow { display: flex; flex-wrap: wrap; gap: 10px 6px; align-items: center; }
+.flow .arrow { color: var(--faint); font: 500 12px var(--f-mono); display: flex; flex-direction: column; align-items: center; }
+.rcard { border: 1px solid var(--line); border-left-width: 6px; border-radius: 8px; background: var(--panel); padding: 8px 12px; min-width: 150px; }
+.board { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; align-items: start; }
+.col { background: var(--panel2); border-radius: 8px; padding: 10px; display: flex; flex-direction: column; gap: 8px; min-height: 120px; }
+.col h4 { display: flex; justify-content: space-between; }
+.bcard { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 10px; display: flex; flex-direction: column; gap: 6px; }
+.p1 { color: var(--remove); } .p2 { color: var(--review); } .p3 { color: var(--dim); }
+.banner { padding: 8px 12px; border-radius: 6px; background: var(--review-soft); color: var(--review); font-size: 13px; }
+pre.brief { background: var(--panel2); border: 1px solid var(--line); border-radius: 6px; padding: 12px; max-height: 360px; overflow: auto; white-space: pre-wrap; font: 12px/1.5 var(--f-mono); margin: 0; }
+.savedot { font-size: 11px; color: var(--faint); min-height: 16px; }
+.empty { color: var(--faint); padding: 18px; text-align: center; border: 1px dashed var(--line); border-radius: 8px; }
+@media (max-width: 980px) { .shell { grid-template-columns: 1fr; gap: 12px; } .side { position: static; flex-direction: row; flex-wrap: wrap; align-items: center; } .brand { padding: 4px 8px; } .sync { display: none; } .split { grid-template-columns: 1fr; } .detail { position: static; max-height: none; } .board { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 560px) { .board { grid-template-columns: 1fr; } .nav { padding: 6px 8px; } h2 { font-size: 19px; } }
+@media (prefers-reduced-motion: no-preference) { .ent, .tile, .btn { transition: border-color .12s; } }
+</style>
+
+<div class="shell">
+  <nav class="side" id="side" aria-label="Các phần của bảng thiết kế"></nav>
+  <main class="main" id="main"></main>
+</div>
+<script type="application/json" id="snap">__SNAP__</script>
+<script>
+(() => {
+'use strict';
+const SNAP = JSON.parse(document.getElementById('snap').textContent);
+const META = SNAP.meta || {};
+const D = {
+  region: Object.fromEntries(SNAP.regions.map(r => [r.id, r])), mob: SNAP.mobs, boss: SNAP.bosses, npc: SNAP.npcs, village: SNAP.villages,
+  quest: SNAP.quests, item: SNAP.items,
+};
+const BOSS_MODEL = { 'thu-linh-soi': 'wolf-lord', 'bo-cap-chua': 'scorpion-queen', 'bang-de': 'ice-emperor', 'chua-dam-lay': 'swamp-king', 'vua-nham-thach': 'magma-king', 'ho-ve-pha-le': 'crystal-guardian' };
+const TYPES = {
+  region: { label: 'Vùng', file: 'content/regions.js' }, mob: { label: 'Quái', file: 'content/mobs.js' }, boss: { label: 'Boss', file: 'content/bosses.js' },
+  npc: { label: 'NPC', file: 'content/npcs.js' }, village: { label: 'Làng', file: 'content/npcs.js (VILLAGES) và sim/structures.js' }, quest: { label: 'Nhiệm vụ', file: 'content/quests.js' },
+  item: { label: 'Vật phẩm', file: 'content/items.js và content/recipes.js' }, dlg: { label: 'Lời thoại', file: 'content/npcs.js' },
+};
+const STATUS = { ok: 'Ổn', review: 'Cần xem lại', change: 'Cần sửa', remove: 'Đề xuất bỏ' };
+const COL = { idea: 'Ý tưởng', planned: 'Đã duyệt', doing: 'Đang làm', done: 'Xong' };
+const AREAS = ['Cốt truyện', 'Vùng', 'Quái', 'Boss', 'NPC & lời thoại', 'Nhiệm vụ', 'Vật phẩm & chế tạo', 'Xây dựng', 'Âm thanh', 'Đồ họa', 'Giao diện', 'Mạng', 'Cân bằng', 'Khác'];
+const ENV_NAME = { heat: 'nóng', cold: 'lạnh', toxic: 'độc' };
+const NAVS = [['overview', 'Tổng quan'], ['story', 'Cốt truyện & thế giới'], ['entities', 'Thực thể'], ['dialogue', 'Lời thoại'], ['quests', 'Nhiệm vụ'], ['items', 'Vật phẩm & chế tạo'], ['plan', 'Kế hoạch nâng cấp']];
+
+const $ = (s, r = document) => r.querySelector(s);
+const el = (tag, props = {}, ...kids) => {
+  const n = document.createElement(tag);
+  for (const [k, v] of Object.entries(props || {})) {
+    if (v == null || v === false) continue;
+    if (k === 'class') n.className = v; else if (k === 'text') n.textContent = v; else if (k === 'style') n.style.cssText = v;
+    else if (k.startsWith('on')) n.addEventListener(k.slice(2), v); else if (k in n && k !== 'list') { try { n[k] = v; } catch (e) { n.setAttribute(k, v); } } else n.setAttribute(k, v);
+  }
+  for (const c of kids.flat(3)) if (c != null && c !== false) n.append(c.nodeType ? c : document.createTextNode(String(c)));
+  return n;
+};
+const fmtTime = iso => { try { return new Date(iso).toLocaleString('vi-VN', { dateStyle: 'short', timeStyle: 'short' }); } catch (e) { return ''; } };
+const itemName = id => (D.item[id] && D.item[id].name) || id;
+const store = { get(k, d) { try { return JSON.parse(localStorage.getItem('gdd-' + k)) ?? d; } catch (e) { return d; } }, set(k, v) { try { localStorage.setItem('gdd-' + k, JSON.stringify(v)); } catch (e) { /* bỏ qua */ } } };
+
+// ------------------------------------------------------------------ trạng thái và lưu trữ
+const S = { view: store.get('view', 'overview'), etype: store.get('etype', 'mob'), eid: {}, npc: 'truong-lang', itemKind: 'all', recStation: 'all', entries: new Map(), backlog: new Map(), docs: {}, db: null, me: null, canWrite: true, ready: false, dbOff: false };
+const keyOf = (t, id) => t + '__' + String(id).replace(/[^A-Za-z0-9_\-.~:@+]/g, '_');
+const entry = (t, id) => S.entries.get(keyOf(t, id)) || null;
+const statusOf = (t, id) => (entry(t, id) || {}).status || 'ok';
+const chains = new Map();
+function queueWrite(path, getData) {                    // mỗi tài liệu ghi lần lượt, luôn ghi trạng thái mới nhất
+  if (!S.db) return Promise.resolve();
+  const prev = chains.get(path) || Promise.resolve();
+  const next = prev.then(() => S.db.doc(path).set(getData())).catch(e => { toast('Không lưu được: ' + (e && e.message || e)); }).then(() => { if (chains.get(path) === next) chains.delete(path); });
+  chains.set(path, next); return next;
+}
+const blank = e => !e.note && !e.proposal && e.status === 'ok';
+function saveEntry(t, id, name, patch) {
+  const k = keyOf(t, id), cur = S.entries.get(k) || { type: t, id, name, status: 'ok', note: '', proposal: '', priority: 2 };
+  const next = { ...cur, ...patch, name, updatedAt: new Date().toISOString(), updatedBy: S.me && S.me.id || null };
+  S.entries.set(k, next);
+  if (blank(next) && S.db) { S.entries.delete(k); const p = S.db.doc('entries/' + k); chains.set('del' + k, (chains.get('del' + k) || Promise.resolve()).then(() => p.delete()).catch(() => {})); }
+  else queueWrite('entries/' + k, () => S.entries.get(k));
+  refreshChrome();
+}
+function saveDoc(field, value) {
+  S.docs = { ...S.docs, [field]: value, updatedAt: new Date().toISOString() };
+  queueWrite('docs/overview', () => S.docs); refreshChrome();
+}
+function saveCard(id, patch) {
+  const cur = S.backlog.get(id) || {}, next = { ...cur, ...patch, updatedAt: new Date().toISOString(), updatedBy: S.me && S.me.id || null };
+  S.backlog.set(id, next); queueWrite('backlog/' + id, () => S.backlog.get(id)); render();
+}
+function newCard(data) {
+  const id = 'b' + Date.now().toString(36) + Math.random().toString(36).slice(2, 5);
+  S.backlog.set(id, { title: '', desc: '', area: 'Khác', priority: 2, status: 'idea', refs: [], createdAt: new Date().toISOString(), ...data, updatedAt: new Date().toISOString(), updatedBy: S.me && S.me.id || null });
+  queueWrite('backlog/' + id, () => S.backlog.get(id)); render();
+}
+function removeCard(id) { S.backlog.delete(id); if (S.db) S.db.doc('backlog/' + id).delete().catch(() => {}); render(); }
+let toastT = null;
+function toast(msg) { let t = $('#toast'); if (!t) { t = el('div', { id: 'toast', class: 'banner', style: 'position:fixed;right:16px;bottom:16px;z-index:9;max-width:320px;box-shadow:0 4px 18px #0004' }); document.body.append(t); } t.textContent = msg; t.hidden = false; clearTimeout(toastT); toastT = setTimeout(() => { t.hidden = true; }, 4000); }
+
+// ------------------------------------------------------------------ thành phần dùng chung
+const pill = (s) => el('span', { class: 'pill ' + s, text: STATUS[s] });
+const itemChip = (id, n) => el('span', { class: 'chip link', title: itemName(id), onclick: () => go('item', id) }, SNAP.icons[id] ? el('img', { src: SNAP.icons[id], alt: '' }) : null, (n ? n + '× ' : '') + itemName(id));
+const refChip = (t, id) => el('span', { class: 'chip link', style: 'padding-left:8px', onclick: () => go(t, id) }, (TYPES[t] ? TYPES[t].label + ': ' : '') + nameOf(t, id));
+function nameOf(t, id) { if (t === 'dlg') return id; const o = D[t] && D[t][id]; return o ? o.name : id; }
+const kv = rows => el('dl', { class: 'kv' }, rows.filter(r => r && r[1] != null && r[1] !== '').flatMap(([k, v]) => [el('dt', { text: k }), el('dd', {}, v)]));
+const dropRows = drops => el('div', { class: 'row' }, (drops || []).map(d => el('span', { class: 'row', style: 'gap:4px' }, itemChip(d.item, d.min === d.max ? d.min : d.min + '–' + d.max), el('span', { class: 'faint mono', text: Math.round(d.p * 100) + '%' }))));
+const regionChip = id => el('span', { class: 'chip link', style: 'padding-left:6px', onclick: () => go('region', id) }, el('i', { class: 'sw', style: `background:${(D.region[id] || {}).sky || '#888'}` }), nameOf('region', id));
+const textarea = (value, onSave, { rows = 3, placeholder = '', id } = {}) => {
+  const t = el('textarea', { class: 'field', rows, placeholder, id, value: value || '', disabled: !canEdit() });
+  let timer = null, last = value || '';
+  const flush = () => { clearTimeout(timer); if (t.value !== last) { last = t.value; onSave(t.value); } };
+  t.addEventListener('input', () => { clearTimeout(timer); timer = setTimeout(flush, 800); });
+  t.addEventListener('blur', flush);
+  return t;
+};
+const canEdit = () => !S.dbOff && S.canWrite;
+
+// Ô chỉnh sửa dùng chung: trạng thái, ghi chú, đề xuất thay đổi.
+function editPanel(t, id, { label = 'Ghi chú thiết kế', proposalLabel = 'Đề xuất thay đổi (agent sẽ đọc để lập kế hoạch)' } = {}) {
+  const e = entry(t, id) || { status: 'ok', note: '', proposal: '', priority: 2 }, name = nameOf(t, id);
+  const save = patch => saveEntry(t, id, name, patch);
+  return el('div', { class: 'card flat stack' },
+    el('div', { class: 'row sp' }, el('h4', { text: 'Dev chỉnh sửa' }), e.updatedAt ? el('span', { class: 'faint', style: 'font-size:11px', text: 'sửa ' + fmtTime(e.updatedAt) }) : null),
+    el('div', { class: 'row' }, el('div', { class: 'seg', role: 'group', 'aria-label': 'Trạng thái' }, Object.entries(STATUS).map(([k, v]) => el('button', { class: 's-' + k, 'aria-pressed': String(e.status === k), disabled: !canEdit(), text: v, onclick: () => { save({ status: k }); render(); } }))),
+      el('label', { class: 'row dim', style: 'font-size:12px;gap:4px' }, 'Ưu tiên', el('select', { class: 'field', style: 'width:auto;padding:3px 6px', disabled: !canEdit(), value: String(e.priority || 2), onchange: ev => save({ priority: +ev.target.value }) }, [['1', 'P1 cao'], ['2', 'P2'], ['3', 'P3 thấp']].map(([v, l]) => el('option', { value: v, text: l, selected: String(e.priority || 2) === v }))))),
+    el('label', { class: 'stack', style: 'gap:4px' }, el('span', { class: 'dim', style: 'font-size:12px', text: label }), textarea(e.note, v => save({ note: v }), { placeholder: 'Điều đang thấy chưa ổn, bối cảnh, lý do thiết kế...' })),
+    el('label', { class: 'stack', style: 'gap:4px' }, el('span', { class: 'dim', style: 'font-size:12px', text: proposalLabel }), textarea(e.proposal, v => save({ proposal: v }), { rows: 4, placeholder: 'Muốn đổi thành gì? Số liệu mới, lời thoại mới, hành vi mới...' })),
+    S.dbOff ? el('p', { class: 'banner', text: 'Đang ở chế độ chỉ xem: thay đổi không được lưu.' }) : null);
+}
+
+// ------------------------------------------------------------------ điều hướng
+function go(t, id) {
+  if (t === 'dlg') { S.view = 'dialogue'; S.npc = String(id).split('.')[0]; }
+  else if (t === 'quest') { S.view = 'quests'; S.eid.quest = id; }
+  else if (t === 'item') { S.view = 'items'; S.eid.item = id; }
+  else { S.view = 'entities'; S.etype = t; S.eid[t] = id; }
+  store.set('view', S.view); render(); window.scrollTo({ top: 0 });
+}
+function setView(v) { S.view = v; store.set('view', v); render(); window.scrollTo({ top: 0 }); }
+
+// ------------------------------------------------------------------ đếm việc đang chờ
+const pending = () => [...S.entries.values()].filter(e => e.status !== 'ok' || e.proposal);
+const backlogOpen = () => [...S.backlog.values()].filter(b => b.status !== 'done');
+function refreshChrome() { renderSide(); const c = $('#pendcount'); if (c) c.textContent = pending().length; }
+
+function renderSide() {
+  const side = $('#side'); side.textContent = '';
+  side.append(el('div', { class: 'brand' }, el('i', { class: 'cube' }), el('div', {}, el('b', { text: 'Thế Giới Khối' }), el('small', { text: 'Bảng thiết kế game' }))));
+  for (const [v, label] of NAVS) {
+    const n = v === 'plan' ? backlogOpen().length : v === 'entities' ? pending().filter(e => !['quest', 'item', 'dlg'].includes(e.type)).length : v === 'dialogue' ? pending().filter(e => e.type === 'dlg').length : v === 'quests' ? pending().filter(e => e.type === 'quest').length : v === 'items' ? pending().filter(e => e.type === 'item').length : 0;
+    side.append(el('button', { class: 'nav', 'aria-current': S.view === v ? 'page' : null, onclick: () => setView(v) }, label, n ? el('span', { class: 'n', text: n }) : null));
+  }
+  side.append(el('div', { class: 'sync' }, el('b', { text: 'Ảnh chụp mã nguồn' }), el('div', { class: 'mono', text: META.commit ? 'commit ' + META.commit : '' }), el('div', { text: META.generated ? 'lấy ngày ' + META.generated : '' }),
+    el('div', { style: 'margin-top:6px', text: S.dbOff ? 'Chế độ chỉ xem.' : S.ready ? 'Chỉnh sửa được lưu và chia sẻ.' : 'Đang kết nối kho dữ liệu...' })));
+}
+
+// ------------------------------------------------------------------ TỔNG QUAN
+const docField = (field, title, opts = {}) => el('div', { class: 'stack', style: 'gap:6px' }, el('h4', { text: title }), textarea(S.docs[field] || '', v => saveDoc(field, v), { rows: opts.rows || 5, placeholder: opts.ph || 'Chưa có nội dung. Gõ vào đây để viết.' }));
+function viewOverview() {
+  const counts = [['region', 'Vùng', SNAP.regions.length], ['mob', 'Quái', Object.keys(SNAP.mobs).length], ['boss', 'Boss', Object.keys(SNAP.bosses).length], ['npc', 'NPC', Object.keys(SNAP.npcs).length], ['village', 'Làng', Object.keys(SNAP.villages).length],
+    ['quest', 'Nhiệm vụ', Object.keys(SNAP.quests).length], ['item', 'Vật phẩm', Object.keys(SNAP.items).length], ['recipe', 'Công thức', SNAP.recipes.length], ['block', 'Loại block', SNAP.blocks.length - 1]];
+  const lines = Object.values(SNAP.npcs).reduce((a, n) => a + Object.keys(n.nodes).length, 0);
+  const pend = pending().sort((a, b) => (b.updatedAt || '').localeCompare(a.updatedAt || ''));
+  return [
+    el('header', { class: 'page-head' }, el('div', { class: 'stack', style: 'gap:6px' }, el('h2', { text: 'Tổng quan Thế Giới Khối' }), el('p', { text: 'Một nơi để cả nhóm nhìn thấy toàn bộ game, ghi lại điều cần đổi, và để agent đọc rồi lập kế hoạch nâng cấp.' })),
+      el('a', { class: 'btn', href: 'https://vuthehuy1997.github.io/the-gioi-khoi/', target: '_blank', rel: 'noopener', text: 'Mở bản chơi ↗' })),
+    el('div', { class: 'card stack' }, docField('intro', 'Giới thiệu game', { rows: 5 })),
+    el('div', { class: 'grid', style: 'grid-template-columns:repeat(auto-fit,minmax(110px,1fr))' }, counts.map(([t, l, n]) => el('button', { class: 'tile', onclick: () => t === 'recipe' || t === 'block' ? setView('items') : t === 'quest' ? setView('quests') : t === 'item' ? setView('items') : go(t, null) }, el('b', { text: n }), el('span', { text: l })))),
+    el('div', { class: 'grid g2' },
+      el('div', { class: 'card stack' }, docField('pillars', 'Trụ cột thiết kế', { rows: 6, ph: 'Mỗi dòng một trụ cột.' }), docField('tone', 'Phong cách và giọng điệu', { rows: 3 })),
+      el('div', { class: 'card stack' }, el('div', { class: 'row sp' }, el('h3', { text: 'Đang chờ agent' }), el('span', { class: 'pill change' }, el('span', { id: 'pendcount', text: pend.length }), ' mục')),
+        el('p', { class: 'dim', text: 'Thực thể đánh dấu cần sửa hoặc có đề xuất, và các thẻ kế hoạch chưa xong. Agent đọc đúng những mục này.' }),
+        pend.length ? el('div', { class: 'stack', style: 'gap:6px' }, pend.slice(0, 7).map(e => el('div', { class: 'row sp' }, el('span', { class: 'row', style: 'gap:6px;min-width:0' }, pill(e.status), el('a', { href: '#', onclick: ev => { ev.preventDefault(); go(e.type, e.id); }, text: TYPES[e.type].label + ': ' + (e.name || e.id) })), el('span', { class: 'faint', style: 'font-size:11px', text: fmtTime(e.updatedAt) })))) : el('div', { class: 'empty', text: 'Chưa có mục nào. Mở một thực thể và đánh dấu "Cần sửa" để bắt đầu.' }),
+        el('div', { class: 'row' }, el('button', { class: 'btn pri', onclick: () => setView('plan') }, 'Mở kế hoạch nâng cấp'), el('span', { class: 'dim', style: 'font-size:12px', text: backlogOpen().length + ' thẻ kế hoạch chưa xong' })))),
+    el('div', { class: 'card stack' }, el('h3', { text: 'Cách làm việc' }),
+      el('div', { class: 'grid g3' }, [['1 · Xem', 'Duyệt thực thể, lời thoại, nhiệm vụ ngay trên bảng. Dữ liệu lấy từ mã nguồn nên luôn đúng với bản đang chạy.'], ['2 · Ghi', 'Đánh dấu trạng thái, viết ghi chú và đề xuất, hoặc thêm thẻ vào kế hoạch. Mọi chỉnh sửa lưu ngay và cả nhóm cùng thấy.'], ['3 · Giao', 'Nhờ agent đọc bảng này (hoặc bấm "Sao chép gói gửi agent"), lập kế hoạch, sửa code, rồi xuất lại ảnh chụp mã nguồn.']].map(([a, b]) => el('div', { class: 'stack', style: 'gap:2px' }, el('b', { text: a }), el('span', { class: 'dim', text: b })))),
+      el('p', { class: 'faint', style: 'font-size:12px', text: `Hiện có ${lines} đoạn lời thoại, ${SNAP.recipes.length} công thức, ${SNAP.blocks.length - 1} loại block trong mã nguồn.` }))
+  ];
+}
+
+// ------------------------------------------------------------------ CỐT TRUYỆN & THẾ GIỚI
+function viewStory() {
+  const bases = SNAP.regions.filter(r => !r.within), over = id => SNAP.regions.find(r => r.within === id);
+  const bossOf = rid => Object.entries(SNAP.bosses).find(([, b]) => b.region === rid);
+  const flowRow = rid => {
+    const r = D.region[rid], [bid, b] = bossOf(rid) || [];
+    const unlockTo = b && b.unlocks ? D.region[b.unlocks] : null;
+    return [el('div', { class: 'rcard', style: `border-left-color:${r.sky}` }, el('b', { text: r.name }), el('div', { class: 'faint', style: 'font-size:11px', text: r.requires ? 'khóa: ' + (Object.values(SNAP.bosses).find(x => x.flag === r.requires) || {}).name : 'mở sẵn' }),
+      r.env ? el('div', { style: 'font-size:11px' }, 'môi trường ', ENV_NAME[r.env.kind], ' ', r.env.power) : null),
+      b ? el('div', { class: 'arrow' }, el('span', { text: '→ hạ' }), el('span', { class: 'chip link', style: 'padding-left:8px', onclick: () => go('boss', bid), text: b.name })) : null,
+      unlockTo ? el('div', { class: 'arrow', text: '→ mở' }) : null];
+  };
+  return [
+    el('header', { class: 'page-head' }, el('div', { class: 'stack', style: 'gap:6px' }, el('h2', { text: 'Cốt truyện và thế giới' }), el('p', { text: 'Câu chuyện, tuyến tiến trình giữa các vùng và những chỗ cốt truyện còn trống.' }))),
+    el('div', { class: 'card stack' }, docField('story', 'Cốt truyện (bản nháp dựng từ lời thoại và nhiệm vụ hiện có)', { rows: 10 })),
+    el('div', { class: 'card stack' }, el('h3', { text: 'Tuyến tiến trình' }), el('p', { class: 'dim', text: 'Hạ boss của một vùng để mở vùng kế tiếp. Ba vùng phủ nằm trong vùng chính và cùng bị khóa bởi boss của vùng đó.' }),
+      el('div', { class: 'stack', style: 'gap:14px' },
+        el('div', {}, el('h4', { text: 'Ba vùng chính' }), el('div', { class: 'flow', style: 'margin-top:8px' }, bases.flatMap(r => flowRow(r.id)))),
+        el('div', {}, el('h4', { text: 'Ba vùng phủ (mỗi vùng một boss riêng)' }), el('div', { class: 'flow', style: 'margin-top:8px' }, bases.map(b => over(b.id)).filter(Boolean).flatMap(r => flowRow(r.id)))))),
+    el('div', { class: 'card stack' }, docField('gaps', 'Chỗ cốt truyện còn trống và việc cần quyết định', { rows: 7 })),
+    el('div', { class: 'grid g3' }, SNAP.regions.map(r => el('button', { class: 'ent', onclick: () => go('region', r.id) }, el('div', { class: 'img', style: `background:linear-gradient(135deg,${r.sky},${r.fog})` }), el('b', { text: r.name }), el('small', { text: (r.within ? 'vùng phủ trong ' + nameOf('region', r.within) : 'vùng chính') + ' · nguy hiểm ' + r.danger }))))
+  ];
+}
+
+// ------------------------------------------------------------------ THỰC THỂ
+function entityList(t) {
+  const out = [];
+  if (t === 'region') for (const r of SNAP.regions) out.push({ id: r.id, name: r.name, sub: (r.within ? 'vùng phủ' : 'vùng chính'), art: { grad: [r.sky, r.fog] } });
+  if (t === 'mob') for (const [id, m] of Object.entries(SNAP.mobs)) out.push({ id, name: m.name, sub: `${m.hp} máu · ${m.ai}`, art: { img: SNAP.models[SNAP.mobModels[id]] } });
+  if (t === 'boss') for (const [id, b] of Object.entries(SNAP.bosses)) out.push({ id, name: b.name, sub: `${b.hp} máu · ${nameOf('region', b.region)}`, art: { img: SNAP.models[BOSS_MODEL[id]] } });
+  if (t === 'npc') for (const [id, n] of Object.entries(SNAP.npcs)) out.push({ id, name: n.name, sub: nameOf('village', n.village), art: { img: SNAP.models['npc:' + id] } });
+  if (t === 'village') for (const [id, v] of Object.entries(SNAP.villages)) out.push({ id, name: v.name, sub: nameOf('region', v.region), art: { grad: [(D.region[v.region] || {}).sky, (D.region[v.region] || {}).fog] } });
+  return out;
+}
+function entityDetail(t, id) {
+  const o = D[t][id]; if (!o) return el('div', { class: 'empty', text: 'Chọn một thực thể ở bên trái.' });
+  const art = (entityList(t).find(x => x.id === id) || {}).art || {};
+  const head = (sub) => el('div', { class: 'row', style: 'align-items:flex-start;flex-wrap:nowrap;gap:14px' },
+    art.img ? el('img', { class: 'hero-img', src: art.img, alt: o.name }) : el('div', { class: 'hero-img', style: art.grad ? `background:linear-gradient(135deg,${art.grad[0]},${art.grad[1]})` : '' }),
+    el('div', { class: 'stack', style: 'gap:4px;min-width:0' }, el('h3', { text: o.name }), el('span', { class: 'faint mono', text: t + ':' + id }), pill(statusOf(t, id)), sub));
+  let body = [];
+  if (t === 'mob') {
+    const sh = o.shot, at = o.attack;
+    body = [head(el('div', { class: 'row' }, (o.regions || []).map(regionChip))),
+      kv([['Máu', o.hp], ['Tốc độ', o.speed], ['Kiểu AI', o.ai + (o.passive ? ' (hiền)' : '')], ['Sinh ra', o.when === 'night' ? 'ban đêm' : o.when === 'day' ? 'ban ngày' : 'mọi lúc'], ['Tần suất', o.weight], ['Tầm nhìn', o.sight + ' block, góc ' + o.fov + '°'], ['Nghe', o.hearing],
+        at ? ['Cận chiến', `${at.dmg} sát thương, tầm ${at.range}, hồi ${at.cd}s`] : null, sh ? ['Bắn xa', `${sh.dmg} sát thương, tầm ${sh.range}, hồi ${sh.cd}s, kiểu ${sh.style}`] : null, o.pack ? ['Bầy đàn', 'có, gọi đồng loại'] : null, ['Mô hình', SNAP.mobModels[id]]]),
+      el('div', { class: 'stack', style: 'gap:4px' }, el('h4', { text: 'Rơi đồ' }), dropRows(o.drops))];
+  } else if (t === 'boss') {
+    body = [head(el('div', { class: 'row' }, regionChip(o.region), o.unlocks ? el('span', { class: 'pill' }, 'mở ', nameOf('region', o.unlocks)) : null)),
+      kv([['Máu', o.hp], ['Tốc độ', o.speed], ['Tầm nhìn', o.sight], ['Bán kính đấu trường', o.radius], ['Cờ tiến trình', o.flag]]),
+      el('div', { class: 'stack', style: 'gap:4px' }, el('h4', { text: 'Các pha' }), el('div', { class: 'scroll-x' }, el('table', {}, el('tr', {}, ['Từ máu', 'Chiêu', 'Tốc độ', 'Sát thương'].map(h => el('th', { text: h }))), o.phases.map((p, i) => el('tr', {}, el('td', { text: Math.round(p.from * 100) + '%' }), el('td', { text: p.moves.join(', ') }), el('td', { text: '×' + p.speedMul }), el('td', { text: '×' + p.dmgMul })))))),
+      el('div', { class: 'stack', style: 'gap:4px' }, el('h4', { text: 'Chiêu thức' }), el('div', { class: 'scroll-x' }, el('table', {}, el('tr', {}, ['Tên', 'Kiểu', 'Sát thương', 'Tầm', 'Hồi'].map(h => el('th', { text: h }))), Object.entries(o.moves).map(([k, m]) => el('tr', {}, el('td', { class: 'mono', text: k }), el('td', { text: m.type }), el('td', { text: m.dmg ?? '—' }), el('td', { text: m.range ?? '—' }), el('td', { text: m.cd ? m.cd + 's' : '—' })))))),
+      el('div', { class: 'stack', style: 'gap:4px' }, el('h4', { text: 'Phần thưởng' }), dropRows(o.drops)),
+      el('div', { class: 'stack', style: 'gap:4px' }, el('h4', { text: 'Nhiệm vụ hạ boss này' }), el('div', { class: 'row' }, Object.entries(SNAP.quests).filter(([, q]) => q.steps.some(s => s.type === 'boss' && s.boss === id)).map(([qid]) => refChip('quest', qid))))];
+  } else if (t === 'npc') {
+    const shop = SNAP.shops[id], quests = Object.entries(SNAP.quests).filter(([, q]) => q.giver === id);
+    body = [head(el('div', { class: 'row' }, el('span', { class: 'chip link', style: 'padding-left:8px', onclick: () => go('village', o.village), text: 'Làng: ' + nameOf('village', o.village) }))),
+      kv([['Số đoạn thoại', Object.keys(o.nodes).length], ['Cửa hàng', shop ? shop.name : 'không có'], ['Màu', o.color]]),
+      el('div', { class: 'row' }, el('button', { class: 'btn', onclick: () => go('dlg', id + '.hi'), text: 'Xem lời thoại →' })),
+      quests.length ? el('div', { class: 'stack', style: 'gap:4px' }, el('h4', { text: 'Nhiệm vụ giao' }), el('div', { class: 'row' }, quests.map(([qid]) => refChip('quest', qid)))) : null,
+      shop ? el('div', { class: 'stack', style: 'gap:4px' }, el('h4', { text: 'Bán' }), el('div', { class: 'row' }, shop.sells.map(s => el('span', { class: 'row', style: 'gap:4px' }, itemChip(s.item), el('span', { class: 'faint mono', text: s.price + 'xu' })))), el('h4', { text: 'Mua' }), el('div', { class: 'row' }, shop.buys.map(s => el('span', { class: 'row', style: 'gap:4px' }, itemChip(s.item), el('span', { class: 'faint mono', text: s.price + 'xu' }))))) : null];
+  } else if (t === 'village') {
+    body = [head(el('div', { class: 'row' }, regionChip(o.region))), kv([['Số nhà', o.huts], ['Gần điểm sinh', o.nearSpawn ? 'có' : 'không']]),
+      el('div', { class: 'stack', style: 'gap:4px' }, el('h4', { text: 'Cư dân' }), el('div', { class: 'row' }, Object.entries(SNAP.npcs).filter(([, n]) => n.village === id).map(([nid]) => refChip('npc', nid))))];
+  } else if (t === 'region') {
+    const mobs = Object.entries(SNAP.mobs).filter(([, m]) => (m.regions || []).includes(id)), boss = Object.entries(SNAP.bosses).find(([, b]) => b.region === id);
+    body = [head(null), kv([['Loại', o.within ? 'vùng phủ trong ' + nameOf('region', o.within) : 'vùng chính'], ['Mặt đất', o.surface + ' trên ' + o.sub], ['Cây', o.trees ? o.trees + ' (' + o.treeChance + ')' : 'không'], ['Nguy hiểm', o.danger],
+      ['Môi trường', o.env ? ENV_NAME[o.env.kind] + ', mức ' + o.env.power + ' (cần ' + o.env.power + ' món chống ' + ENV_NAME[o.env.kind] + ')' : 'an toàn'], ['Khóa', o.requires ? 'cần hạ ' + ((Object.values(SNAP.bosses).find(b => b.flag === o.requires) || {}).name || o.requires) : 'mở sẵn'],
+      ['Màu trời', o.sky], ['Địa hình', o.relief ? `độ cao ${o.relief.base}, dao động ${o.relief.amp}, núi ${o.relief.ridge}` : 'mặc định']]),
+      el('div', { class: 'stack', style: 'gap:4px' }, el('h4', { text: 'Quái xuất hiện' }), el('div', { class: 'row' }, mobs.map(([mid]) => refChip('mob', mid)))),
+      boss ? el('div', { class: 'stack', style: 'gap:4px' }, el('h4', { text: 'Boss' }), el('div', { class: 'row' }, refChip('boss', boss[0]))) : null,
+      el('div', { class: 'stack', style: 'gap:4px' }, el('h4', { text: 'Làng' }), el('div', { class: 'row' }, Object.entries(SNAP.villages).filter(([, v]) => v.region === id).map(([vid]) => refChip('village', vid))))];
+  }
+  return el('div', { class: 'detail' }, el('div', { class: 'card stack' }, body), editPanel(t, id));
+}
+function viewEntities() {
+  const t = S.etype, list = entityList(t), cur = S.eid[t] && list.some(x => x.id === S.eid[t]) ? S.eid[t] : list[0].id;
+  return [
+    el('header', { class: 'page-head' }, el('div', { class: 'stack', style: 'gap:6px' }, el('h2', { text: 'Thực thể' }), el('p', { text: 'Vùng, quái, boss, NPC và làng. Chọn một thẻ để xem số liệu thật từ mã nguồn rồi ghi chú hoặc đề xuất thay đổi.' }))),
+    el('div', { class: 'tabs', role: 'tablist' }, ['region', 'mob', 'boss', 'npc', 'village'].map(k => el('button', { class: 'tab', role: 'tab', 'aria-selected': String(t === k), onclick: () => { S.etype = k; store.set('etype', k); render(); }, text: TYPES[k].label + ' (' + entityList(k).length + ')' }))),
+    el('div', { class: 'split' }, el('div', { class: 'list' }, list.map(x => el('button', { class: 'ent', 'aria-current': String(cur === x.id), onclick: () => { S.eid[t] = x.id; render(); } },
+      statusOf(t, x.id) !== 'ok' ? el('i', { class: 'dot ' + statusOf(t, x.id) }) : null,
+      el('div', { class: 'img', style: x.art.grad ? `background:linear-gradient(135deg,${x.art.grad[0]},${x.art.grad[1]})` : '' }, x.art.img ? el('img', { src: x.art.img, alt: '' }) : null), el('b', { text: x.name }), el('small', { text: x.sub })))), entityDetail(t, cur))
+  ];
+}
+
+// ------------------------------------------------------------------ LỜI THOẠI
+const condText = c => !c ? '' : Object.entries(c).map(([k, v]) => k === 'quest' ? 'NV ' + v : k === 'state' ? '= ' + v : k === 'anyReady' ? 'có NV sẵn trả' : k === 'requires' ? 'đủ tiền đề' : k + ':' + v).join(' ');
+const actText = a => a.accept ? 'nhận NV ' + a.accept : a.turnin ? 'trả NV ' + a.turnin : a.shop ? 'mở cửa hàng ' + a.shop : a.give ? 'tặng ' + a.give.n + '× ' + itemName(a.give.item) : JSON.stringify(a);
+function viewDialogue() {
+  const npc = SNAP.npcs[S.npc] || Object.values(SNAP.npcs)[0], nid = SNAP.npcs[S.npc] ? S.npc : Object.keys(SNAP.npcs)[0];
+  const nodes = Object.entries(npc.nodes);
+  return [
+    el('header', { class: 'page-head' }, el('div', { class: 'stack', style: 'gap:6px' }, el('h2', { text: 'Lời thoại' }), el('p', { text: 'Đồ thị hội thoại của từng NPC. Viết lại câu thoại vào ô "đề xuất"; mã nguồn không đổi cho tới khi agent áp dụng.' }))),
+    el('div', { class: 'tabs', role: 'tablist' }, Object.entries(SNAP.npcs).map(([id, n]) => el('button', { class: 'tab', role: 'tab', 'aria-selected': String(id === nid), onclick: () => { S.npc = id; render(); }, text: n.name }))),
+    el('div', { class: 'card stack' }, el('div', { class: 'row', style: 'gap:12px' }, SNAP.models['npc:' + nid] ? el('img', { class: 'hero-img', style: 'width:64px;height:64px', src: SNAP.models['npc:' + nid], alt: '' }) : null, el('div', {}, el('h3', { text: npc.name }), el('span', { class: 'dim', text: 'Làng ' + nameOf('village', npc.village) + ' · ' + nodes.length + ' đoạn · bắt đầu ở "' + npc.start + '"' })))),
+    el('div', { class: 'stack' }, nodes.map(([k, n]) => {
+      const e = entry('dlg', nid + '.' + k) || {};
+      return el('div', { class: 'card node' + (e.proposal ? ' hasp' : ''), id: 'n-' + k }, el('div', { class: 'stack' },
+        el('div', { class: 'row sp' }, el('span', { class: 'mono', text: nid + '.' + k + (k === npc.start ? '  ★ bắt đầu' : '') }), e.status && e.status !== 'ok' ? pill(e.status) : null),
+        el('div', { class: 'quote', text: n.text }),
+        el('div', { class: 'stack', style: 'gap:3px' }, n.choices.map(c => el('div', { class: 'choice' }, '↳ ', el('span', { style: 'color:var(--fg)', text: '"' + c.text + '"' }), c.goto ? el('span', { class: 'mono', text: '→ ' + c.goto }) : el('span', { class: 'mono', text: '→ kết thúc' }), c.if ? el('span', { class: 'pill', text: 'nếu ' + condText(c.if) }) : null, (c.do || []).map(a => el('span', { class: 'pill change', text: actText(a) }))))),
+        el('label', { class: 'stack', style: 'gap:4px' }, el('span', { class: 'dim', style: 'font-size:12px', text: 'Đề xuất câu thoại mới' }), textarea(e.proposal, v => saveEntry('dlg', nid + '.' + k, nid + '.' + k, { proposal: v, status: v ? 'change' : (e.status === 'change' ? 'ok' : e.status || 'ok') }), { rows: 2, placeholder: 'Viết lại lời thoại này...' }))));
+    }))
+  ];
+}
+
+// ------------------------------------------------------------------ NHIỆM VỤ
+const stepIcon = s => ({ collect: 'Thu thập', kill: 'Hạ quái', boss: 'Hạ boss', reach: 'Đến vùng', talk: 'Nói chuyện' }[s.type] || s.type);
+function viewQuests() {
+  const ids = Object.keys(SNAP.quests), cur = S.eid.quest && SNAP.quests[S.eid.quest] ? S.eid.quest : ids[0], q = cur && SNAP.quests[cur];
+  const next = id => ids.filter(x => (SNAP.quests[x].requires || {}).quest === id);
+  const detail = q ? el('div', { class: 'detail' }, el('div', { class: 'card stack' }, el('h3', { text: q.name }), el('span', { class: 'faint mono', text: 'quest:' + cur }), pill(statusOf('quest', cur)),
+    kv([['Người giao', el('span', { class: 'chip link', style: 'padding-left:8px', onclick: () => go('npc', q.giver), text: nameOf('npc', q.giver) })], ['Tiền đề', q.requires && q.requires.quest ? el('span', { class: 'chip link', style: 'padding-left:8px', onclick: () => go('quest', q.requires.quest), text: nameOf('quest', q.requires.quest) }) : 'không']]),
+    el('div', { class: 'stack', style: 'gap:4px' }, el('h4', { text: 'Các bước' }), q.steps.map((s, i) => el('div', { class: 'row', style: 'gap:6px' }, el('span', { class: 'pill', text: stepIcon(s) }), s.text, s.type === 'boss' ? refChip('boss', s.boss) : s.type === 'kill' ? refChip('mob', s.mob) : s.type === 'reach' ? regionChip(s.region) : s.type === 'collect' ? itemChip(s.item, s.n) : null))),
+    el('div', { class: 'stack', style: 'gap:4px' }, el('h4', { text: 'Phần thưởng' }), el('div', { class: 'row' }, q.reward.items.map(r => itemChip(r.item, r.n)))),
+    next(cur).length ? el('div', { class: 'stack', style: 'gap:4px' }, el('h4', { text: 'Mở ra' }), el('div', { class: 'row' }, next(cur).map(x => refChip('quest', x)))) : null), editPanel('quest', cur)) : el('div', { class: 'empty', text: 'Chọn một nhiệm vụ ở bên trái.' });
+  const givers = Object.keys(SNAP.npcs);
+  return [
+    el('header', { class: 'page-head' }, el('div', { class: 'stack', style: 'gap:6px' }, el('h2', { text: 'Nhiệm vụ' }), el('p', { text: ids.length + ' nhiệm vụ, nhóm theo người giao. Mũi tên "←" là nhiệm vụ tiền đề.' }))),
+    el('div', { class: 'split' }, el('div', { class: 'stack' }, givers.map(g => { const own = ids.filter(i => SNAP.quests[i].giver === g); return own.length ? el('div', { class: 'card stack', style: 'gap:6px' }, el('h4', { text: nameOf('npc', g) }), own.map(i => el('button', { class: 'ent', style: 'flex-direction:row;align-items:center;gap:8px', 'aria-current': String(cur === i), onclick: () => { S.eid.quest = i; render(); } }, statusOf('quest', i) !== 'ok' ? el('i', { class: 'dot ' + statusOf('quest', i), style: 'position:static' }) : null, el('b', { text: SNAP.quests[i].name }), el('small', { text: (SNAP.quests[i].requires && SNAP.quests[i].requires.quest ? '← ' + nameOf('quest', SNAP.quests[i].requires.quest) : 'mở đầu') })))) : null; })), detail)
+  ];
+}
+
+// ------------------------------------------------------------------ VẬT PHẨM & CHẾ TẠO
+const kindOf = it => it.armor ? 'armor' : it.relic ? 'relic' : it.tool ? 'tool' : it.block ? 'block' : it.heal ? 'food' : 'material';
+const KINDS = { all: 'Tất cả', block: 'Block', tool: 'Công cụ & vũ khí', relic: 'Di vật', armor: 'Trang bị', food: 'Đồ ăn', material: 'Nguyên liệu' };
+const STATION = { '': 'Thủ công', workbench: 'Bàn chế tạo', furnace: 'Lò nung', anvil: 'Đe rèn' };
+const stationOf = r => r.bench === true ? 'workbench' : r.bench || '';
+function recipeRow(r) { return el('div', { class: 'row', style: 'gap:4px' }, el('span', { class: 'pill', text: STATION[stationOf(r)] }), itemChip(r.out.item, r.out.n), el('span', { class: 'faint', text: '←' }), Object.entries(r.in).map(([k, n]) => itemChip(k, n))); }
+function sourcesOf(id) {
+  const s = [];
+  for (const [mid, m] of Object.entries(SNAP.mobs)) if ((m.drops || []).some(d => d.item === id)) s.push(['mob', mid]);
+  for (const [bid, b] of Object.entries(SNAP.bosses)) if ((b.drops || []).some(d => d.item === id)) s.push(['boss', bid]);
+  for (const [nid, sh] of Object.entries(SNAP.shops)) if (sh.sells.some(x => x.item === id)) s.push(['npc', nid]);
+  for (const [qid, q] of Object.entries(SNAP.quests)) if (q.reward.items.some(r => r.item === id)) s.push(['quest', qid]);
+  return s;
+}
+function itemDetail(id) {
+  const it = D.item[id]; if (!it) return el('div', { class: 'empty', text: 'Chọn một vật phẩm ở bên trái.' });
+  const made = SNAP.recipes.filter(r => r.out.item === id), used = SNAP.recipes.filter(r => id in r.in), src = sourcesOf(id), blockDrop = SNAP.blocks.filter(b => b.drop === id && b.name !== 'air');
+  const t = it.tool, a = it.armor;
+  return el('div', { class: 'detail' }, el('div', { class: 'card stack' },
+    el('div', { class: 'row', style: 'gap:14px;flex-wrap:nowrap;align-items:flex-start' }, el('img', { class: 'hero-img', style: 'width:72px;height:72px;image-rendering:pixelated;object-fit:contain', src: SNAP.icons[id], alt: '' }), el('div', { class: 'stack', style: 'gap:4px' }, el('h3', { text: it.name }), el('span', { class: 'faint mono', text: 'item:' + id }), el('div', { class: 'row' }, el('span', { class: 'pill', text: KINDS[kindOf(it)] }), pill(statusOf('item', id))))),
+    kv([['Chồng tối đa', it.stack], it.heal ? ['Hồi máu', it.heal] : null, it.dmg ? ['Sát thương', it.dmg] : null, t ? ['Công cụ', `${t.type}, bậc ${t.tier}, tốc độ ×${t.speed}`] : null,
+      a ? ['Trang bị', `${a.set} · ô ${a.slot} · giáp ${a.def}` + (a.resist ? ' · chống ' + ENV_NAME[a.resist] : '') + (a.fireproof ? ' · đi trên nham thạch' : '')] : null, it.block ? ['Đặt được', 'block ' + it.block] : null, it.relic ? ['Di vật', 'rèn từ chiến lợi phẩm boss'] : null]),
+    made.length ? el('div', { class: 'stack', style: 'gap:4px' }, el('h4', { text: 'Cách chế' }), made.map(recipeRow)) : null,
+    used.length ? el('div', { class: 'stack', style: 'gap:4px' }, el('h4', { text: 'Dùng để chế (' + used.length + ')' }), used.slice(0, 8).map(recipeRow), used.length > 8 ? el('span', { class: 'faint', text: '... và ' + (used.length - 8) + ' công thức khác' }) : null) : null,
+    el('div', { class: 'stack', style: 'gap:4px' }, el('h4', { text: 'Nguồn' }), el('div', { class: 'row' }, src.map(([t2, i2]) => refChip(t2, i2)), blockDrop.length ? el('span', { class: 'pill', text: 'đào block ' + blockDrop.map(b => b.name).join(', ') }) : null, !src.length && !blockDrop.length && !made.length ? el('span', { class: 'faint', text: 'chưa có nguồn nào' }) : null))), editPanel('item', id));
+}
+function viewItems() {
+  const ids = Object.keys(SNAP.items).filter(id => S.itemKind === 'all' || kindOf(SNAP.items[id]) === S.itemKind), cur = S.eid.item && SNAP.items[S.eid.item] ? S.eid.item : ids[0];
+  const tab = S.recStation === 'recipes';
+  return [
+    el('header', { class: 'page-head' }, el('div', { class: 'stack', style: 'gap:6px' }, el('h2', { text: 'Vật phẩm và chế tạo' }), el('p', { text: Object.keys(SNAP.items).length + ' vật phẩm, ' + SNAP.recipes.length + ' công thức theo 4 loại trạm. Chọn một vật phẩm để xem nguồn gốc và công thức.' }))),
+    el('div', { class: 'tabs', role: 'tablist' }, [['items', 'Vật phẩm'], ['recipes', 'Công thức theo trạm']].map(([k, l]) => el('button', { class: 'tab', role: 'tab', 'aria-selected': String((k === 'recipes') === tab), onclick: () => { S.recStation = k === 'recipes' ? 'recipes' : 'all'; render(); }, text: l }))),
+    tab ? el('div', { class: 'stack' }, Object.keys(STATION).map(st => { const rs = SNAP.recipes.filter(r => stationOf(r) === st); return el('div', { class: 'card stack' }, el('h3', { text: STATION[st] + ' (' + rs.length + ')' }), rs.map(recipeRow)); }))
+      : [el('div', { class: 'seg' }, Object.entries(KINDS).map(([k, l]) => el('button', { 'aria-pressed': String(S.itemKind === k), text: l, onclick: () => { S.itemKind = k; render(); } }))),
+        el('div', { class: 'split' }, el('div', { class: 'list' }, ids.map(id => el('button', { class: 'ent', 'aria-current': String(cur === id), onclick: () => { S.eid.item = id; render(); } }, statusOf('item', id) !== 'ok' ? el('i', { class: 'dot ' + statusOf('item', id) }) : null, el('div', { class: 'img px' }, el('img', { src: SNAP.icons[id], alt: '' })), el('b', { text: SNAP.items[id].name }), el('small', { text: KINDS[kindOf(SNAP.items[id])] })))), itemDetail(cur))]
+  ];
+}
+
+// ------------------------------------------------------------------ KẾ HOẠCH NÂNG CẤP
+function buildBrief() {
+  const L = [], e = [...S.entries.values()].filter(x => x.status !== 'ok' || x.note || x.proposal), b = [...S.backlog.entries()].filter(([, x]) => x.status !== 'done');
+  L.push('# Gói thiết kế gửi agent: Thế Giới Khối', '', `Nguồn: bảng thiết kế (chỉnh sửa của dev). Ảnh chụp mã nguồn: commit ${META.commit || '?'} (${META.generated || '?'}).`,
+    'Hãy đọc kỹ, lập kế hoạch nâng cấp (liệt kê file cần sửa, thứ tự, test cần thêm) rồi hỏi dev xác nhận trước khi sửa code. Sau khi sửa: chạy `python3 tools/export_design_data.py` và `python3 tools/build_dashboard.py`, rồi cập nhật bảng.', '');
+  for (const f of ['intro', 'pillars', 'tone', 'story', 'gaps']) if (S.docs[f]) L.push('## ' + ({ intro: 'Giới thiệu', pillars: 'Trụ cột', tone: 'Giọng điệu', story: 'Cốt truyện', gaps: 'Chỗ còn trống' })[f], '', S.docs[f], '');
+  L.push('## Thực thể và nội dung cần xử lý (' + e.length + ')', '');
+  if (!e.length) L.push('_Không có._', '');
+  for (const x of e.sort((p, q) => (p.priority || 2) - (q.priority || 2))) {
+    L.push(`### [${STATUS[x.status]}] P${x.priority || 2} · ${TYPES[x.type].label}: ${x.name || x.id} (\`${x.type}:${x.id}\`)`, `File liên quan: ${TYPES[x.type].file}`);
+    if (x.note) L.push('', 'Ghi chú: ' + x.note); if (x.proposal) L.push('', 'Đề xuất: ' + x.proposal); L.push('');
+  }
+  L.push('## Kế hoạch (' + b.length + ' thẻ chưa xong)', '');
+  if (!b.length) L.push('_Không có._', '');
+  for (const [, x] of b.sort((p, q) => (p[1].priority || 2) - (q[1].priority || 2))) L.push(`- [${COL[x.status]}] P${x.priority || 2} · ${x.area}: **${x.title}**${x.desc ? ' — ' + x.desc : ''}${(x.refs || []).length ? ' (liên quan: ' + x.refs.join(', ') + ')' : ''}`);
+  return L.join('\n');
+}
+let draft = { title: '', desc: '', area: 'Khác', priority: 2, refs: [] };
+function viewPlan() {
+  const cards = [...S.backlog.entries()];
+  const refOptions = [...Object.entries(SNAP.mobs).map(([i, m]) => ['mob:' + i, m.name]), ...Object.entries(SNAP.bosses).map(([i, m]) => ['boss:' + i, m.name]), ...Object.entries(SNAP.npcs).map(([i, m]) => ['npc:' + i, m.name]), ...SNAP.regions.map(r => ['region:' + r.id, r.name]), ...Object.entries(SNAP.quests).map(([i, m]) => ['quest:' + i, m.name]), ...Object.entries(SNAP.items).map(([i, m]) => ['item:' + i, m.name])];
+  const form = el('div', { class: 'card stack' }, el('h3', { text: 'Thêm thẻ kế hoạch' }),
+    el('div', { class: 'grid g2' }, el('label', { class: 'stack', style: 'gap:4px' }, el('span', { class: 'dim', style: 'font-size:12px', text: 'Tiêu đề' }), el('input', { class: 'field', id: 'bl-title', value: draft.title, placeholder: 'Ví dụ: Thêm hoạt hoạ chết cho quái', disabled: !canEdit(), oninput: ev => { draft.title = ev.target.value; } })),
+      el('div', { class: 'row' }, el('label', { class: 'stack', style: 'gap:4px;flex:1' }, el('span', { class: 'dim', style: 'font-size:12px', text: 'Mảng' }), el('select', { class: 'field', id: 'bl-area', disabled: !canEdit(), onchange: ev => { draft.area = ev.target.value; } }, AREAS.map(a => el('option', { value: a, text: a, selected: a === draft.area })))),
+        el('label', { class: 'stack', style: 'gap:4px' }, el('span', { class: 'dim', style: 'font-size:12px', text: 'Ưu tiên' }), el('select', { class: 'field', id: 'bl-pri', disabled: !canEdit(), onchange: ev => { draft.priority = +ev.target.value; } }, [[1, 'P1'], [2, 'P2'], [3, 'P3']].map(([v, l]) => el('option', { value: v, text: l, selected: v === draft.priority })))))),
+    el('label', { class: 'stack', style: 'gap:4px' }, el('span', { class: 'dim', style: 'font-size:12px', text: 'Mô tả và tiêu chí xong' }), el('textarea', { class: 'field', id: 'bl-desc', rows: 2, value: draft.desc, disabled: !canEdit(), oninput: ev => { draft.desc = ev.target.value; } })),
+    el('div', { class: 'row' }, el('input', { class: 'field', id: 'bl-ref', style: 'max-width:340px', list: 'reflist', placeholder: 'Gắn thực thể liên quan (gõ tên rồi Enter)', disabled: !canEdit(),
+      onkeydown: ev => { if (ev.key !== 'Enter') return; const v = ev.target.value.trim(), hit = refOptions.find(([k, n]) => k === v || n.toLowerCase() === v.toLowerCase()); if (hit && !draft.refs.includes(hit[0])) { draft.refs.push(hit[0]); ev.target.value = ''; render(); } } }),
+      el('datalist', { id: 'reflist' }, refOptions.map(([k, n]) => el('option', { value: k, label: n }))), draft.refs.map(r => el('span', { class: 'chip link', style: 'padding-left:8px', title: 'Bấm để bỏ', onclick: () => { draft.refs = draft.refs.filter(x => x !== r); render(); }, text: r + ' ✕' })),
+      el('button', { class: 'btn pri', disabled: !canEdit(), text: 'Thêm vào Ý tưởng', onclick: () => { if (!draft.title.trim()) { toast('Cần nhập tiêu đề.'); return; } newCard({ ...draft, title: draft.title.trim(), status: 'idea' }); draft = { title: '', desc: '', area: 'Khác', priority: 2, refs: [] }; render(); } })));
+  const order = Object.keys(COL);
+  const board = el('div', { class: 'board' }, order.map(col => { const list = cards.filter(([, c]) => c.status === col).sort((a, b) => (a[1].priority || 2) - (b[1].priority || 2) || (a[1].createdAt || '').localeCompare(b[1].createdAt || ''));
+    return el('div', { class: 'col' }, el('h4', {}, COL[col], el('span', { class: 'mono', text: list.length })), list.length ? list.map(([id, c]) => cardEl(id, c, order)) : el('div', { class: 'empty', style: 'padding:10px;font-size:12px', text: col === 'idea' ? 'Thêm ý tưởng ở trên' : 'Trống' })); }));
+  const brief = buildBrief();
+  return [
+    el('header', { class: 'page-head' }, el('div', { class: 'stack', style: 'gap:6px' }, el('h2', { text: 'Kế hoạch nâng cấp' }), el('p', { text: 'Bảng việc của game. Agent đọc cột "Đã duyệt" và "Đang làm" cùng các thực thể bị đánh dấu để lập kế hoạch chi tiết.' }))),
+    S.dbOff ? el('div', { class: 'banner', text: 'Chế độ chỉ xem: không thêm hay sửa được.' }) : null,
+    form, board,
+    el('div', { class: 'card stack' }, el('div', { class: 'row sp' }, el('div', {}, el('h3', { text: 'Gói gửi agent' }), el('p', { class: 'dim', text: 'Tổng hợp mọi tài liệu thiết kế, thực thể cần xử lý và thẻ kế hoạch chưa xong thành một bản Markdown.' })),
+      el('button', { class: 'btn pri', text: 'Sao chép gói gửi agent', onclick: async ev => { try { await navigator.clipboard.writeText(brief); ev.target.textContent = 'Đã sao chép ✓'; } catch (e) { const pre = $('#brief'); const r = document.createRange(); r.selectNodeContents(pre); const s = getSelection(); s.removeAllRanges(); s.addRange(r); ev.target.textContent = 'Đã chọn sẵn, bấm Ctrl+C'; } } })),
+      el('pre', { class: 'brief', id: 'brief', text: brief }),
+      el('p', { class: 'faint', style: 'font-size:12px', text: 'Với agent trong Claude Code: dữ liệu nằm ở kho của trang này, các bộ sưu tập entries (thực thể), backlog (thẻ kế hoạch) và docs/overview (tài liệu). Agent đọc bằng công cụ ArtifactData.' }))
+  ];
+}
+function cardEl(id, c, order) {
+  const i = order.indexOf(c.status), go2 = d => saveCard(id, { status: order[i + d] });
+  return el('div', { class: 'bcard' }, el('div', { class: 'row sp' }, el('span', { class: 'pill', text: c.area }), el('span', { class: 'mono p' + (c.priority || 2), text: 'P' + (c.priority || 2) })),
+    el('b', { text: c.title }), c.desc ? el('p', { class: 'dim', style: 'font-size:12px', text: c.desc }) : null,
+    (c.refs || []).length ? el('div', { class: 'row' }, c.refs.map(r => { const [t, ...rest] = r.split(':'); return el('span', { class: 'chip link', style: 'padding-left:8px', onclick: () => go(t, rest.join(':')), text: nameOf(t, rest.join(':')) }); })) : null,
+    el('div', { class: 'row sp' }, el('span', { class: 'faint', style: 'font-size:11px', text: fmtTime(c.updatedAt) }), el('span', { class: 'row', style: 'gap:4px' },
+      el('button', { class: 'btn sm', disabled: !canEdit() || i === 0, 'aria-label': 'Lùi cột', text: '←', onclick: () => go2(-1) }), el('button', { class: 'btn sm', disabled: !canEdit() || i === order.length - 1, 'aria-label': 'Tiến cột', text: '→', onclick: () => go2(1) }),
+      el('button', { class: 'btn sm', disabled: !canEdit(), text: confirmDel === id ? 'Xóa thật?' : 'Xóa', onclick: () => { if (confirmDel === id) { confirmDel = null; removeCard(id); } else { confirmDel = id; render(); } } }))));
+}
+let confirmDel = null;
+
+// ------------------------------------------------------------------ vẽ và khởi động
+const VIEWS = { overview: viewOverview, story: viewStory, entities: viewEntities, dialogue: viewDialogue, quests: viewQuests, items: viewItems, plan: viewPlan };
+let renderQueued = false;
+function render() {
+  const main = $('#main'); const y = window.scrollY;
+  main.textContent = ''; main.append(...[].concat(VIEWS[S.view] ? VIEWS[S.view]() : VIEWS.overview()).flat());
+  renderSide(); window.scrollTo({ top: y });
+}
+function scheduleRender() {                             // không vẽ lại khi người dùng đang gõ; vẽ khi rời ô nhập
+  if (renderQueued) return; renderQueued = true;
+  const run = () => { const a = document.activeElement; if (a && /^(TEXTAREA|INPUT|SELECT)$/.test(a.tagName) && $('#main').contains(a)) { a.addEventListener('blur', () => setTimeout(() => { renderQueued = false; scheduleRender(); }, 50), { once: true }); return; } renderQueued = false; render(); };
+  setTimeout(run, 60);
+}
+function subscribe() {
+  const fail = e => { if (e && (e.code === 'revoked' || e.code === 'not_granted')) { S.dbOff = true; render(); } };
+  S.db.collection('entries').onSnapshot(snap => { S.entries = new Map(snap.docs.map(d => [d.id, d.data()])); S.ready = true; scheduleRender(); }, fail);
+  S.db.collection('backlog').onSnapshot(snap => { S.backlog = new Map(snap.docs.map(d => [d.id, d.data()])); scheduleRender(); }, fail);
+  S.db.doc('docs/overview').onSnapshot(snap => { S.docs = snap.exists ? { ...snap.data() } : {}; scheduleRender(); }, fail);
+}
+async function boot() {
+  render();                                              // hiện ngay phần dữ liệu từ mã nguồn, kho dữ liệu nối sau
+  const c = window.claude;
+  if (!c || !c.use) { S.dbOff = true; render(); return; }
+  try {
+    const user = await c.use('user'); if (user) { S.me = await user.me(); const w = await user.can('data.write'); S.canWrite = w !== false; }
+    S.db = await c.use('db');
+  } catch (e) { S.db = null; }
+  if (!S.db) { S.dbOff = true; render(); return; }
+  subscribe(); render();
+}
+boot();
+})();
+</script>
