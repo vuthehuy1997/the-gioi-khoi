@@ -3,7 +3,7 @@ import { ITEMS } from '../content/items.js';
 import { BLOCK_BY_NAME, ATLAS_COLS } from '../world/blocks.js';
 
 const TIER_COLOR = { 1: '#a97c45', 2: '#9aa0a8', 3: '#a77bff', 4: '#4fe3e3' };
-const S = 32;
+const K = 2, S = 32 * K;                                      // vẽ theo hệ 32x32 nhưng canvas 64x64 cho nét mịn
 
 // Trang bị: hình mũ, áo, quần, giày tô theo màu bộ.
 const ARMOR = {
@@ -17,7 +17,7 @@ function cube(ctx, atlas, block) {
   const t = block.tiles, tile = i => ({ sx: (i % ATLAS_COLS) * 16, sy: Math.floor(i / ATLAS_COLS) * 16 });
   ctx.imageSmoothingEnabled = false;
   const face = (i, m, shade) => {
-    const { sx, sy } = tile(i); ctx.save(); ctx.setTransform(...m); ctx.drawImage(atlas, sx, sy, 16, 16, 0, 0, 16, 16);
+    const { sx, sy } = tile(i); ctx.save(); ctx.setTransform(...m.map(v => v * K)); ctx.drawImage(atlas, sx, sy, 16, 16, 0, 0, 16, 16);
     if (shade) { ctx.fillStyle = `rgba(0,0,0,${shade})`; ctx.fillRect(0, 0, 16, 16); } ctx.restore();
   };
   face(t[0], [12 / 16, 6 / 16, -12 / 16, 6 / 16, 16, 3], 0);
@@ -39,7 +39,7 @@ function sparkle(ctx, color) {
 
 function plantTile(ctx, atlas, block) {                      // đuốc, cửa mở: vẽ ô texture phẳng, phóng to
   const i = block.tiles[0]; ctx.imageSmoothingEnabled = false;
-  ctx.drawImage(atlas, (i % ATLAS_COLS) * 16, Math.floor(i / ATLAS_COLS) * 16, 16, 16, 2, 2, 28, 28);
+  ctx.drawImage(atlas, (i % ATLAS_COLS) * 16, Math.floor(i / ATLAS_COLS) * 16, 16, 16, 2 * K, 2 * K, 28 * K, 28 * K);
 }
 
 function tool(ctx, kind, color) {
@@ -85,6 +85,21 @@ const MATERIAL = {
   frost_core: ctx => { ctx.fillStyle = '#7fd4ff'; ctx.beginPath(); ctx.arc(16, 16, 10, 0, 7); ctx.fill(); ctx.fillStyle = '#eaf9ff'; ctx.beginPath(); ctx.arc(13, 13, 4, 0, 7); ctx.fill(); },
 };
 
+// Viền đậm quanh hình + ánh sáng trên-trái / bóng dưới-phải: làm icon vẽ tay nổi khỏi nền, đỡ phẳng.
+function finish(c, strength = 1) {
+  const ctx = c.getContext('2d');
+  ctx.save(); ctx.setTransform(1, 0, 0, 1, 0, 0);
+  ctx.globalCompositeOperation = 'source-atop';
+  const g = ctx.createLinearGradient(0, 0, S, S); g.addColorStop(0, `rgba(255,255,255,${0.30 * strength})`); g.addColorStop(0.45, 'rgba(255,255,255,0)'); g.addColorStop(1, `rgba(0,0,0,${0.34 * strength})`);
+  ctx.fillStyle = g; ctx.fillRect(0, 0, S, S);
+  ctx.restore();
+  const sil = document.createElement('canvas'); sil.width = sil.height = S; const sx = sil.getContext('2d');
+  sx.drawImage(c, 0, 0); sx.globalCompositeOperation = 'source-in'; sx.fillStyle = '#17110c'; sx.fillRect(0, 0, S, S);
+  ctx.save(); ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.globalCompositeOperation = 'destination-over';
+  const o = K * 1.2; for (const [dx, dy] of [[-o, 0], [o, 0], [0, -o], [0, o], [-o, -o], [o, o], [-o, o], [o, -o], [0, o * 2.2]]) ctx.drawImage(sil, dx, dy);
+  ctx.restore();
+}
+
 export function createIcons(atlas) {
   const cache = new Map(), canvases = new Map();
   return {
@@ -94,10 +109,10 @@ export function createIcons(atlas) {
       const it = ITEMS[id], c = document.createElement('canvas'); c.width = c.height = S; const ctx = c.getContext('2d'); canvases.set(id, c);
       if (it && it.block && BLOCK_BY_NAME[it.block].plant) plantTile(ctx, atlas, BLOCK_BY_NAME[it.block]);
       else if (it && it.block) cube(ctx, atlas, BLOCK_BY_NAME[it.block]);
-      else if (it && it.armor) { ARMOR[it.armor.slot](ctx, it.color); shine(ctx); }
-      else if (it && it.tool) { tool(ctx, it.tool.type, it.color || TIER_COLOR[it.tool.tier]); if (it.relic) sparkle(ctx, it.color); }
-      else if (MATERIAL[id]) MATERIAL[id](ctx);
-      else { ctx.fillStyle = '#888'; ctx.fillRect(8, 8, 16, 16); }
+      else if (it && it.armor) { ctx.scale(K, K); ARMOR[it.armor.slot](ctx, it.color); shine(ctx); finish(c, 0.8); }
+      else if (it && it.tool) { ctx.scale(K, K); tool(ctx, it.tool.type, it.color || TIER_COLOR[it.tool.tier]); finish(c, 0.7); if (it.relic) sparkle(ctx, it.color); }
+      else if (MATERIAL[id]) { ctx.scale(K, K); MATERIAL[id](ctx); finish(c); }
+      else { ctx.scale(K, K); ctx.fillStyle = '#888'; ctx.fillRect(8, 8, 16, 16); finish(c); }
       const url = c.toDataURL(); cache.set(id, url); return url;
     },
   };

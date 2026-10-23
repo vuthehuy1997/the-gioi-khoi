@@ -52,7 +52,7 @@ html,body{margin:0;height:100%;background:#12141a;color:#eeede8;font-family:'Seg
 .panel h3{margin:10px 0 4px;font-size:14px}
 #menu .file{display:inline-block;padding:6px 12px;border:1px dashed #666;border-radius:6px;cursor:pointer;font-size:13px;color:#a3a8b8}
 #menu .file input{display:none}
-.slot img{width:34px;height:34px;image-rendering:pixelated;pointer-events:none}
+.slot img{width:36px;height:36px;image-rendering:auto;pointer-events:none}
 #hotbar .slot,.panel .slot{overflow:hidden}
 #water{position:absolute;inset:0;background:#1d4ed8;opacity:.35;pointer-events:none}
 #water[hidden]{display:none}
@@ -78,3 +78,19 @@ html,body{margin:0;height:100%;background:#12141a;color:#eeede8;font-family:'Seg
 .recgroup { margin: 4px 0; }
 .recgroup > summary { cursor: pointer; font-size: 13px; padding: 4px 2px; border-bottom: 1px solid #fff2; opacity: .9; }
 .recgroup > summary.ready { color: #ffd45e; opacity: 1; }
+
+/* công thức & cửa hàng có ảnh */
+.panel .rec { gap: 8px; justify-content: flex-start; padding: 4px 2px; border-bottom: 1px solid #ffffff10; }
+.panel .rec .rname { flex: 1 1 auto; min-width: 0; font-size: 14px; }
+.panel .rec .arrow { opacity: .45; font-size: 15px; }
+.panel .rec .ing { display: flex; gap: 3px; flex: 0 0 auto; }
+.panel .rec button { margin-left: auto; flex: 0 0 auto; }
+.panel .rec .ing + button { margin-left: 4px; }
+.panel .slot.mini { width: 38px; height: 38px; cursor: default; border-width: 1px; }
+.panel .slot.mini img { width: 30px; height: 30px; }
+.panel .slot.mini b { font-size: 11px; text-shadow: 0 0 2px #000, 0 0 2px #000; }
+.panel .slot.mini.miss { border-color: #e0524a; background: #4a1414aa !important; }
+.panel .slot.mini.miss img { opacity: .55; filter: grayscale(.4); }
+.panel .slot.mini.miss b { color: #ff8a80; }
+.panel .rec:not(.ok) .rname { opacity: .75; }
+.panel .rec, .panel .rec.ok { opacity: 1; }

@@ -74,10 +74,13 @@ export function createPanels({ act, onClose }) {
       for (const r of list) {
         const ok = canCraft(you.inv, r.id, near);
         const row = document.createElement('div'); row.className = 'rec' + (ok ? ' ok' : '');
-        const need = Object.entries(r.in).map(([k, n]) => `${n}× ${itemName(k)}${countItem(you.inv, k) >= n ? '' : ' ✗'}`).join(', ');
-        const label = document.createElement('span'); label.textContent = `${r.out.n}× ${itemName(r.out.item)} ← ${need}`;
+        const out = slotEl({ id: r.out.item, n: r.out.n }); out.classList.add('mini');
+        const label = document.createElement('span'); label.className = 'rname'; label.textContent = itemName(r.out.item);
+        const arrow = document.createElement('span'); arrow.className = 'arrow'; arrow.textContent = '←';
+        const ing = document.createElement('div'); ing.className = 'ing';
+        for (const [k, n] of Object.entries(r.in)) { const have = countItem(you.inv, k), d = slotEl({ id: k, n }); d.classList.add('mini'); if (have < n) { d.classList.add('miss'); d.title = `${itemName(k)} — có ${have}/${n}`; } else d.title = `${itemName(k)} — có ${have}/${n}`; ing.appendChild(d); }
         const b = btn('Chế', () => act({ t: 'craft', id: r.id })); b.disabled = !ok;
-        row.append(label, b); det.appendChild(row);
+        row.append(out, label, arrow, ing, b); det.appendChild(row);
       }
     }
     root.append(equipmentRow(you), grid, hint, rec);
@@ -116,8 +119,9 @@ export function createPanels({ act, onClose }) {
         const h = document.createElement('h3'); h.textContent = title; root.appendChild(h);
         for (const r of rows) {
           const row = document.createElement('div'); row.className = 'rec';
-          const sp = document.createElement('span'); sp.textContent = `${itemName(r.item)} — ${r.price} xu`;
-          row.append(sp, btn(label, () => act({ t: type, item: r.item, n: 1 })), btn(label + ' ×5', () => act({ t: type, item: r.item, n: 5 })));
+          const ic = slotEl({ id: r.item, n: 1 }); ic.classList.add('mini');
+          const sp = document.createElement('span'); sp.className = 'rname'; sp.textContent = `${itemName(r.item)} — ${r.price} xu`;
+          row.append(ic, sp, btn(label, () => act({ t: type, item: r.item, n: 1 })), btn(label + ' ×5', () => act({ t: type, item: r.item, n: 5 })));
           root.appendChild(row);
         }
       };
