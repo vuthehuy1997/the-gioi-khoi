@@ -28,7 +28,8 @@ import { REGIONS } from './content/regions.js';
 import { MOBS } from './content/mobs.js';
 import { BOSSES } from './content/bosses.js';
 import { ITEMS } from './content/items.js';
-import { BLOCKS, B, BLOCK_BY_NAME } from './world/blocks.js';
+import { BLOCKS, B, BLOCK_BY_NAME, cropOf, isCrop, isFarmland, isPlant } from './world/blocks.js';
+import { CROPS, SOIL } from './content/farming.js';
 import { saveWorld, loadWorld, exportWorld, importWorld } from './save.js';
 
 const params = new URLSearchParams(location.search);
@@ -122,6 +123,11 @@ async function begin(session) {
   S.on('ev', handleEvent);
   director.start();
   S.world.onChange = (x, y, z, prev, id) => {            // hạt khi block vỡ hoặc được đặt
+    if (Math.hypot(x + 0.5 - local.x, z + 0.5 - local.z) > 24) return;                       // ở xa: không tiếng, không hạt (R-21)
+    const sys = b => isCrop(b) || isFarmland(b);
+    if (sys(id) && sys(prev)) return;                                                         // cây lớn, đất ướt/khô: thay đổi hệ thống, im lặng
+    if (isFarmland(prev) && id === B.DIRT) return;                                            // ruộng bỏ hoang về đất
+    if (isCrop(id) && !prev) { sfx.play('sprout'); return; }                                  // gieo
     if (prev && BLOCKS[prev] && id === 0) sfx.play('break', { block: prev }); else if (id) sfx.play('place', { block: id });
     if (prev && BLOCKS[prev] && id === 0) fx.burst(x + 0.5, y + 0.5, z + 0.5, BLOCKS[prev].tiles[1], 16);
     else if (id && BLOCKS[id]) fx.burst(x + 0.5, y + 0.5, z + 0.5, BLOCKS[id].tiles[0], 5, 1.2);
@@ -138,7 +144,8 @@ async function begin(session) {
 function onSnap(snap) { buf.push({ t: performance.now(), snap }); if (buf.length > 5) buf.shift(); }
 
 const FAIL_TEXT = { poor: 'Không đủ xu.', 'inventory-full': 'Kho đồ đã đầy.', reach: 'Ở quá xa.', 'not-sold': 'Cửa hàng không bán món này.', 'not-bought': 'Cửa hàng không thu món này.',
-  missing: 'Bạn không có đủ món này.', full: 'Máu đã đầy.', 'cannot-craft': 'Chưa đủ nguyên liệu hoặc cần đứng gần bàn chế tạo.', blocked: 'Có vật cản ở đó.', floating: 'Cần đặt cạnh một block khác.', 'too-soon': 'Chưa thể hồi sinh ngay.', far: 'Ở quá xa NPC.' };
+  missing: 'Bạn không có đủ món này.', full: 'Bạn đang no và đầy máu.', cooldown: 'Ăn chậm thôi.', unripe: 'Cây chưa chín.', 'not-hoe': 'Cần cầm cuốc đất.', 'not-soil': 'Cuốc chỉ cày được đất, cỏ, bùn, rêu.', 'not-seed': 'Cần cầm hạt giống.', 'not-farmland': 'Hạt cần đặt lên đất cày.',
+  'not-crop': 'Ở đó không có cây trồng.', 'not-food': 'Con vật không ăn món này.', busy: 'Con vật đang bận.', cap: 'Chuồng đã đầy (24/24).', young: 'Cừu non chưa cắt len được.', sheared: 'Cừu chưa mọc lại len.', 'not-shears': 'Cần cầm kéo.', 'no-target': 'Không có con vật nào ở đó.', 'cannot-craft': 'Chưa đủ nguyên liệu hoặc cần đứng gần bàn chế tạo.', blocked: 'Có vật cản ở đó.', floating: 'Cần đặt cạnh một block khác.', 'too-soon': 'Chưa thể hồi sinh ngay.', far: 'Ở quá xa NPC.' };
 // Cập nhật lạc quan cho khách: thấy kết quả ngay, hoàn tác nếu host từ chối (không phải chờ một vòng mạng).
 let pendingEdits = [];
 function optimistic(x, y, z, id) {
@@ -164,7 +171,7 @@ const director = createDirector({ sfx });
 let deathTimer = null;
 function refreshYou() {
   const y = S.you; if (!y) return;
-  hud.setHp(y.hp, y.maxHp); hud.setHotbar(y.inv, y.sel);
+  hud.setHp(y.hp, y.maxHp); hud.setHotbar(y.inv, y.sel); hud.setFood(y.food); hud.setFx(y.fx);
   if (y.dead) { if (!deathTimer) { document.exitPointerLock?.(); panels.close(); panels.showDeath(false); deathTimer = setTimeout(() => panels.showDeath(true), 3000); } }
   else if (deathTimer || !$('death').hidden) { clearTimeout(deathTimer); deathTimer = null; panels.hideDeath(); lockPointer(); }
   if (panels.isOpen) panels.refresh({ you: y, near: nearStations(S.world, local.x, local.y, local.z) });
@@ -187,6 +194,8 @@ function handleEvent(ev) {
     case 'died': if (ev.uid === uid) sfx.play('die'); hud.toast(ev.uid === uid ? 'Bạn đã gục ngã.' : `${ev.name} đã gục ngã.`); break;
     case 'boss-start': sfx.play('boss'); hud.toast(`${ev.name} xuất hiện!`); break;
     case 'boss-defeated': sfx.play('victory'); hud.toast(`${ev.name} đã bị hạ!`, 5000); break;
+    case 'snd': sfx.play(ev.n); break;
+    case 'born': { const e = interp.es.find(x => x.id === ev.id) || { x: local.x, z: local.z }; if (Math.hypot(e.x - local.x, e.z - local.z) < 24) sfx.play('voice', { type: ev.type, intent: 'idle', dist: Math.hypot(e.x - local.x, e.z - local.z) }); break; }
     case 'pickup': sfx.play('pickup'); hud.toast(`+${ev.n} ${ITEMS[ev.item].name}`, 1200); break;
     case 'fail': onFail(ev); break;
     case 'block': confirmEdit(ev.x, ev.y, ev.z); break;
@@ -260,7 +269,7 @@ function inputNow() {
 // ---------------------------------------------------------------- nhắm và tương tác
 const eyeOf = () => ({ x: local.x, y: local.y + 1.62, z: local.z });
 const dirOf = () => ({ x: -Math.sin(local.yaw) * Math.cos(local.pitch), y: Math.sin(local.pitch), z: -Math.cos(local.yaw) * Math.cos(local.pitch) });
-const sizeOf = e => (e.kind === 'mob' ? MOBS[e.type] : e.kind === 'boss' ? BOSSES[e.type] : e.kind === 'npc' ? { w: 0.7, h: 1.9 } : null);
+const sizeOf = e => (e.kind === 'mob' ? (e.ba ? { w: MOBS[e.type].w * 0.5, h: MOBS[e.type].h * 0.5 } : MOBS[e.type]) : e.kind === 'boss' ? BOSSES[e.type] : e.kind === 'npc' ? { w: 0.7, h: 1.9 } : null);
 
 function rayBox(o, d, min, max) {
   let t0 = 0, t1 = 99;
@@ -288,23 +297,71 @@ const USABLE = {
   [B.CHEST]: p => ({ t: 'chest-open', ...p }), [B.BED]: p => ({ t: 'sleep', ...p }),
 };
 
+const SOIL_IDS = new Set(SOIL.map(n => BLOCK_BY_NAME[n].id));
+const isHoe = h => !!(h && h.tool && h.tool.type === 'hoe');
+// Ô đất có thể cày mà con trỏ đang chỉ vào (mặt trên của đất/cỏ/bùn/rêu; hoặc cỏ cao phía trên chúng), hoặc null.
+function soilTarget(blk) {
+  if (!blk || blk.normal.y !== 1 && !(isPlant(blk.id) && !BLOCKS[blk.id].deco)) return null;
+  if (SOIL_IDS.has(blk.id)) return blk.pos;
+  if (isPlant(blk.id) && !BLOCKS[blk.id].deco && SOIL_IDS.has(S.world.get(blk.pos.x, blk.pos.y - 1, blk.pos.z))) return { x: blk.pos.x, y: blk.pos.y - 1, z: blk.pos.z };
+  return null;
+}
+
+// Chuột phải. Thứ tự ưu tiên: NPC -> thú (cho ăn / cắt len) -> block dùng được (cửa, rương, giường) -> cây (thu hoạch) -> cuốc lên đất -> hạt lên ruộng -> đặt block -> ăn.
+// Trả true nếu đã làm gì đó.
 function useItem() {
-  const o = eyeOf(), d = dirOf(), blk = S.world.raycast(o, d, 6), en = pickEntity(o, d, 5);
-  if (en && en.e.kind === 'npc' && (!blk || en.t < blk.dist)) { S.act({ t: 'interact', id: en.e.id }); return; }
-  if (blk && !keys.has('KeyC') && USABLE[blk.id]) { S.act(USABLE[blk.id](blk.pos)); hand.swing(); return; }      // cửa, rương, giường (giữ C để đặt block cạnh chúng)
-  const h = heldId() && ITEMS[heldId()];
+  const o = eyeOf(), d = dirOf(), blk = S.world.raycast(o, d, 6), en = pickEntity(o, d, 5), near = en && (!blk || en.t < blk.dist);
+  if (near && en.e.kind === 'npc') { S.act({ t: 'interact', id: en.e.id }); return true; }
+  const hid = heldId(), h = hid && ITEMS[hid];
+  if (near && en.e.kind === 'mob' && MOBS[en.e.type].farm && h) {
+    const md = MOBS[en.e.type];
+    if (hid === 'shears' && md.product && md.product.regrow) { S.act({ t: 'shear', id: en.e.id }); hand.swing(); return true; }
+    if (hid === md.breed.food) { S.act({ t: 'feed', id: en.e.id }); hand.swing(); return true; }
+  }
+  if (blk && !keys.has('KeyC') && USABLE[blk.id]) { S.act(USABLE[blk.id](blk.pos)); hand.swing(); return true; }      // cửa, rương, giường (giữ C để đặt block cạnh chúng)
+  if (blk && isCrop(blk.id)) {
+    if (cropOf(blk.id).stage === 3) { S.act({ t: 'harvest', ...blk.pos }); hand.swing(); return true; }
+    if (!(h && h.block)) { hud.toast('Cây chưa chín.', 1200); return true; }
+  }
+  if (isHoe(h) && blk) { const t = soilTarget(blk); if (t) { S.act({ t: 'till', ...t }); hand.swing(); return true; } hud.toast(FAIL_TEXT['not-soil'], 1400); return true; }
+  if (h && h.plant) {
+    if (blk && isFarmland(blk.id) && blk.normal.y === 1) { S.act({ t: 'plant', ...blk.pos }); hand.swing(); return true; }
+    if (!(h.food || h.heal)) { hud.toast(FAIL_TEXT['not-farmland'], 1400); return true; }          // hạt lúa mì không ăn được: nhắc gieo lên đất cày
+  }
   if (h && h.block && blk) {
     const px = blk.pos.x + blk.normal.x, py = blk.pos.y + blk.normal.y, pz = blk.pos.z + blk.normal.z;
     S.act({ t: 'place', x: px, y: py, z: pz }); hand.swing();
-    optimistic(px, py, pz, BLOCK_BY_NAME[h.block].id); return;
+    optimistic(px, py, pz, BLOCK_BY_NAME[h.block].id); return true;
   }
-  if (h && h.heal) S.act({ t: 'use' });
+  if (h && (h.heal || h.food)) { S.act({ t: 'use' }); return true; }
+  return false;
+}
+
+// Chú giải khi ngắm: cây (loại, giai đoạn, độ ẩm), ruộng/đất khi cầm hạt/cuốc, thú nuôi (đã thuần, đang yêu, non, đã cắt len).
+function tipFor(blk, en) {
+  const hid = S.you.inv[S.you.sel] ? S.you.inv[S.you.sel].id : null, h = hid && ITEMS[hid];
+  if (en && (!blk || en.t < blk.dist) && en.e.kind === 'mob' && MOBS[en.e.type].farm) {
+    const e = en.e, d = MOBS[e.type], parts = [d.name];
+    if (e.tm) parts.push('đã thuần'); else if (h && hid === d.breed.food) parts.push('bấm phải để thuần hoá');
+    if (e.lv) parts.push('♥ đang yêu'); if (e.ba) parts.push('non'); if (e.sh) parts.push('đã cắt len');
+    return parts.join(' · ');
+  }
+  if (!blk) return null;
+  const c = cropOf(blk.id);
+  if (c) {
+    const wet = S.world.get(blk.pos.x, blk.pos.y - 1, blk.pos.z) === B.FARMLAND_WET;
+    return `${CROPS[c.kind].name} · giai đoạn ${c.stage + 1}/4 · đất ${wet ? 'ướt' : 'khô'}${c.stage === 3 ? ' · chín (bấm phải để thu hoạch)' : ''}`;
+  }
+  if (isFarmland(blk.id) && blk.normal.y === 1 && h && h.plant) return 'Bấm phải để gieo';
+  if (isHoe(h) && soilTarget(blk)) return 'Bấm phải để cày';
+  return null;
 }
 
 function mining(dt, now) {
   const o = eyeOf(), d = dirOf(), blk = S.world.raycast(o, d, 6), en = pickEntity(o, d, 4.5);
   const progNow = dig && blk && dig.x === blk.pos.x && dig.y === blk.pos.y && dig.z === blk.pos.z ? Math.min(1, (now - dig.t0) / Math.max(0.05, breakTimeFor(blk.id, heldId()))) : null;
   fx.setTarget(blk && !(en && (!blk || en.t < blk.dist)) ? blk.pos : null, mouse.left ? progNow : null);
+  hud.setTip(tipFor(blk, en));
   if (!mouse.left) return;
   if (en && (en.e.kind === 'mob' || en.e.kind === 'boss') && (!blk || en.t < blk.dist)) {
     dig = null; hud.setProgress(null);
@@ -370,7 +427,7 @@ function frameBody(dt) {
   if (local.onGround && !wasOnGround && local.vy > -1 && lastVy < -9) sfx.play('land');
   wasOnGround = local.onGround; lastVy = local.vy;
   hand.setHeld(heldId(), heldId() ? icons.get(heldId()) : null); hand.update(dt, camFx.bob, camFx.bobAmp);
-  if (!ui) mining(dt, nowS); else fx.setTarget(null);
+  if (!ui) mining(dt, nowS); else { fx.setTarget(null); hud.setTip(null); }
   const keep = game ? [...game.players.values()].filter(p => p.uid !== uid && !p.dead).map(p => ({ x: p.x, z: p.z, r: 4 })) : [];
   pending = view.update([local], undefined, keep);
   interpolate(performance.now());

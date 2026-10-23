@@ -49,6 +49,7 @@ function tool(ctx, kind, color) {
   if (kind === 'pick') { ctx.lineWidth = 4; ctx.beginPath(); ctx.moveTo(10, 8); ctx.quadraticCurveTo(22, 4, 27, 16); ctx.stroke(); }
   else if (kind === 'axe') { ctx.beginPath(); ctx.moveTo(17, 7); ctx.lineTo(27, 5); ctx.lineTo(27, 17); ctx.lineTo(21, 13); ctx.closePath(); ctx.fill(); }
   else if (kind === 'shovel') { ctx.beginPath(); ctx.ellipse(24, 8, 5, 6, 0.7, 0, 7); ctx.fill(); }
+  else if (kind === 'hoe') { ctx.beginPath(); ctx.moveTo(19, 9); ctx.lineTo(28, 12); ctx.lineTo(27, 17); ctx.lineTo(18, 14); ctx.closePath(); ctx.fill(); ctx.fillStyle = '#ffffff44'; ctx.fillRect(20, 10, 6, 1.5); }
   else if (kind === 'sword') { ctx.strokeStyle = color; ctx.lineWidth = 4; ctx.beginPath(); ctx.moveTo(7, 25); ctx.lineTo(24, 8); ctx.stroke(); ctx.strokeStyle = '#6b4a22'; ctx.lineWidth = 3; ctx.beginPath(); ctx.moveTo(6, 17); ctx.lineTo(15, 26); ctx.stroke(); }
 }
 
@@ -69,6 +70,24 @@ const MATERIAL = {
   chitin: ctx => { ctx.fillStyle = '#c8742a'; ctx.beginPath(); ctx.ellipse(16, 16, 11, 8, 0.3, 0, 7); ctx.fill(); ctx.strokeStyle = '#7a3e14'; ctx.lineWidth = 2; for (const x of [10, 16, 22]) { ctx.beginPath(); ctx.moveTo(x - 2, 9); ctx.lineTo(x + 1, 23); ctx.stroke(); } },
   cooked_meat: ctx => { ctx.fillStyle = '#8a4a1e'; ctx.beginPath(); ctx.ellipse(13, 13, 8, 6, -0.5, 0, 7); ctx.fill(); ctx.fillStyle = '#b8742e'; ctx.beginPath(); ctx.ellipse(12, 12, 5, 3, -0.5, 0, 7); ctx.fill(); ctx.strokeStyle = '#eee'; ctx.lineWidth = 3; ctx.lineCap = 'round'; ctx.beginPath(); ctx.moveTo(18, 18); ctx.lineTo(25, 25); ctx.stroke(); },
   pelt: ctx => { ctx.fillStyle = '#d98a3a'; ctx.beginPath(); ctx.moveTo(6, 8); ctx.lineTo(26, 6); ctx.lineTo(28, 22); ctx.lineTo(18, 27); ctx.lineTo(8, 24); ctx.closePath(); ctx.fill(); ctx.fillStyle = '#f2d2a0'; ctx.fillRect(12, 12, 8, 6); },
+
+  // ---- trồng trọt, thú nuôi, nấu ăn ----
+  shears: ctx => { ctx.strokeStyle = '#d9dde4'; ctx.lineWidth = 3; ctx.lineCap = 'round'; ctx.beginPath(); ctx.moveTo(10, 24); ctx.lineTo(22, 5); ctx.moveTo(22, 24); ctx.lineTo(10, 5); ctx.stroke(); ctx.strokeStyle = '#b8402c'; ctx.lineWidth = 3.5; for (const x of [9, 23]) { ctx.beginPath(); ctx.arc(x, 25, 3.6, 0, 7); ctx.stroke(); } ctx.fillStyle = '#6b6f78'; ctx.beginPath(); ctx.arc(16, 15, 1.8, 0, 7); ctx.fill(); },
+  wheat_seed: ctx => { ctx.fillStyle = '#d9b45a'; for (const [x, y, r] of [[11, 13, 0.5], [18, 11, -0.4], [14, 19, 0.2], [21, 18, 0.7], [9, 22, -0.3]]) { ctx.save(); ctx.translate(x, y); ctx.rotate(r); ctx.beginPath(); ctx.ellipse(0, 0, 3, 5.2, 0, 0, 7); ctx.fill(); ctx.fillStyle = '#f0d98a'; ctx.fillRect(-0.6, -3.6, 1.2, 5); ctx.fillStyle = '#d9b45a'; ctx.restore(); } },
+  wheat: ctx => { ctx.strokeStyle = '#b8902c'; ctx.lineWidth = 1.8; ctx.lineCap = 'round'; for (const dx of [-5, 0, 5]) { ctx.beginPath(); ctx.moveTo(16 + dx * 0.2, 28); ctx.lineTo(16 + dx, 9); ctx.stroke(); ctx.fillStyle = '#e8c44c'; for (let k = 0; k < 4; k++) { ctx.beginPath(); ctx.ellipse(16 + dx - 1.6, 10 + k * 3.2, 1.8, 3, -0.3, 0, 7); ctx.ellipse(16 + dx + 1.6, 11 + k * 3.2, 1.8, 3, 0.3, 0, 7); ctx.fill(); } } ctx.fillStyle = '#c0392b'; ctx.fillRect(10, 22, 12, 3); },
+  carrot: ctx => { ctx.fillStyle = '#4cae4c'; for (const [x, r] of [[11, -0.5], [16, 0], [21, 0.5]]) { ctx.save(); ctx.translate(x, 8); ctx.rotate(r); ctx.beginPath(); ctx.ellipse(0, -1, 2.4, 6, 0, 0, 7); ctx.fill(); ctx.restore(); } poly(ctx, '#ee8a1e', [[9, 9], [23, 9], [17, 29], [15, 29]]); ctx.strokeStyle = '#b8620e'; ctx.lineWidth = 1.2; for (const y of [13, 17, 21]) { ctx.beginPath(); ctx.moveTo(13, y); ctx.lineTo(17, y + 1); ctx.stroke(); } },
+  potato: ctx => { ctx.fillStyle = '#b8945c'; ctx.beginPath(); ctx.ellipse(16, 17, 11, 8.5, -0.25, 0, 7); ctx.fill(); ctx.fillStyle = '#d8b880'; ctx.beginPath(); ctx.ellipse(13, 14, 5, 3, -0.25, 0, 7); ctx.fill(); ctx.fillStyle = '#6b5030'; for (const [x, y] of [[10, 19], [18, 21], [22, 15], [15, 12]]) ctx.fillRect(x, y, 2, 2); },
+  egg: ctx => { ctx.fillStyle = '#f2e6cc'; ctx.beginPath(); ctx.moveTo(16, 3); ctx.bezierCurveTo(26, 3, 27, 26, 16, 28); ctx.bezierCurveTo(5, 26, 6, 3, 16, 3); ctx.fill(); ctx.fillStyle = '#ffffff'; ctx.beginPath(); ctx.ellipse(12, 11, 2.4, 4.5, 0.4, 0, 7); ctx.fill(); ctx.fillStyle = '#d8c8a4'; ctx.beginPath(); ctx.ellipse(19, 20, 3.5, 5, 0.3, 0, 7); ctx.fill(); },
+  wool: ctx => { ctx.fillStyle = '#d2d4dc'; for (const [x, y, r] of [[10, 18, 7], [21, 18, 7], [16, 22, 7], [16, 12, 8]]) { ctx.beginPath(); ctx.arc(x, y, r, 0, 7); ctx.fill(); } ctx.fillStyle = '#f8f8fc'; for (const [x, y, r] of [[10, 16, 5], [21, 16, 5], [16, 20, 5], [16, 10, 6]]) { ctx.beginPath(); ctx.arc(x, y, r, 0, 7); ctx.fill(); } ctx.fillStyle = '#ffffff'; ctx.fillRect(13, 7, 3, 2); },
+  pork: ctx => { ctx.fillStyle = '#e8909a'; ctx.beginPath(); ctx.ellipse(13, 13, 9, 7, -0.5, 0, 7); ctx.fill(); ctx.fillStyle = '#f7c4c8'; ctx.beginPath(); ctx.ellipse(11, 11, 5, 3, -0.5, 0, 7); ctx.fill(); ctx.strokeStyle = '#eee'; ctx.lineWidth = 3; ctx.lineCap = 'round'; ctx.beginPath(); ctx.moveTo(19, 19); ctx.lineTo(26, 26); ctx.stroke(); ctx.fillStyle = '#eee'; ctx.fillRect(24, 25, 5, 3); },
+  chicken: ctx => { ctx.fillStyle = '#eec6a0'; ctx.beginPath(); ctx.ellipse(13, 12, 8, 7, -0.6, 0, 7); ctx.fill(); ctx.fillStyle = '#f9e0c8'; ctx.beginPath(); ctx.ellipse(11, 10, 4, 3, -0.6, 0, 7); ctx.fill(); ctx.strokeStyle = '#f2f0e4'; ctx.lineWidth = 3; ctx.lineCap = 'round'; ctx.beginPath(); ctx.moveTo(18, 17); ctx.lineTo(25, 25); ctx.stroke(); ctx.fillStyle = '#f2f0e4'; ctx.fillRect(23, 24, 5, 3); ctx.fillRect(25, 22, 3, 3); },
+  bread: ctx => { ctx.fillStyle = '#a8672a'; ctx.beginPath(); ctx.ellipse(16, 17, 13, 8, 0, 0, 7); ctx.fill(); ctx.fillStyle = '#d4954a'; ctx.beginPath(); ctx.ellipse(16, 15, 11, 5.5, 0, 0, 7); ctx.fill(); ctx.strokeStyle = '#8a5220'; ctx.lineWidth = 1.6; ctx.lineCap = 'round'; for (const x of [10, 16, 22]) { ctx.beginPath(); ctx.moveTo(x - 1.5, 12.5); ctx.lineTo(x + 1.5, 17); ctx.stroke(); } ctx.fillStyle = '#fff3'; ctx.fillRect(9, 11, 6, 1.5); },
+  baked_potato: ctx => { ctx.fillStyle = '#8a5a2a'; ctx.beginPath(); ctx.ellipse(16, 18, 11, 8, -0.2, 0, 7); ctx.fill(); ctx.fillStyle = '#b88448'; ctx.beginPath(); ctx.ellipse(13, 16, 5, 3, -0.2, 0, 7); ctx.fill(); ctx.fillStyle = '#f6ecc8'; ctx.beginPath(); ctx.ellipse(16, 13, 7, 2.4, -0.2, 0, 7); ctx.fill(); ctx.fillStyle = '#f6c63c'; ctx.fillRect(14, 11.5, 4, 2.4); ctx.strokeStyle = '#fff9'; ctx.lineWidth = 1.5; ctx.beginPath(); ctx.moveTo(15, 9); ctx.quadraticCurveTo(13, 6, 16, 3); ctx.moveTo(20, 9); ctx.quadraticCurveTo(18, 6, 21, 3); ctx.stroke(); },
+  cooked_pork: ctx => { ctx.fillStyle = '#8a4426'; ctx.beginPath(); ctx.ellipse(13, 13, 9, 7, -0.5, 0, 7); ctx.fill(); ctx.fillStyle = '#c47a48'; ctx.beginPath(); ctx.ellipse(11, 11, 5, 3, -0.5, 0, 7); ctx.fill(); ctx.fillStyle = '#e8a870'; ctx.fillRect(8, 9, 3, 1.5); ctx.strokeStyle = '#eee'; ctx.lineWidth = 3; ctx.lineCap = 'round'; ctx.beginPath(); ctx.moveTo(19, 19); ctx.lineTo(26, 26); ctx.stroke(); ctx.fillStyle = '#eee'; ctx.fillRect(24, 25, 5, 3); },
+  cooked_chicken: ctx => { ctx.fillStyle = '#b87424'; ctx.beginPath(); ctx.ellipse(13, 12, 8, 7, -0.6, 0, 7); ctx.fill(); ctx.fillStyle = '#e0a048'; ctx.beginPath(); ctx.ellipse(11, 10, 4.5, 3, -0.6, 0, 7); ctx.fill(); ctx.fillStyle = '#f6d890'; ctx.fillRect(8, 8, 3, 1.5); ctx.strokeStyle = '#f2f0e4'; ctx.lineWidth = 3; ctx.lineCap = 'round'; ctx.beginPath(); ctx.moveTo(18, 17); ctx.lineTo(25, 25); ctx.stroke(); ctx.fillStyle = '#f2f0e4'; ctx.fillRect(23, 24, 5, 3); ctx.fillRect(25, 22, 3, 3); },
+  veg_soup: ctx => { ctx.fillStyle = '#6b4a22'; ctx.beginPath(); ctx.moveTo(4, 14); ctx.lineTo(28, 14); ctx.quadraticCurveTo(26, 28, 16, 28); ctx.quadraticCurveTo(6, 28, 4, 14); ctx.fill(); ctx.fillStyle = '#8ac24a'; ctx.beginPath(); ctx.ellipse(16, 14, 12, 4, 0, 0, 7); ctx.fill(); ctx.fillStyle = '#ee8a1e'; ctx.fillRect(9, 12, 3, 3); ctx.fillRect(19, 13, 3, 3); ctx.fillStyle = '#f2e8b0'; ctx.fillRect(14, 11.5, 3, 2.5); ctx.strokeStyle = '#fff6'; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(12, 9); ctx.quadraticCurveTo(10, 5, 13, 2); ctx.moveTo(19, 9); ctx.quadraticCurveTo(17, 5, 20, 2); ctx.stroke(); },
+  hearty_stew: ctx => { ctx.fillStyle = '#3a3a42'; ctx.beginPath(); ctx.moveTo(3, 14); ctx.lineTo(29, 14); ctx.quadraticCurveTo(27, 28, 16, 28); ctx.quadraticCurveTo(5, 28, 3, 14); ctx.fill(); ctx.fillStyle = '#7a3e1c'; ctx.beginPath(); ctx.ellipse(16, 14, 13, 4.2, 0, 0, 7); ctx.fill(); ctx.fillStyle = '#c0453a'; ctx.fillRect(8, 11.5, 4, 3.5); ctx.fillRect(18, 12.5, 4, 3.5); ctx.fillStyle = '#ee8a1e'; ctx.fillRect(14, 11, 3, 3); ctx.fillStyle = '#d8b880'; ctx.fillRect(22, 11, 3, 3); ctx.fillStyle = '#3a3a42'; ctx.fillRect(1, 15, 3, 3); ctx.fillRect(28, 15, 3, 3); ctx.strokeStyle = '#fff6'; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(11, 9); ctx.quadraticCurveTo(9, 5, 12, 2); ctx.moveTo(17, 9); ctx.quadraticCurveTo(15, 5, 18, 2); ctx.moveTo(23, 9); ctx.quadraticCurveTo(21, 5, 24, 2); ctx.stroke(); },
+  egg_cake: ctx => { ctx.fillStyle = '#c68a44'; ctx.beginPath(); ctx.ellipse(16, 21, 12, 6, 0, 0, 7); ctx.fill(); ctx.fillRect(4, 14, 24, 7); ctx.fillStyle = '#e8bc6a'; ctx.beginPath(); ctx.ellipse(16, 14, 12, 5, 0, 0, 7); ctx.fill(); ctx.fillStyle = '#fff8e8'; ctx.beginPath(); ctx.ellipse(16, 13.5, 6, 2.8, 0, 0, 7); ctx.fill(); ctx.fillStyle = '#f6c63c'; ctx.beginPath(); ctx.arc(16, 13.5, 2.2, 0, 7); ctx.fill(); ctx.fillStyle = '#a06a2c'; ctx.fillRect(5, 17, 22, 1.5); },
 
   crystal: ctx => { ctx.fillStyle = '#a77bff'; ctx.beginPath(); ctx.moveTo(16, 4); ctx.lineTo(25, 16); ctx.lineTo(16, 28); ctx.lineTo(7, 16); ctx.closePath(); ctx.fill(); ctx.fillStyle = '#d8c4ff'; ctx.beginPath(); ctx.moveTo(16, 4); ctx.lineTo(16, 28); ctx.lineTo(7, 16); ctx.closePath(); ctx.fill(); },
   gem: ctx => { ctx.fillStyle = '#4fe3e3'; ctx.beginPath(); ctx.moveTo(8, 12); ctx.lineTo(13, 6); ctx.lineTo(19, 6); ctx.lineTo(24, 12); ctx.lineTo(16, 27); ctx.closePath(); ctx.fill(); ctx.fillStyle = '#c4fbff'; ctx.beginPath(); ctx.moveTo(13, 6); ctx.lineTo(19, 6); ctx.lineTo(16, 12); ctx.closePath(); ctx.fill(); },
@@ -99,6 +118,34 @@ function finish(c, strength = 1) {
   const o = K * 1.2; for (const [dx, dy] of [[-o, 0], [o, 0], [0, -o], [0, o], [-o, -o], [o, o], [-o, o], [o, -o], [0, o * 2.2]]) ctx.drawImage(sil, dx, dy);
   ctx.restore();
 }
+
+// Biểu tượng HUD vẽ bằng code: thanh đói (đùi gà đầy / nửa / rỗng) và hiệu ứng (hồi phục, sức mạnh, da dày, ngộ độc). Trả data URL, có nhớ lại.
+const hudCache = new Map();
+function hudIcon(key, draw) {
+  if (hudCache.has(key)) return hudCache.get(key);
+  const c = document.createElement('canvas'); c.width = c.height = S; const ctx = c.getContext('2d'); ctx.scale(K, K); draw(ctx);
+  const url = c.toDataURL(); hudCache.set(key, url); return url;
+}
+const drumstick = (ctx, fillLeft, fillRight) => {
+  ctx.lineCap = 'round';
+  const meat = (path, col) => { ctx.fillStyle = col; ctx.beginPath(); path(); ctx.fill(); };
+  ctx.save(); ctx.beginPath(); ctx.rect(0, 0, 16, 32); ctx.clip(); meat(() => ctx.ellipse(13, 13, 9.5, 8, -0.7, 0, 7), fillLeft); ctx.restore();
+  ctx.save(); ctx.beginPath(); ctx.rect(16, 0, 16, 32); ctx.clip(); meat(() => ctx.ellipse(13, 13, 9.5, 8, -0.7, 0, 7), fillRight); ctx.restore();
+  ctx.strokeStyle = '#eee'; ctx.lineWidth = 3.5; ctx.beginPath(); ctx.moveTo(19, 19); ctx.lineTo(26, 26); ctx.stroke(); ctx.fillStyle = '#eee'; ctx.fillRect(24, 25, 5, 3); ctx.fillRect(26, 23, 3, 3);
+  ctx.strokeStyle = '#1a1008'; ctx.lineWidth = 1.6; ctx.beginPath(); ctx.ellipse(13, 13, 9.5, 8, -0.7, 0, 7); ctx.stroke();
+};
+export const foodIcon = state => hudIcon('food:' + state, ctx => {
+  if (state === 'full') { drumstick(ctx, '#c4742e', '#c4742e'); ctx.fillStyle = '#f0b070'; ctx.beginPath(); ctx.ellipse(10, 10, 4, 2.4, -0.7, 0, 7); ctx.fill(); }
+  else if (state === 'half') { drumstick(ctx, '#c4742e', '#3a2a22'); ctx.fillStyle = '#f0b070'; ctx.beginPath(); ctx.ellipse(10, 10, 3, 2, -0.7, 0, 7); ctx.fill(); }
+  else drumstick(ctx, '#3a2a22', '#3a2a22');
+});
+const FX_DRAW = {
+  regen: ctx => { ctx.fillStyle = '#e86a8a'; ctx.beginPath(); ctx.moveTo(16, 27); ctx.bezierCurveTo(2, 16, 6, 5, 16, 11); ctx.bezierCurveTo(26, 5, 30, 16, 16, 27); ctx.fill(); ctx.fillStyle = '#fff'; ctx.fillRect(14.5, 11, 3, 10); ctx.fillRect(11, 14.5, 10, 3); },
+  power: ctx => { ctx.fillStyle = '#e0a22c'; ctx.beginPath(); ctx.moveTo(16, 3); ctx.lineTo(27, 16); ctx.lineTo(20, 16); ctx.lineTo(20, 28); ctx.lineTo(12, 28); ctx.lineTo(12, 16); ctx.lineTo(5, 16); ctx.closePath(); ctx.fill(); ctx.fillStyle = '#ffe08a'; ctx.fillRect(14, 8, 2, 16); },
+  tough: ctx => { ctx.fillStyle = '#9aa0a8'; ctx.beginPath(); ctx.moveTo(5, 5); ctx.lineTo(27, 5); ctx.lineTo(27, 17); ctx.quadraticCurveTo(26, 25, 16, 29); ctx.quadraticCurveTo(6, 25, 5, 17); ctx.closePath(); ctx.fill(); ctx.fillStyle = '#d8dce2'; ctx.fillRect(7, 7, 8, 14); ctx.fillStyle = '#6a7078'; ctx.fillRect(15, 7, 10, 2); },
+  poison: ctx => { ctx.fillStyle = '#5ab04a'; ctx.beginPath(); ctx.arc(16, 14, 10, 0, 7); ctx.fill(); ctx.fillRect(10, 20, 12, 8); ctx.fillStyle = '#10200c'; ctx.beginPath(); ctx.arc(11.5, 14, 3, 0, 7); ctx.arc(20.5, 14, 3, 0, 7); ctx.fill(); ctx.fillRect(15, 18, 2, 3); ctx.fillStyle = '#b6f08a'; ctx.fillRect(13, 24, 1.5, 4); ctx.fillRect(17, 24, 1.5, 4); },
+};
+export const fxIcon = id => hudIcon('fx:' + id, FX_DRAW[id] || FX_DRAW.regen);
 
 export function createIcons(atlas) {
   const cache = new Map(), canvases = new Map();

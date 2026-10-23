@@ -43,7 +43,7 @@ export function startChase(g, e, d, p) {
 
 // Bị người chơi đánh: biết ngay kẻ tấn công ở đâu, kể cả khi bị đánh từ sau lưng.
 export function aggro(g, e, src) {
-  if (!src || !src.uid) return;
+  if (!src || !src.uid || e.tamed) return;                                              // thú đã thuần không bỏ chạy hay đuổi: chúng ở yên quanh chuồng
   const d = MOBS[e.type]; if (!d) return;
   startChase(g, e, d, src);
 }
@@ -51,7 +51,7 @@ export function aggro(g, e, src) {
 // Tiếng động tại (x, y, z) lan trong bán kính radius (nhân hệ số thính giác của từng loài).
 export function makeNoise(g, x, y, z, radius) {
   for (const e of g.ents.values()) {
-    if (e.kind !== 'mob' || e.state === 'chase') continue;
+    if (e.kind !== 'mob' || e.state === 'chase' || e.tamed) continue;
     const d = MOBS[e.type]; if (!d) continue;
     if (Math.abs(e.y - y) > 14) continue;
     if (Math.hypot(e.x - x, e.z - z) <= radius * (d.hearing ?? 1)) { e.investigate = { x, z, t: g.time }; e.alert = Math.max(e.alert || 0, 0.45); }

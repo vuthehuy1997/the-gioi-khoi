@@ -1,5 +1,7 @@
 // Quái vật. ai: kiểu hành vi (xem sim/mobs.js). regions: vùng spawn. when: day | night | any.
 // attack: { dmg, range, cd } cận chiến; shot: { dmg, speed, cd, range } bắn xa. drops: [{ item, min, max, p }].
+// Thú nuôi (farm: true, ai 'farm'): breed { food, cd, love } = thức ăn thuần hoá/nhân giống, hồi chiêu sinh sản, giây "yêu"; product = sản phẩm;
+// adultSecs = giây từ non tới trưởng thành. Chưa thuần thì chạy trốn như thú hoang; thuần rồi thì đi theo người cầm thức ăn và quanh quẩn gần chuồng.
 export const MOBS = {
   'soi-xam': { name: 'Sói Xám', hp: 16, speed: 3.6, w: 0.8, h: 0.9, ai: 'chase-melee', sight: 18, fov: 120, close: 3, hearing: 1.0, pack: true, turn: 6, attack: { dmg: 3, range: 1.6, cd: 1.0 },
     regions: ['rung-suong'], when: 'night', weight: 3, color: '#8a8f98',
@@ -9,7 +11,7 @@ export const MOBS = {
     drops: [{ item: 'meat', min: 1, max: 2, p: 1 }, { item: 'xu', min: 1, max: 2, p: 0.5 }] },
   'xac-song': { name: 'Xác Sống', hp: 20, speed: 2.6, w: 0.6, h: 1.8, ai: 'chase-melee', sight: 16, fov: 90, close: 2, hearing: 0.7, turn: 3.5, attack: { dmg: 4, range: 1.5, cd: 1.2 },
     regions: ['rung-suong', 'nui-bang', 'dam-lay'], when: 'night', weight: 4, color: '#5f8a5a',
-    drops: [{ item: 'bone', min: 1, max: 2, p: 0.8 }, { item: 'herb', min: 1, max: 1, p: 0.2 }, { item: 'xu', min: 1, max: 3, p: 1 }] },
+    drops: [{ item: 'bone', min: 1, max: 2, p: 0.8 }, { item: 'herb', min: 1, max: 1, p: 0.2 }, { item: 'carrot', min: 1, max: 1, p: 0.08 }, { item: 'potato', min: 1, max: 1, p: 0.08 }, { item: 'xu', min: 1, max: 3, p: 1 }] },
   'bo-cap': { name: 'Bọ Cạp Lửa', hp: 14, speed: 3.9, w: 0.9, h: 0.6, ai: 'chase-melee', sight: 8, fov: 100, close: 3, hearing: 1.5, turn: 6, attack: { dmg: 4, range: 1.5, cd: 0.9 },
     regions: ['sa-mac-lua', 'hoa-son'], when: 'any', weight: 3, color: '#c8742a',
     drops: [{ item: 'venom', min: 1, max: 1, p: 0.5 }, { item: 'chitin', min: 1, max: 2, p: 0.7 }, { item: 'xu', min: 1, max: 4, p: 1 }] },
@@ -59,4 +61,17 @@ export const MOBS = {
   'cao-lua': { name: 'Cáo Lửa', hp: 7, speed: 4.6, w: 0.6, h: 0.7, ai: 'flee', passive: true, sight: 12, fov: 200, close: 4, hearing: 1.6, turn: 8,
     regions: ['rung-suong'], when: 'day', weight: 2, color: '#dc7a2a',
     drops: [{ item: 'meat', min: 1, max: 1, p: 1 }, { item: 'pelt', min: 1, max: 1, p: 0.5 }, { item: 'xu', min: 1, max: 2, p: 0.5 }] },
+  // ---- thú nuôi ----
+  'ga': { name: 'Gà', hp: 4, speed: 3.0, w: 0.5, h: 0.7, ai: 'farm', passive: true, farm: true, sight: 10, fov: 220, close: 3, hearing: 1.4, turn: 8,
+    regions: ['rung-suong'], when: 'day', weight: 2, color: '#f2efe6', adultSecs: 300,
+    breed: { food: 'wheat_seed', cd: 240, love: 30 }, product: { item: 'egg', every: [150, 210], fedSecs: 300 },
+    drops: [{ item: 'chicken', min: 1, max: 1, p: 1 }, { item: 'xu', min: 0, max: 1, p: 1 }] },
+  'cuu': { name: 'Cừu', hp: 8, speed: 2.6, w: 0.9, h: 1.2, ai: 'farm', passive: true, farm: true, sight: 12, fov: 200, close: 3, hearing: 1.2, turn: 6,
+    regions: ['rung-suong', 'nui-bang'], when: 'day', weight: 2, color: '#e8e4dc', adultSecs: 300,
+    breed: { food: 'wheat', cd: 240, love: 30 }, product: { item: 'wool', min: 1, max: 3, regrow: 240 },
+    drops: [{ item: 'meat', min: 1, max: 2, p: 1 }, { item: 'wool', min: 1, max: 1, p: 1, unsheared: true }] },
+  'lon': { name: 'Lợn', hp: 10, speed: 2.8, w: 0.9, h: 0.9, ai: 'farm', passive: true, farm: true, sight: 12, fov: 200, close: 3, hearing: 1.3, turn: 6,
+    regions: ['rung-suong', 'dam-lay'], when: 'day', weight: 2, color: '#e8a0a0', adultSecs: 300,
+    breed: { food: 'carrot', cd: 240, love: 30 },
+    drops: [{ item: 'pork', min: 1, max: 3, p: 1 }] },
 };

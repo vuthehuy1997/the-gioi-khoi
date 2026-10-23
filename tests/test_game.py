@@ -272,7 +272,7 @@ def test_crafting_recipes(pg):
 
 GAME_JS = """
 const { Game } = await imp('sim/game.js');
-const mkGame = (seed = 777) => { const g = new Game({ seed }); const p = g.addPlayer('u1', 'Tester'); return { g, p }; };
+const mkGame = (seed = 777) => { const g = new Game({ seed, hunger: false }); const p = g.addPlayer('u1', 'Tester'); return { g, p }; };
 // tìm một ô đất thật (không phải cây) gần người chơi để thử đào
 const groundCell = (g, p) => { const x = Math.floor(p.x) + 2, z = Math.floor(p.z), y = g.world.surfaceY(x, z); return { x, y, z, id: g.world.get(x, y, z) }; };
 """
@@ -355,7 +355,7 @@ const { MOBS } = await imp('content/mobs.js');
 const { spawnMob } = await imp('sim/mobs.js');
 // Sân phẳng bằng đá ở nơi xa (không cây), mặt sân ở y=30, trần thoáng.
 const mkArena = (opts = {}) => {
-  const g = new Game({ seed: 777, spawning: false, env: false, ...opts }); const p = g.addPlayer('u1', 'T');
+  const g = new Game({ seed: 777, spawning: false, env: false, hunger: false, ...opts }); const p = g.addPlayer('u1', 'T');
   g.flags['boss:thu-linh-soi'] = true; g.flags['boss:bo-cap-chua'] = true;      // mở các vùng, không bị khí độc
   const cx = 2000, cz = 2000, y0 = 30;
   for (let dx = -20; dx <= 20; dx++) for (let dz = -20; dz <= 20; dz++) { g.world.set(cx + dx, y0, cz + dz, 1); for (let dy = 1; dy <= 8; dy++) g.world.set(cx + dx, y0 + dy, cz + dz, 0); }
@@ -459,7 +459,7 @@ def test_spawn_rules_by_region_and_time(pg):
     """)
     t = r['types']
     assert r['night'] == [True, False], r
-    assert 'nai' in t['rung-suong-day'] and 'xac-song' not in t['rung-suong-day'], r
+    assert {'nai', 'cao-lua', 'ga', 'cuu', 'lon'} & set(t['rung-suong-day']) and 'xac-song' not in t['rung-suong-day'], r          # thú hiền ban ngày (nai, cáo, và thú nuôi gà/cừu/lợn chia nhau trọng số)
     assert 'xac-song' in t['rung-suong-night'], r
     assert 'bo-cap' in t['sa-mac-lua-day'] and 'gau-bang' not in t['sa-mac-lua-day'], r
     assert 'gau-bang' in t['nui-bang-day'] and 'bo-cap' not in t['nui-bang-day'], r
@@ -711,7 +711,7 @@ def test_locked_region_hurts_until_boss_defeated(pg):
 NPC_JS = GAME_JS + """
 const { NPCS } = await imp('content/npcs.js');
 const mkTown = () => {
-  const g = new Game({ seed: 777, spawning: false }); const p = g.addPlayer('u1', 'T'); g.buildStructures();
+  const g = new Game({ seed: 777, spawning: false, hunger: false }); const p = g.addPlayer('u1', 'T'); g.buildStructures();
   const npc = (id) => [...g.ents.values()].find(e => e.kind === 'npc' && e.npc === id);
   const goto = (id) => { const n = npc(id); p.x = n.x + 1.2; p.z = n.z; p.y = n.y; return n; };
   const view = () => { const evs = g.drain().filter(x => x.to === 'u1' || x.to === null).map(x => x.ev); return evs.filter(e => e.t === 'dialog' || e.t === 'dialog-end' || e.t === 'shop'); };
@@ -851,11 +851,15 @@ def test_content_validator_catches_broken_references(pg):
       clone.recipes.push({ id: 'x', out: { item: 'stone', n: 1 }, in: { khong_co: 1 }, bench: false });
       clone.bosses['bang-de'].phases[1].moves = ['khong-co-chieu'];
       clone.npcs['an-si'].nodes.curse.choices = [{ text: 'Cụt', goto: 'lore-khong-co' }];
+      clone.mobs['ga'].breed.food = 'khong-co-hat';
+      clone.crops.wheat.yield.push({ item: 'khong-co-nong-san', min: 1, max: 1 });
+      delete clone.mobs['lon'].breed;
+      clone.items['carrot'].fx = { id: 'khong-hieu-ung', secs: 5 };
       const errors = validateContent(clone);
       return { errors };
     """)
     joined = ' | '.join(r['errors'])
-    for needle in ['khong-co', 'nut-ma', 'quai-ma', 'vat-pham-mo-coi', 'khong_co', 'khong-co-chieu', 'lore-khong-co']:
+    for needle in ['khong-co', 'nut-ma', 'quai-ma', 'vat-pham-mo-coi', 'khong_co', 'khong-co-chieu', 'lore-khong-co', 'khong-co-hat', 'khong-co-nong-san', 'thiếu breed', 'khong-hieu-ung']:
         assert needle in joined, (needle, r['errors'])
 
 
@@ -880,7 +884,7 @@ def test_save_load_roundtrip(pg):
                fresh: new Game({ seed: 777, spawning: false }).addPlayer('u9', 'N').hp };
     """)
     assert r['block'] == 8 and r['flag'] and r['sites'] and r['time'] >= 5 and r['inv'] and r['hp'] and r['sel'] == 3, r
-    assert r['quest'] == 'active' and r['prog'] == 3 and r['npcs'] == 7 and r['v'] == 1 and r['pos'] and r['terrain'] and r['spawn'] and r['fresh'] == 20, r
+    assert r['quest'] == 'active' and r['prog'] == 3 and r['npcs'] == 7 and r['v'] == 2 and r['pos'] and r['terrain'] and r['spawn'] and r['fresh'] == 20, r
 
 
 @test
@@ -913,7 +917,7 @@ const { ClientSession } = await imp('net/client.js');
 const { createMemoryTransport: mt } = await imp('../../platform/net/transport-memory.js');
 const { spawnMob } = await imp('sim/mobs.js');
 const mkHost = async (code, opts = {}) => {
-  const game = new Game({ seed: 777, spawning: false, ...opts });
+  const game = new Game({ seed: 777, spawning: false, hunger: false, ...opts });
   const host = await HostSession.create({ game, transport: mt(), name: 'Chủ', uid: 'uh', code });
   return { game, host };
 };
@@ -1437,7 +1441,8 @@ const { MOBS } = await imp('content/mobs.js'); const { BOSSES } = await imp('con
 const lib = M.createModelLib(THREE);
 const entityList = () => [
   ...Object.keys(MOBS).map(t => ({ kind: 'mob', type: t })), ...Object.keys(BOSSES).map(t => ({ kind: 'boss', type: t })),
-  ...Object.keys(NPCS).map(n => ({ kind: 'npc', npc: n })), { kind: 'player', uid: 'abc', name: 'A' }, { kind: 'player', uid: 'xyz', name: 'B' }];
+  ...Object.keys(NPCS).map(n => ({ kind: 'npc', npc: n })), { kind: 'player', uid: 'abc', name: 'A' }, { kind: 'player', uid: 'xyz', name: 'B' },
+  { kind: 'mob', type: 'cuu', sh: 1 }];                                         // cừu đã cắt len: mô hình riêng
 """
 
 
@@ -2493,6 +2498,979 @@ def test_ui_right_click_opens_chest_door_and_bed_and_moves_items(pg, browser, ba
       return out;
     }""")
     assert r['kind'] == 2 and r['chestSlots'] == 27 and r['inChest'] and r['stillChestPanel'] and r['firstSlotShows'] and r['back'], r
+
+
+# ---------------------------------------------------------------- Gói 1: Sinh tồn & Kinh tế (trồng trọt, nuôi thú, đói, nấu ăn)
+# Mỗi bài ứng với một tiêu chí AC-n trong docs/specs/survival.md mục 8. Bài mô phỏng dùng bước thời gian thô (R-34: kết quả không phụ thuộc kích thước bước).
+
+FARM_JS = ARENA_JS + """
+const { B, BLOCK_BY_NAME, CROP_BLOCKS, cropOf } = await imp('world/blocks.js');
+const { CROPS } = await imp('content/farming.js');
+const { makeRng } = await imp('sim/rng.js');
+const combat = await imp('sim/combat.js');
+const farmMod = await imp('sim/farm.js');
+const animals = await imp('sim/animals.js');
+const hungerMod = await imp('sim/hunger.js');
+const { craft, canCraft } = await imp('sim/crafting.js');
+const inv = await imp('sim/inventory.js');
+const giveHeld = (g, p, id, n = 1) => { p.inv.fill(null); p.inv[0] = { id, n }; p.sel = 0; g.touch(p); };
+const fixRng = (g, seed = 1) => { g.rng = makeRng(seed); };
+const runBig = (g, secs, dt = 0.5) => { for (let t = 0; t < secs - 1e-9; t += dt) g.tick(dt); };
+const nearly = (a, b, tol) => Math.abs(a - b) <= tol;
+const count = (p, id) => inv.countItem(p.inv, id);
+// Sân cỏ phẳng 41x41 (mặt sân y0), nước ở (cx+3..4, cz). Bài truyền hunger:true để bật đói; các hàm cày/gieo nhận độ lệch (dx, dz) so với tâm.
+const mkFarm = (opts = {}) => {
+  const A = mkArena({ hunger: true, ...opts }); const { g, p, cx, cz, y0 } = A;
+  for (let dx = -20; dx <= 20; dx++) for (let dz = -20; dz <= 20; dz++) g.world.set(cx + dx, y0, cz + dz, B.GRASS);
+  g.world.set(cx + 3, y0, cz, B.WATER); g.world.set(cx + 4, y0, cz, B.WATER);
+  const F = { ...A };
+  F.stand = (dx, dz) => { p.x = cx + dx + 0.5; p.z = cz + dz + 2.5; p.y = y0 + 1; };
+  F.at = (dx, dz, dy = 0) => ({ x: cx + dx, y: y0 + dy, z: cz + dz });
+  F.id = (dx, dz, dy = 0) => g.world.get(cx + dx, y0 + dy, cz + dz);
+  F.key = (dx, dz, dy = 1) => (cx + dx) + ',' + (y0 + dy) + ',' + (cz + dz);
+  F.till = (dx, dz) => { F.stand(dx, dz); giveHeld(g, p, 'wood_hoe'); return g.act('u1', { t: 'till', ...F.at(dx, dz) }); };
+  F.plant = (dx, dz, seed = 'wheat_seed') => { F.stand(dx, dz); giveHeld(g, p, seed, 5); return g.act('u1', { t: 'plant', ...F.at(dx, dz) }); };
+  F.ripe = (dx, dz, kind = 'wheat') => {                       // ép cây ở ô này chín (giai đoạn 3)
+    const c = g.crops.get(F.key(dx, dz)); c.s = 3; c.g = CROPS[kind].secs; g.setBlock(cx + dx, y0 + 1, cz + dz, CROP_BLOCKS[kind][3]);
+  };
+  F.dig = (x, y, z) => { p.dig = { x, y, z, t0: g.time - 5 }; return g.act('u1', { t: 'break', x, y, z }); };      // đào xong ngay (đã quá thời gian)
+  F.animal = (type, dx, dz, o = {}) => { const e = spawnMob(g, type, cx + 0.5 + dx, y0 + 1, cz + 0.5 + dz, o); return e; };
+  return F;
+};
+const adult = e => { e.age = 300; return e; };
+"""
+
+
+@test
+def test_survival_hunger_drain(pg):
+    r = ev(pg, FARM_JS + r"""
+      const { HostSession } = await imp('net/host.js');
+      const A = mkArena({ hunger: true });
+      const fresh = A.p.food; runBig(A.g, 900, 0.25);
+      const B2 = mkArena({ hunger: true }); B2.p.sprint = true; B2.p.vx = 5; runBig(B2.g, 450, 0.25);
+      const noSprint = mkArena({ hunger: true }); noSprint.p.sprint = true; noSprint.p.vx = 0; runBig(noSprint.g, 450, 0.25);          // báo chạy mà không di chuyển: không tính
+      const off = mkArena({ hunger: false }); runBig(off.g, 900, 0.5);
+      const dead = mkArena({ hunger: true }); dead.g.hurtPlayer(dead.p, 999, null); runBig(dead.g, 100, 0.5);
+      // chơi một mình tạm dừng (Esc) thì không đói
+      const g = new Game({ seed: 777, spawning: false, hunger: true }); g.addPlayer('uh', 'H');
+      const host = HostSession.solo({ game: g, name: 'H', uid: 'uh' });
+      host.pause(true); const t0 = g.time, f0 = g.player('uh').fat; for (let i = 0; i < 400; i++) host.step(0.05);
+      const frozen = g.time === t0 && g.player('uh').fat === f0;
+      host.pause(false); for (let i = 0; i < 40; i++) host.step(0.05); const moved = g.player('uh').fat > f0 + 1.5; host.leave();
+      return { fresh, idle: A.p.food, run: B2.p.food, noSprint: noSprint.p.food, off: off.p.food, dead: dead.p.food, deadFat: dead.p.fat, frozen, moved, alive: !A.p.dead, hp: A.p.hp };
+    """)
+    assert r['fresh'] == 20 and abs(r['idle'] - 0) <= 1 and abs(r['run'] - 0) <= 1, r
+    assert r['noSprint'] == 10 and r['off'] == 20 and r['dead'] == 20 and r['deadFat'] == 0, r
+    assert r['frozen'] and r['moved'] and r['alive'] and r['hp'] >= 2, r
+
+
+@test
+def test_survival_hunger_exertion(pg):
+    r = ev(pg, FARM_JS + r"""
+      const { g, p, cx, cz, y0 } = mkArena({ hunger: true });
+      const q = g.addPlayer('u2', 'Q'); q.x = cx + 12.5; q.z = cz + 12.5; q.y = y0 + 1;            // đối chứng: cùng thời gian, không đánh
+      const m = spawnMob(g, 'xac-song', cx + 0.5 + 1.5, y0 + 1, cz + 0.5); m.frozen = true; m.hp = m.maxHp = 1e6;
+      giveHeld(g, p, 'iron_sword'); let hits = 0;
+      for (let i = 0; i < 23; i++) { g.tick(0.5); m.x = cx + 2; m.z = cz + 0.5; m.kbT = 0; if (g.act('u1', { t: 'hit', id: m.id }).ok) hits++; }
+      return { hits, fatHit: p.fat, fatCtl: q.fat, foodHit: p.food, foodCtl: q.food, t: g.time };
+    """)
+    assert r['hits'] == 23 and abs(r['fatHit'] - r['fatCtl'] - 46 + 45) < 0.01, r          # 46 mệt thêm, 45 đã đổi thành 1 điểm đói
+    assert r['foodCtl'] - r['foodHit'] == 1, r
+
+
+@test
+def test_survival_hunger_regen_starve(pg):
+    r = ev(pg, FARM_JS + r"""
+      const out = {};
+      const setup = (food) => { const A = mkArena({ hunger: true }); A.p.hp = 10; A.p.food = food; A.p.lastHurt = A.g.time; return A; };
+      let A = setup(20); runBig(A.g, 10, 0.5); out.full = A.p.hp - 10;                          // no: hồi sau 4 giây, 1 máu/2 giây
+      A = setup(10); runBig(A.g, 10, 0.5); out.mid = A.p.hp - 10;                                // vừa: luật cũ, 8 giây rồi 4 giây/máu
+      A = setup(6); runBig(A.g, 60, 0.5); out.low = A.p.hp - 10;                                 // đói: không tự hồi
+      A = setup(0); A.p.hp = 20; A.p.armor = { head: 'crystal_helm', chest: 'crystal_chest', legs: 'crystal_legs', feet: 'crystal_boots' };
+      runBig(A.g, 5.5, 0.5); out.starve1 = A.p.hp; runBig(A.g, 300, 0.5); out.starveEnd = A.p.hp; out.dead = A.p.dead;
+      A = setup(5); A.p.food = 0; A.p.hp = 2; runBig(A.g, 60, 0.5); out.floor = A.p.hp;
+      A = setup(20); out.warns = 0; A.p.food = 5; runBig(A.g, 130, 0.5); out.warns = A.g.drain().filter(x => x.ev.t === 'toast' && x.ev.text.includes('đói')).length;
+      return out;
+    """)
+    assert r['full'] >= 3 and r['mid'] in (0, 1) and r['low'] == 0, r
+    assert r['starve1'] == 19 and r['starveEnd'] == 2 and not r['dead'] and r['floor'] == 2, r
+    assert 2 <= r['warns'] <= 3, r                                                              # cảnh báo "đang đói": tối đa 1 lần/60 giây
+
+
+@test
+def test_survival_eat_table(pg):
+    r = ev(pg, FARM_JS + r"""
+      const TABLE = { meat: [3, 5], pork: [3, 4], chicken: [2, 3], egg: [2, 1], carrot: [3, 1], potato: [1, 0], mushroom: [2, 3], frog_leg: [2, 4], herb: [2, 8],
+        cooked_meat: [8, 11], cooked_pork: [8, 8], cooked_chicken: [6, 6], baked_potato: [5, 2], bread: [6, 2], stew: [10, 14], veg_soup: [9, 3], hearty_stew: [12, 4], egg_cake: [8, 2] };
+      const { g, p } = mkArena({ hunger: true }); const bad = [];
+      for (const [id, [food, heal]] of Object.entries(TABLE)) {
+        p.hp = 3; p.food = 4; p.psn = null; p.eatAt = -99; giveHeld(g, p, id, 2);
+        const a = g.act('u1', { t: 'use' });
+        if (!a.ok || p.food !== 4 + food || p.hp !== Math.min(20, 3 + heal) || count(p, id) !== 1) bad.push([id, a, p.food, p.hp, count(p, id)]);
+        const again = g.act('u1', { t: 'use' });                                               // ngay sau đó: hồi chiêu
+        if (again.ok || again.reason !== 'cooldown' || count(p, id) !== 1) bad.push([id, 'cooldown', again]);
+        p.psn = null; g.tick(1.1); p.hp = 3; p.food = 19; p.eatAt = -99; g.act('u1', { t: 'use' });            // kẹp tại 20
+        if (food > 1 && p.food !== 20) bad.push([id, 'clamp', p.food]);
+      }
+      p.hp = p.maxHp; p.food = 20; p.eatAt = -99; giveHeld(g, p, 'bread', 2); const full = g.act('u1', { t: 'use' });
+      p.hp = 5; p.eatAt = -99; giveHeld(g, p, 'wheat', 2); const nf = g.act('u1', { t: 'use' });
+      p.hp = 5; p.food = 20; p.eatAt = -99; giveHeld(g, p, 'bread', 2); const hurtOnly = g.act('u1', { t: 'use' });            // đầy bụng nhưng thiếu máu: vẫn ăn được
+      p.inv.fill(null); const empty = g.act('u1', { t: 'use' });
+      return { bad, full: full.reason, left: 2, nf: nf.reason, hurtOnly: hurtOnly.ok, empty: empty.reason, n: Object.keys(TABLE).length };
+    """)
+    assert r['bad'] == [] and r['n'] == 18 and r['full'] == 'full' and r['nf'] == 'not-food' and r['hurtOnly'] and r['empty'] == 'empty', r
+
+
+@test
+def test_survival_eat_poison(pg):
+    r = ev(pg, FARM_JS + r"""
+      const { g, p } = mkArena({ hunger: true }); fixRng(g, 12345); let n = 0;
+      for (let i = 0; i < 1000; i++) { p.hp = 5; p.food = 0; p.eatAt = -99; p.psn = null; giveHeld(g, p, 'meat'); g.act('u1', { t: 'use' }); if (p.psn) n++; }
+      let safe = 0; for (let i = 0; i < 200; i++) { p.hp = 5; p.food = 0; p.eatAt = -99; p.psn = null; giveHeld(g, p, 'carrot'); g.act('u1', { t: 'use' }); if (p.psn) safe++; }
+      // đúng 3 sát thương thuần trong 6 giây, giáp không làm nhẹ; ngộ độc không giết người
+      const A = mkArena({ hunger: true }); A.g.rng = () => 0; A.p.armor = { head: 'crystal_helm', chest: 'crystal_chest', legs: 'crystal_legs', feet: 'crystal_boots' };
+      A.p.hp = 20; A.p.food = 0; giveHeld(A.g, A.p, 'chicken'); A.g.act('u1', { t: 'use' }); A.p.food = 10; const hp0 = A.p.hp, has = A.p.fxView.map(f => f.id);
+      runBig(A.g, 7, 0.5); const hp1 = A.p.hp, gone = !A.p.psn;
+      const B2 = mkArena({ hunger: true }); B2.g.rng = () => 0; B2.p.food = 0; B2.p.hp = 2; giveHeld(B2.g, B2.p, 'pork'); B2.g.act('u1', { t: 'use' }); B2.p.hp = 2; B2.p.food = 10; runBig(B2.g, 10, 0.5);
+      return { rate: n / 1000, safe, hp0, hp1, has, gone, low: B2.p.hp, dead: B2.p.dead };
+    """)
+    assert 0.21 <= r['rate'] <= 0.29 and r['safe'] == 0, r
+    assert r['hp0'] == 20 and r['hp1'] == 17, r
+    assert 'poison' in r['has'] and r['gone'] and r['low'] >= 1 and not r['dead'], r
+
+
+@test
+def test_survival_food_effects(pg):
+    r = ev(pg, FARM_JS + r"""
+      const out = {};
+      const mk = () => { const A = mkArena({ hunger: true }); A.p.maxHp = 9999; A.p.hp = 5000; return A; };
+      const view = (p, id) => (p.fxView.find(f => f.id === id) || {}).left, leftNow = (g, p, id) => Math.ceil((p.fx[id] || 0) - g.time - 1e-6);       // fxView chỉ làm mới khi thêm/mất: số giây còn lại tính từ thời điểm hết hạn
+      // Hồi phục: +1 máu mỗi 2 giây trong 45 giây (22 máu)
+      let A = mk(); A.p.hp = 1; A.p.food = 6; giveHeld(A.g, A.p, 'veg_soup'); A.g.act('u1', { t: 'use' }); const hpAfterEat = A.p.hp; A.p.food = 6;
+      runBig(A.g, 46, 0.5); out.regen = A.p.hp - hpAfterEat; out.regenLeft = view(A.p, 'regen');
+      // Sức mạnh: kiếm sắt (6) gây 8
+      A = mk(); const { g, p, cx, cz, y0 } = A;
+      const m = spawnMob(g, 'xac-song', cx + 0.5 + 1.5, y0 + 1, cz + 0.5); m.frozen = true; m.hp = m.maxHp = 100;
+      p.inv.fill(null); p.inv[1] = { id: 'iron_sword', n: 1 }; p.inv[0] = { id: 'hearty_stew', n: 3 }; p.sel = 1; g.tick(0.6);
+      g.act('u1', { t: 'hit', id: m.id }); out.plain = 100 - m.hp; g.tick(0.6);
+      p.sel = 0; g.act('u1', { t: 'use' }); p.sel = 1; g.tick(1.1);
+      const h1 = m.hp; g.act('u1', { t: 'hit', id: m.id }); out.power = h1 - m.hp;
+      // không cộng dồn: ăn lại thì lấy max(còn lại, mới)
+      runBig(g, 60, 0.5); const left60 = leftNow(g, p, 'power'); p.sel = 0; g.act('u1', { t: 'use' }); out.left60 = left60; out.leftAgain = view(p, 'power');
+      // Da dày: giảm thêm 12% (R-5: đo bằng đòn 10 và 20)
+      A = mk(); const src = { id: 1, x: A.p.x + 2, y: A.p.y, z: A.p.z };
+      const h0 = A.p.hp; A.g.hurtPlayer(A.p, 10, src); out.noTough10 = h0 - A.p.hp;
+      giveHeld(A.g, A.p, 'egg_cake'); A.g.act('u1', { t: 'use' });
+      const h2 = A.p.hp; A.g.hurtPlayer(A.p, 10, src); out.tough10 = h2 - A.p.hp; const h3 = A.p.hp; A.g.hurtPlayer(A.p, 20, src); out.tough20 = h3 - A.p.hp;
+      out.toughView = view(A.p, 'tough');
+      // chết thì xoá hết hiệu ứng
+      A.g.hurtPlayer(A.p, 1e9, null); out.afterDeath = A.p.fxView.length; out.fxObj = Object.keys(A.p.fx).length;
+      return out;
+    """)
+    assert 21 <= r['regen'] <= 23, r
+    assert r['plain'] == 6 and r['power'] == 8, r
+    assert 58 <= r['left60'] <= 61 and r['leftAgain'] == 120, r
+    assert r['noTough10'] == 10 and r['tough10'] == 9 and r['tough20'] == 18 and r['toughView'] >= 119 and r['afterDeath'] == 0 and r['fxObj'] == 0, r
+
+
+@test
+def test_survival_till(pg):
+    r = ev(pg, FARM_JS + r"""
+      const F = mkFarm(); const { g, p, cx, cz, y0 } = F; const out = {};
+      F.stand(-2, 0); giveHeld(g, p, 'stick'); out.noHoe = g.act('u1', { t: 'till', ...F.at(-2, 0) }).reason;
+      out.tillGrass = F.till(-2, 0).ok; out.dryId = F.id(-2, 0); out.farmEntry = g.farm.has(F.key(-2, 0, 0));
+      out.tillWet = F.till(2, 0).ok; out.wetId = F.id(2, 0);                                      // cạnh nước (cách 1-2 block)
+      out.again = F.till(-2, 0).reason;                                                              // đã là ruộng
+      for (const [nm, id, dx] of [['dirt', 2, -4], ['mud', 26, -5], ['moss', 25, -6]]) { g.world.set(cx + dx, y0, cz + 2, id); out[nm] = F.till(dx, 2).ok && F.id(dx, 2) >= 40; }
+      g.world.set(cx - 7, y0, cz + 4, 1); out.stone = F.till(-7, 4).reason;
+      g.world.set(cx - 8, y0 + 1, cz + 6, 8); out.roof = F.till(-8, 6).reason;                       // phía trên có block đặc
+      g.world.set(cx - 9, y0 + 1, cz - 4, B.TALL_GRASS); out.grassOk = F.till(-9, -4).ok; out.grassGone = F.id(-9, -4, 1);
+      F.stand(0, 0); giveHeld(g, p, 'wood_hoe'); out.far = g.act('u1', { t: 'till', x: cx + 30, y: y0, z: cz }).reason;
+      out.bad = g.act('u1', { t: 'till', x: 'a' }).reason;
+      // ba bậc cuốc chế được đúng công thức
+      const mkInv = (items) => { const v = inv.makeInventory(); for (const [k, n] of Object.entries(items)) inv.addItem(v, k, n); return v; };
+      const w = mkInv({ planks: 2, stick: 2 }); out.woodAtBench = canCraft(w, 'wood_hoe', { workbench: true }); out.woodNoBench = canCraft(w, 'wood_hoe', {});
+      craft(w, 'wood_hoe', { workbench: true }); out.hasWood = inv.countItem(w, 'wood_hoe'); out.leftPlanks = inv.countItem(w, 'planks');
+      const s = mkInv({ stone: 2, stick: 2 }); out.stoneOk = craft(s, 'stone_hoe', { workbench: true }) && inv.countItem(s, 'stone_hoe') === 1;
+      const i = mkInv({ iron_ingot: 2, stick: 2 }); out.ironNoAnvil = canCraft(i, 'iron_hoe', { workbench: true }); out.ironOk = craft(i, 'iron_hoe', { anvil: true }) && inv.countItem(i, 'iron_hoe') === 1;
+      const { ITEMS } = await imp('content/items.js'); out.dmg = ['wood_hoe', 'stone_hoe', 'iron_hoe'].map(k => ITEMS[k].dmg);
+      return out;
+    """)
+    assert r['noHoe'] == 'not-hoe' and r['tillGrass'] and r['dryId'] == 40 and r['farmEntry'] and r['tillWet'] and r['wetId'] == 41, r
+    assert r['again'] == 'not-soil' and r['dirt'] and r['mud'] and r['moss'] and r['stone'] == 'not-soil' and r['roof'] == 'blocked', r
+    assert r['grassOk'] and r['grassGone'] == 0, r
+    assert r['far'] == 'reach' and r['bad'] == 'bad-args', r
+    assert r['woodAtBench'] and not r['woodNoBench'] and r['hasWood'] == 1 and r['leftPlanks'] == 0 and r['stoneOk'] and not r['ironNoAnvil'] and r['ironOk'] and r['dmg'] == [1, 2, 3], r
+
+
+@test
+def test_survival_farmland_wetness(pg):
+    r = ev(pg, FARM_JS + r"""
+      const F = mkFarm(); const { g, p, cx, cz, y0 } = F; const out = {};
+      F.till(-1, 0); F.till(-2, 0); F.till(10, 5);
+      out.near = F.id(-1, 0); out.dry = F.id(-2, 0); out.far = F.id(10, 5);                          // nước ở +3: ±4 ngang -> dx = -1 ướt, -2 khô
+      F.stand(0, 0); g.setBlock(cx - 4, y0, cz, B.WATER);                                              // đặt nước cạnh ruộng khô
+      runBig(g, 5, 0.5); out.afterPlace = F.id(-2, 0);
+      g.setBlock(cx - 4, y0, cz, B.AIR); runBig(g, 5, 0.5); out.afterRemove = F.id(-2, 0);             // bỏ nước: khô lại
+      g.setBlock(cx + 10 + 2, y0 - 1, cz + 5, B.WATER);                                               // nước thấp hơn mặt ruộng 1 block vẫn tính
+      runBig(g, 5, 0.5); out.lower = F.id(10, 5);
+      g.setBlock(cx + 10 + 2, y0 + 1, cz + 5, B.WATER); g.setBlock(cx + 10 + 2, y0 - 1, cz + 5, B.AIR); runBig(g, 5, 0.5); out.higher = F.id(10, 5);   // nước cao hơn ruộng không tính
+      return out;
+    """)
+    assert (r['near'], r['dry'], r['far']) == (41, 40, 40), r
+    assert r['afterPlace'] == 41 and r['afterRemove'] == 40 and r['lower'] == 41 and r['higher'] == 40, r
+
+
+@test
+def test_survival_farmland_revert(pg):
+    r = ev(pg, FARM_JS + r"""
+      const F = mkFarm(); const { g, p } = F; const out = {};
+      F.till(-8, 3); F.till(-9, 3); F.plant(-9, 3);
+      runBig(g, 295, 0.5); out.at295 = F.id(-8, 3);
+      runBig(g, 10, 0.5); out.at305 = F.id(-8, 3); out.entry = g.farm.has(F.key(-8, 3, 0));
+      runBig(g, 400, 0.5); out.planted = F.id(-9, 3);                                                // có cây thì ruộng không về dirt
+      F.till(-10, 3); g.tick(1); out.free = F.id(-10, 3);
+      return out;
+    """)
+    assert r['at295'] == 40 and r['at305'] == 2 and not r['entry'] and r['planted'] == 40 and r['free'] == 40, r
+
+
+@test
+def test_survival_crop_growth(pg):
+    r = ev(pg, FARM_JS + r"""
+      const F = mkFarm(); const { g, p, cx } = F; g.world.regionAt = (x, z) => (x >= cx + 15 ? 'nui-bang' : 'rung-suong');
+      const spots = { wheatDry: [-8, 0, 'wheat'], wheatWet: [-1, 0, 'wheat'], carrotDry: [-8, 2, 'carrot'], potatoDry: [-8, 4, 'potato'], carrotWet: [-1, 2, 'carrot'], potatoWet: [-1, 4, 'potato'], wheatCold: [16, 0, 'wheat'] };
+      for (const [dx, dz, kind] of Object.values(spots)) { F.till(dx, dz); F.plant(dx, dz, CROPS[kind].seed); }
+      const at = {}; for (const k of Object.keys(spots)) at[k] = [null, null, null, null];
+      const wetBefore = Object.fromEntries(Object.entries(spots).map(([k, [dx, dz]]) => [k, F.id(dx, dz)]));
+      for (let t = 0.5; t <= 721; t += 0.5) {
+        g.tick(0.5);
+        for (const [k, [dx, dz, kind]] of Object.entries(spots)) { const c = cropOf(F.id(dx, dz, 1)); if (c) for (let s = 1; s <= 3; s++) if (c.stage >= s && at[k][s] === null) at[k][s] = t; }
+      }
+      return { at, wetBefore };
+    """)
+    exp = {'wheatDry': 120, 'wheatWet': 60, 'carrotDry': 100, 'potatoDry': 140, 'carrotWet': 50, 'potatoWet': 70, 'wheatCold': 240}
+    for k, base in exp.items():
+        for s in (1, 2, 3):
+            got = r['at'][k][s]
+            assert got is not None and abs(got - base * s) <= 5, (k, s, got, base * s, r['at'])
+    assert r['wetBefore']['wheatWet'] == 41 and r['wetBefore']['wheatDry'] == 40, r
+
+
+@test
+def test_survival_crop_chunk_sim(pg):
+    r = ev(pg, FARM_JS + r"""
+      const F = mkFarm(); const { g, p, cx } = F; p.hp = p.maxHp = 1e9; const out = {};
+      F.till(-8, 0); F.plant(-8, 0); const e = g.crops.get(F.key(-8, 0));
+      p.x += 200; runBig(g, 1000, 1);                                                                    // người chơi đi xa: cây đóng băng
+      out.farId = F.id(-8, 0, 1); out.farG = e.g;
+      p.x -= 200; runBig(g, 125, 0.5); out.backId = F.id(-8, 0, 1); out.backG = e.g;                     // quay lại: tiếp tục từ tiến trình cũ
+      runBig(g, 120, 0.5); out.id2 = F.id(-8, 0, 1);
+      // người chơi chết: cây cũng không lớn
+      g.hurtPlayer(p, 1e9, null); const g0 = e.g; runBig(g, 50, 0.5); out.deadDelta = e.g - g0;
+      return out;
+    """)
+    assert r['farId'] == 42 and r['farG'] == 0 and r['backId'] == 43 and 124 <= r['backG'] <= 126 and r['id2'] == 44 and r['deadDelta'] == 0, r
+
+
+@test
+def test_survival_plant_rules(pg):
+    r = ev(pg, FARM_JS + r"""
+      const F = mkFarm(); const { g, p, cx, cz, y0 } = F; const out = {};
+      F.till(-2, 0); F.till(-2, 2); F.till(-2, 4); F.till(-2, -2);
+      out.ok = F.plant(-2, 0).ok; out.block = F.id(-2, 0, 1); out.left = count(p, 'wheat_seed'); out.entry = (g.crops.get(F.key(-2, 0)) || {}).k;
+      const again = F.plant(-2, 0); out.occupied = again.reason; out.leftAgain = count(p, 'wheat_seed');
+      g.world.set(cx + 4, y0, cz + 2, 2); out.dirt = F.plant(4, 2).reason; out.dirtLeft = count(p, 'wheat_seed');
+      F.stand(6, 6); out.grass = g.act('u1', { t: 'plant', ...F.at(6, 6) }).reason;
+      F.stand(-2, 2); giveHeld(g, p, 'stick'); out.notSeed = g.act('u1', { t: 'plant', ...F.at(-2, 2) }).reason;
+      F.stand(-2, 2); giveHeld(g, p, 'wheat_seed', 2); p.x += 15; out.reach = g.act('u1', { t: 'plant', ...F.at(-2, 2) }).reason; out.reachLeft = count(p, 'wheat_seed');
+      out.carrot = F.plant(-2, 2, 'carrot').ok && F.id(-2, 2, 1) === 46; out.potato = F.plant(-2, 4, 'potato').ok && F.id(-2, 4, 1) === 50;
+      // phá block dưới cây: cây biến mất, rơi 1 hạt
+      for (const e of [...g.ents.values()]) if (e.kind === 'item') g.ents.delete(e.id);
+      F.stand(-2, 0); p.inv.fill(null); const r1 = F.dig(cx - 2, y0, cz);
+      const seeds = [...g.ents.values()].filter(e => e.kind === 'item' && e.item === 'wheat_seed').map(e => e.n);
+      out.brokeBelow = { ok: r1.ok, crop: g.world.get(cx - 2, y0 + 1, cz), entry: g.crops.has(F.key(-2, 0)), seeds };
+      // đặt block lên mặt ruộng trống: ruộng thành dirt rồi đặt
+      F.till(-2, -2 + 0); g.farm.size; F.stand(-2, -2); giveHeld(g, p, 'planks', 3);
+      out.placeOnField = g.act('u1', { t: 'place', ...F.at(-2, -2, 1) }).ok; out.under = F.id(-2, -2, 0); out.placed = F.id(-2, -2, 1);
+      F.stand(-2, 2); giveHeld(g, p, 'planks', 3); out.placeOnCrop = g.act('u1', { t: 'place', ...F.at(-2, 2, 1) }).reason;
+      return out;
+    """)
+    assert r['ok'] and r['block'] == 42 and r['left'] == 4 and r['entry'] == 'wheat', r
+    assert r['occupied'] == 'blocked' and r['leftAgain'] == 5 and r['dirt'] == 'not-farmland' and r['dirtLeft'] == 5 and r['grass'] == 'not-farmland' and r['notSeed'] == 'not-seed', r
+    assert r['reach'] == 'reach' and r['reachLeft'] == 2 and r['carrot'] and r['potato'], r
+    assert r['brokeBelow']['ok'] and r['brokeBelow']['crop'] == 0 and not r['brokeBelow']['entry'] and r['brokeBelow']['seeds'] == [1], r
+    assert r['placeOnField'] and r['under'] == 2 and r['placed'] == 8 and r['placeOnCrop'] == 'occupied', r
+
+
+@test
+def test_survival_harvest(pg):
+    r = ev(pg, FARM_JS + r"""
+      const F = mkFarm(); const { g, p, cx, cz, y0 } = F; const out = {};
+      F.till(-2, 0); F.till(-2, 2); F.till(-2, 4);
+      // đào cây chín bằng tay: 200 mẫu, sản lượng nằm trong khoảng ở bảng 4.5 (min và max đều xuất hiện)
+      const stat = (kind, dz, ripe, how) => {
+        const seed = CROPS[kind].seed, rows = [];
+        for (let i = 0; i < 200; i++) {
+          F.plant(-2, dz, seed); if (ripe) F.ripe(-2, dz, kind);
+          p.inv.fill(null); p.sel = 0;
+          if (how === 'break') F.dig(cx - 2, y0 + 1, cz + dz); else g.act('u1', { t: 'harvest', ...F.at(-2, dz, 1) });
+          rows.push({ main: count(p, kind === 'wheat' ? 'wheat' : kind), seed: count(p, seed), id: F.id(-2, dz, 1) });
+          if (how === 'harvest') { const c = g.crops.get(F.key(-2, dz)); if (!c || c.s !== 0 || c.g !== 0) rows.push('bad'); g.setBlock(cx - 2, y0 + 1, cz + dz, B.AIR); }
+        }
+        const r = (f) => [Math.min(...rows.filter(x => x !== 'bad').map(f)), Math.max(...rows.filter(x => x !== 'bad').map(f))];
+        return { main: r(x => x.main), seed: r(x => x.seed), bad: rows.includes('bad'), idAfter: rows[0].id };
+      };
+      out.wheatBreak = stat('wheat', 0, true, 'break'); out.carrotBreak = stat('carrot', 2, true, 'break'); out.potatoBreak = stat('potato', 4, true, 'break');
+      out.wheatRight = stat('wheat', 0, true, 'harvest'); out.carrotRight = stat('carrot', 2, true, 'harvest'); out.potatoRight = stat('potato', 4, true, 'harvest');
+      // chưa chín: phá chỉ nhận lại 1 hạt, bấm phải bị từ chối
+      F.plant(-2, 0); const un = g.act('u1', { t: 'harvest', ...F.at(-2, 0, 1) }); p.inv.fill(null); F.dig(cx - 2, y0 + 1, cz); out.unripe = { reason: un.reason, seed: count(p, 'wheat_seed'), wheat: count(p, 'wheat') };
+      out.notCrop = g.act('u1', { t: 'harvest', ...F.at(-2, 2, 0) }).reason;
+      // bấm phải: cây về giai đoạn 0 ngay (id 42), tự gieo lại
+      F.plant(-2, 0); F.ripe(-2, 0); p.inv.fill(null); const h1 = g.act('u1', { t: 'harvest', ...F.at(-2, 0, 1) }); out.afterRight = F.id(-2, 0, 1); out.entryAfter = g.crops.get(F.key(-2, 0)).s;
+      // hai người cùng bấm một cây chín trong cùng tick: chỉ một người nhận
+      const q = g.addPlayer('u2', 'Q'); q.x = p.x + 1; q.z = p.z; q.y = p.y; q.inv.fill(null);
+      F.ripe(-2, 0); p.inv.fill(null);
+      const a = g.act('u1', { t: 'harvest', ...F.at(-2, 0, 1) }), b = g.act('u2', { t: 'harvest', ...F.at(-2, 0, 1) });
+      out.race = [a.ok, b.ok, b.reason, count(q, 'wheat') + count(q, 'wheat_seed')];
+      // xa tầm; kho đầy thì phần dư rơi xuống đất
+      F.ripe(-2, 0); p.x += 20; out.reach = g.act('u1', { t: 'harvest', ...F.at(-2, 0, 1) }).reason; p.x -= 20;
+      for (let i = 0; i < p.inv.length; i++) p.inv[i] = { id: 'stone', n: 64 }; const full = g.act('u1', { t: 'harvest', ...F.at(-2, 0, 1) });
+      out.full = full.ok && [...g.ents.values()].some(e => e.kind === 'item' && e.item === 'wheat');
+      return out;
+    """)
+    assert r['wheatBreak']['main'] == [1, 2] and r['wheatBreak']['seed'] == [1, 3] and r['carrotBreak']['main'] == [2, 4] and r['potatoBreak']['main'] == [2, 3], r
+    assert r['wheatRight']['main'] == [1, 2] and r['wheatRight']['seed'] == [0, 2] and r['carrotRight']['main'] == [1, 3] and r['potatoRight']['main'] == [1, 2], r
+    assert not r['wheatRight']['bad'] and not r['carrotRight']['bad'], r
+    assert r['unripe'] == {'reason': 'unripe', 'seed': 1, 'wheat': 0} and r['notCrop'] == 'not-crop', r
+    assert r['afterRight'] == 42 and r['entryAfter'] == 0 and r['race'][:3] == [True, False, 'unripe'] and r['race'][3] == 0 and r['reach'] == 'reach' and r['full'], r
+
+
+@test
+def test_survival_seed_sources(pg):
+    r = ev(pg, FARM_JS + r"""
+      const F = mkFarm(); const { g, p, cx, cz, y0 } = F; fixRng(g, 4242); F.stand(0, 0);
+      let seeds = 0; const real = g.collect.bind(g); g.collect = (pl, id, n, ...rest) => { if (id === 'wheat_seed') seeds += n; };
+      for (let i = 0; i < 2000; i++) { g.world.set(cx + 1, y0 + 1, cz, B.TALL_GRASS); p.dig = { x: cx + 1, y: y0 + 1, z: cz, t0: g.time - 5 }; g.act('u1', { t: 'break', x: cx + 1, y: y0 + 1, z: cz }); }
+      g.collect = real;
+      const drops = {}; g.dropItem = (id, n) => { drops[id] = (drops[id] || 0) + 1; };
+      for (let i = 0; i < 2000; i++) combat.dropLoot(g, { kind: 'mob', type: 'xac-song', x: cx, y: y0 + 1, z: cz });
+      return { seeds: seeds / 2000, carrot: (drops.carrot || 0) / 2000, potato: (drops.potato || 0) / 2000 };
+    """)
+    assert 0.10 <= r['seeds'] <= 0.14 and 0.06 <= r['carrot'] <= 0.10 and 0.06 <= r['potato'] <= 0.10, r
+
+
+@test
+def test_survival_animal_tame_ai(pg):
+    r = ev(pg, FARM_JS + r"""
+      const F = mkFarm({ hunger: false }); const { g, p, cx, cz, y0 } = F; const out = {};
+      F.stand(0, 0); const e = F.animal('lon', 0, 0); e.x = p.x; e.z = p.z - 2;                  // heo hoang cách người chơi 2 block
+      giveHeld(g, p, 'carrot', 3); const ok = g.act('u1', { t: 'feed', id: e.id });
+      out.feed = { ok: ok.ok, tamed: !!e.tamed, love: e.love, persist: !!e.persist, left: count(p, 'carrot'), home: !!e.home };
+      // thức ăn sai: không đổi gì, không trừ
+      const sheep = F.animal('cuu', 0, 0); sheep.x = p.x + 1.5; sheep.z = p.z; const wrong = g.act('u1', { t: 'feed', id: sheep.id });
+      out.wrong = { reason: wrong.reason, tamed: !!sheep.tamed, left: count(p, 'carrot') };
+      // ngoài 3 block
+      const far = F.animal('lon', 0, 0); far.x = p.x + 6; far.z = p.z; const rr = g.act('u1', { t: 'feed', id: far.id });
+      out.reach = { reason: rr.reason, tamed: !!far.tamed, left: count(p, 'carrot') };
+      out.noTarget = g.act('u1', { t: 'feed', id: 99999 }).reason;
+      // thú hoang bỏ chạy khi người chơi đến sát; thú đã thuần thì không, và quanh quẩn gần chuồng
+      const wild = F.animal('lon', 0, 0); wild.x = p.x + 2.5; wild.z = p.z + 2.5; const wx = wild.x, wz = wild.z;
+      const tame = F.animal('lon', 0, 0, { persist: true, tamed: true }); tame.x = p.x - 2.5; tame.z = p.z + 2.5; const hx = tame.x, hz = tame.z; tame.home = { x: hx, y: tame.y, z: hz };
+      giveHeld(g, p, 'stick'); let maxHome = 0;                                                    // không cầm thức ăn: thú thuần quanh quẩn gần chuồng
+      for (let t = 0; t < 20; t += 0.05) { g.tick(0.05); maxHome = Math.max(maxHome, Math.hypot(tame.x - tame.home.x, tame.z - tame.home.z)); if (Math.abs(t - 6) < 0.03) out.wildAt6 = Math.hypot(wild.x - p.x, wild.z - p.z); if (Math.abs(t - 6) < 0.03) out.tameAt6 = Math.hypot(tame.x - p.x, tame.z - p.z); }
+      out.maxHome = maxHome; out.states = [wild.state, tame.state]; out.tameMoved = Math.hypot(tame.x - hx, tame.z - hz);
+      // quái thù địch không nhắm vào thú: đánh thú đã thuần gây sát thương bình thường, không làm nó bỏ chạy
+      const hp0 = tame.hp; giveHeld(g, p, 'iron_sword'); tame.x = p.x + 1.5; tame.z = p.z; g.tick(0.6); g.act('u1', { t: 'hit', id: tame.id }); out.hit = [hp0 - tame.hp, tame.state !== 'chase'];
+      return out;
+    """)
+    assert r['feed'] == {'ok': True, 'tamed': True, 'love': 30, 'persist': True, 'left': 2, 'home': True}, r
+    assert r['wrong'] == {'reason': 'not-food', 'tamed': False, 'left': 2} and r['reach'] == {'reason': 'reach', 'tamed': False, 'left': 2} and r['noTarget'] == 'no-target', r
+    assert r['wildAt6'] > 8, r                                       # thú hoang đã chạy xa
+    assert r['maxHome'] <= 11.5 and r['tameAt6'] < 8 and r['tameMoved'] <= 11.5, r
+    assert r['hit'] == [6, True], r
+
+
+@test
+def test_survival_animal_follow(pg):
+    r = ev(pg, FARM_JS + r"""
+      const F = mkFarm({ hunger: false }); const { g, p } = F; F.stand(0, 0); const out = {};
+      const e = F.animal('lon', 0, 0, { persist: true, tamed: true }); e.x = p.x; e.z = p.z - 6; e.home = { x: e.x, y: e.y, z: e.z };
+      giveHeld(g, p, 'carrot'); for (let t = 0; t < 10; t += 0.05) g.tick(0.05);
+      out.dist = Math.hypot(e.x - p.x, e.z - p.z); out.following = e.following;
+      giveHeld(g, p, 'stick'); g.tick(0.1); out.after = e.following;
+      // hai người: đi theo người cầm thức ăn (kể cả người xa hơn), không theo người cầm vật khác
+      const q = g.addPlayer('u2', 'Q'); q.x = p.x + 30; q.z = p.z; q.y = p.y; g.touch(q);
+      const e2 = F.animal('cuu', 0, 0, { persist: true, tamed: true }); e2.x = q.x; e2.z = q.z - 6; e2.home = { x: e2.x, y: e2.y, z: e2.z };
+      q.inv.fill(null); q.inv[0] = { id: 'wheat', n: 1 }; q.sel = 0; for (let t = 0; t < 10; t += 0.05) g.tick(0.05);
+      out.dist2 = Math.hypot(e2.x - q.x, e2.z - q.z);
+      return out;
+    """)
+    assert r['dist'] <= 3 and r['following'] is True and r['after'] is False and r['dist2'] <= 3, r
+
+
+@test
+def test_survival_animal_breed_grow(pg):
+    r = ev(pg, FARM_JS + r"""
+      const F = mkFarm({ hunger: false }); const { g, p } = F; F.stand(0, 0); const out = {};
+      const mk = (dx) => { const e = F.animal('lon', 0, 0, { persist: true, tamed: true }); e.x = p.x + dx; e.z = p.z - 2; e.home = { x: e.x, y: e.y, z: e.z }; return e; };
+      const a = mk(-1.5), b = mk(1.5); giveHeld(g, p, 'carrot', 4);
+      const f1 = g.act('u1', { t: 'feed', id: a.id }), f2 = g.act('u1', { t: 'feed', id: b.id });
+      out.fed = [f1.ok, f2.ok, a.love, b.love, count(p, 'carrot')];
+      const babies = () => [...g.ents.values()].filter(e => e.type === 'lon' && e.age < 300);
+      let tBirth = null; const t0 = g.time;
+      for (let t = 0; t < 12 && tBirth === null; t += 0.25) { g.tick(0.25); if (babies().length) tBirth = g.time - t0; }
+      out.birth = tBirth; out.babies = babies().length; out.love = [a.love, b.love]; out.cd = [a.breedCd, b.breedCd];
+      const baby = babies()[0]; out.size = baby ? [baby.w, baby.h] : null; out.adultSize = [a.w, a.h]; out.persist = baby && baby.persist && baby.tamed;
+      const refeed = g.act('u1', { t: 'feed', id: a.id }); out.refeed = [refeed.ok, refeed.reason, count(p, 'carrot')];      // đang hồi chiêu: từ chối, không trừ
+      g.tick(7); out.stillOne = babies().length;                                                         // không đẻ thêm
+      baby.x = p.x; baby.z = p.z - 2; const ageA = baby.age;
+      runBig(g, 100, 0.5); out.grew = baby.age - ageA;
+      baby.x = p.x; baby.z = p.z - 2; const age1 = baby.age; const fb = g.act('u1', { t: 'feed', id: baby.id }); out.babyFeed = [fb.ok, baby.age - age1, count(p, 'carrot')];       // con non: rút ngắn 30 giây
+      const need = 300 - baby.age; runBig(g, need - 4, 0.5); out.babyBefore = [baby.age < 300, baby.w === out.size[0]]; runBig(g, 8, 0.5); out.babyAfter = [baby.age >= 300, baby.w === out.adultSize[0]];
+      runBig(g, 70, 0.5); a.x = p.x - 1.5; a.z = p.z - 2; const again = g.act('u1', { t: 'feed', id: a.id }); out.again = [again.ok, a.love, a.breedCd];     // hết hồi chiêu 240 giây
+    return out;
+    """)
+    assert r['fed'] == [True, True, 30, 30, 2], r
+    assert r['birth'] is not None and 5 <= r['birth'] <= 7.6 and r['babies'] == 1 and r['love'] == [0, 0] and all(230 <= c <= 240 for c in r['cd']), r
+    assert r['size'] == [r['adultSize'][0] * 0.5, r['adultSize'][1] * 0.5] and r['persist'], r
+    assert r['refeed'][:2] == [False, 'busy'] and r['refeed'][2] == 2 and r['stillOne'] == 1, r
+    assert 99 <= r['grew'] <= 101 and r['babyFeed'] == [True, 30, 1], r
+    assert r['babyBefore'] == [True, True] and r['babyAfter'] == [True, True], r                  # lớn đúng mốc (300 - 30 giây boost), cỡ về đầy đủ
+    assert r['again'][0] is True and r['again'][1] == 30, r
+
+
+@test
+def test_survival_animal_products(pg):
+    r = ev(pg, FARM_JS + r"""
+      const out = {};
+      // trứng: 20 gà đã thuần được cho ăn, đẻ đúng một quả trong 150-210 giây; gà không được cho ăn thì không đẻ
+      { const F = mkFarm({ hunger: false }); const { g, p, cx, cz, y0 } = F; p.hp = p.maxHp = 1e9; p.x = cx - 30;                 // người chơi đứng xa để không nhặt trứng
+        const eggs = [], real = g.dropItem.bind(g); g.dropItem = (id, n, x, y, z) => { if (id === 'egg') eggs.push({ t: g.time, x, z }); return real(id, n, x, y, z); };
+        const fed = [], hungry = [];
+        for (let i = 0; i < 20; i++) { const e = F.animal('ga', -15 + (i % 10) * 3, -12 + Math.floor(i / 10) * 3, { persist: true, tamed: true }); e.fed = 300; e.frozen = true; fed.push(e); }
+        for (let i = 0; i < 5; i++) { const e = F.animal('ga', -15 + i * 3, 12, { persist: true, tamed: true }); e.fed = 0; e.frozen = true; hungry.push(e); }
+        for (let t = 0; t < 400; t += 0.5) g.tick(0.5);
+        const first = eggs.filter(e => e.t < 250).map(e => e.t);
+        out.eggs = { n: first.length, min: Math.min(...first), max: Math.max(...first), late: eggs.filter(e => e.t > 302).length, hungry: eggs.filter(e => e.z > cz + 8).length, total: eggs.length };
+        out.hungryDrops = hungry.map(e => e.prodCd);
+        const baby = F.animal('ga', 0, 0, { persist: true, tamed: true }); baby.age = 10; baby.fed = 300; baby.frozen = true; const n0 = eggs.length; runBig(g, 300, 0.5); out.babyLaid = eggs.length - n0; }
+      // len: kéo cắt 1-3 len, cừu trọc không cắt được, mọc lại sau 240 giây; tay không / cừu non bị từ chối
+      { const F = mkFarm({ hunger: false }); const { g, p } = F; F.stand(0, 0); const e = F.animal('cuu', 0, 0, { persist: true, tamed: true }); e.x = p.x + 1; e.z = p.z - 1.5; e.frozen = true;
+        giveHeld(g, p, 'stick'); out.hand = g.act('u1', { t: 'shear', id: e.id }).reason;
+        const wool = new Set();
+        for (let i = 0; i < 60; i++) { e.shearCd = 0; p.inv.fill(null); p.inv[0] = { id: 'shears', n: 1 }; p.sel = 0; const r1 = g.act('u1', { t: 'shear', id: e.id }); if (!r1.ok) wool.add('x'); wool.add(count(p, 'wool')); }
+        out.wool = [...wool].sort(); out.cd = e.shearCd;
+        const again = g.act('u1', { t: 'shear', id: e.id }); out.sheared = again.reason;
+        runBig(g, 235, 0.5); out.at235 = g.act('u1', { t: 'shear', id: e.id }).reason; runBig(g, 10, 0.5); out.at245 = g.act('u1', { t: 'shear', id: e.id }).ok;
+        const young = F.animal('cuu', 0, 0, { persist: true, tamed: true }); young.age = 20; young.x = p.x - 1; young.z = p.z - 1.5; young.frozen = true; out.young = g.act('u1', { t: 'shear', id: young.id }).reason;
+        const pig = F.animal('lon', 0, 0); out.pigShear = g.act('u1', { t: 'shear', id: pig.id }).reason;
+        // cừu trọc chết không rơi len; cừu còn len rơi len; lợn rơi 1-3 thịt lợn
+        const drops = []; const real = g.dropItem.bind(g); g.dropItem = (id, n) => { drops.push(id); return real(id, n, 0, 0, 0); };
+        const s1 = F.animal('cuu', 0, 0); s1.shearCd = 100; combat.dropLoot(g, s1); out.shornWool = drops.filter(d => d === 'wool').length;
+        const s2 = F.animal('cuu', 0, 0); drops.length = 0; combat.dropLoot(g, s2); out.woolyWool = drops.filter(d => d === 'wool').length;
+        const porks = new Set(); for (let i = 0; i < 100; i++) { const q = F.animal('lon', 0, 0); const before = [...g.ents.values()].filter(x => x.kind === 'item').length; drops.length = 0; g.ents.get(q.id).hp = 1; g.damageEntity(q, 99, p); }
+        const ents = [...g.ents.values()].filter(x => x.kind === 'item' && x.item === 'pork').map(x => x.n); out.pork = [Math.min(...ents), Math.max(...ents)]; }
+      return out;
+    """)
+    e = r['eggs']
+    assert e['n'] == 20 and 149 <= e['min'] and e['max'] <= 212 and e['late'] == 0, r
+    assert e['hungry'] == 0 and all(v is None for v in r['hungryDrops']) and r['babyLaid'] == 0, r
+    assert r['hand'] == 'not-shears' and r['wool'] == [1, 2, 3], r
+    assert r['cd'] == 240 and r['sheared'] == 'sheared' and r['at235'] == 'sheared' and r['at245'] is True and r['young'] == 'young' and r['pigShear'] == 'no-target', r
+    assert r['shornWool'] == 0 and r['woolyWool'] == 1 and r['pork'] == [1, 3], r
+
+
+@test
+def test_survival_animal_caps(pg):
+    r = ev(pg, FARM_JS + r"""
+      const out = {};
+      { const F = mkFarm({ hunger: false }); const { g, p, cx, cz, y0 } = F; F.stand(0, 0);
+        for (let i = 0; i < 24; i++) { const e = F.animal('lon', -15 + (i % 8) * 4, -12 + Math.floor(i / 8) * 4, { persist: true, tamed: true }); e.frozen = true; }
+        out.count = animals.tameCount(g);
+        const wild = F.animal('ga', 0, 0); wild.x = p.x + 1; wild.z = p.z - 1; giveHeld(g, p, 'wheat_seed', 3); const r1 = g.act('u1', { t: 'feed', id: wild.id });
+        out.wild = [r1.ok, r1.reason, !!wild.tamed, count(p, 'wheat_seed')];
+        const old = [...g.ents.values()].find(e => e.persist); old.x = p.x - 1; old.z = p.z - 1; giveHeld(g, p, 'carrot', 3); const r2 = g.act('u1', { t: 'feed', id: old.id });
+        out.breed = [r2.ok, r2.reason, old.love || 0, count(p, 'carrot')]; }
+      // thú nuôi không tính vào trần quái, không bị xoá khi đi xa, đóng băng khi ngoài tầm mô phỏng
+      { const F = mkFarm({ hunger: false, spawning: true }); const { g, p, cx, cz, y0 } = F; p.hp = p.maxHp = 1e9; g.world.regionAt = () => 'rung-suong'; g.time = 60;
+        const pigs = []; for (let i = 0; i < 30; i++) { const e = F.animal('lon', -15 + (i % 10) * 3, -12 + Math.floor(i / 10) * 3, { persist: true, tamed: true }); pigs.push(e); }
+        const pos0 = pigs.map(e => [e.x, e.z]);
+        for (let t = 0; t < 120; t += 0.5) { g.tick(0.5); p.hp = 1e9; }
+        const mobs = [...g.ents.values()].filter(e => e.kind === 'mob'); out.wildN = mobs.filter(e => !e.persist).length; out.persist = mobs.filter(e => e.persist).length;
+        out.total = mobs.length;
+        p.x += 200; for (let t = 0; t < 3; t += 0.5) { g.tick(0.5); p.hp = 1e9; }
+        const before = pigs.map(e => [e.x, e.z]);
+        for (let t = 0; t < 30; t += 0.5) { g.tick(0.5); p.hp = 1e9; }
+        out.afterFar = { persist: [...g.ents.values()].filter(e => e.persist).length, dormant: pigs.filter(e => e.dormant).length, frozen: pigs.every((e, i) => e.x === before[i][0] && e.z === before[i][1]),
+          oldWild: [...g.ents.values()].filter(e => e.kind === 'mob' && !e.persist && Math.hypot(e.x - (cx + 0.5), e.z - (cz + 0.5)) < 100).length };
+        p.x -= 200; g.tick(2); out.back = { persist: [...g.ents.values()].filter(e => e.persist).length, awake: pigs.filter(e => !e.dormant).length }; }
+      return out;
+    """)
+    assert r['count'] == 24 and r['wild'][:3] == [False, 'cap', False] and r['wild'][3] == 3, r
+    assert r['breed'] == [False, 'cap', 0, 3], r
+    assert r['wildN'] >= 1 and r['persist'] == 30 and r['total'] > 30, r
+    assert r['afterFar']['persist'] == 30 and r['afterFar']['dormant'] == 30 and r['afterFar']['frozen'] and r['afterFar']['oldWild'] == 0, r
+    assert r['back']['persist'] == 30 and r['back']['awake'] == 30, r
+
+
+@test
+def test_survival_cooking_recipes(pg):
+    r = ev(pg, FARM_JS + r"""
+      const T = [['bread', { wheat: 3, charcoal: 1 }, 'furnace'], ['baked_potato', { potato: 1, charcoal: 1 }, 'furnace'], ['cooked_pork', { pork: 1, charcoal: 1 }, 'furnace'],
+        ['cooked_chicken', { chicken: 1, charcoal: 1 }, 'furnace'], ['veg_soup', { carrot: 2, potato: 1, herb: 1 }, 'furnace'], ['hearty_stew', { pork: 1, potato: 1, carrot: 1, charcoal: 1 }, 'furnace'],
+        ['egg_cake', { egg: 2, wheat: 2, charcoal: 1 }, 'furnace'], ['wood_hoe', { planks: 2, stick: 2 }, 'workbench'], ['stone_hoe', { stone: 2, stick: 2 }, 'workbench'],
+        ['iron_hoe', { iron_ingot: 2, stick: 2 }, 'anvil'], ['shears', { iron_ingot: 2 }, 'anvil'], ['bed_wool', { planks: 3, wool: 3 }, 'workbench']];
+      const { recipeById } = await imp('sim/crafting.js'); const bad = [];
+      for (const [id, need, st] of T) {
+        const rc = recipeById(id); if (!rc) { bad.push([id, 'thiếu công thức']); continue; }
+        const mk = () => { const v = inv.makeInventory(); for (const [k, n] of Object.entries(need)) inv.addItem(v, k, n); return v; };
+        const none = canCraft(mk(), id, {}), other = ['workbench', 'furnace', 'anvil'].filter(s => s !== st).some(s => canCraft(mk(), id, { [s]: true }));
+        const v = mk(); const ok = craft(v, id, { [st]: true });
+        const out = rc.out.item, used = Object.entries(need).every(([k]) => inv.countItem(v, k) === 0);
+        const short = mk(); const first = Object.keys(need)[0]; inv.removeItem(short, first, 1); const lacks = canCraft(short, id, { [st]: true });
+        if (none || other || !ok || inv.countItem(v, out) !== rc.out.n || !used || lacks) bad.push([id, { none, other, ok, got: inv.countItem(v, out), used, lacks }]);
+      }
+      const { ITEMS } = await imp('content/items.js');
+      return { bad, bedOut: recipeById('bed_wool').out.item, soupFx: ITEMS.veg_soup.fx, stewFx: ITEMS.hearty_stew.fx, cakeFx: ITEMS.egg_cake.fx, count: T.length };
+    """)
+    assert r['bad'] == [] and r['bedOut'] == 'bed' and r['count'] == 12, r
+    assert r['soupFx'] == {'id': 'regen', 'secs': 45} and r['stewFx'] == {'id': 'power', 'secs': 120} and r['cakeFx'] == {'id': 'tough', 'secs': 120}, r
+
+
+@test
+def test_survival_farm_shop_quest(pg):
+    r = ev(pg, NPC_JS + r"""
+      const { SHOPS } = await imp('content/shops.js');
+      const { B, CROP_BLOCKS } = await imp('world/blocks.js');
+      const inv = await imp('sim/inventory.js'); const { makeRng } = await imp('sim/rng.js');
+      const out = {};
+      const SELL = { wheat_seed: 4, carrot: 5, potato: 5, shears: 25, stone_hoe: 20 }, BUY = { wheat: 3, carrot: 2, potato: 2, egg: 3, wool: 6, bread: 8, cooked_pork: 9 };
+      out.tables = Object.fromEntries(['truong-lang', 'thuong-nhan', 'ngu-dan'].map(id => [id, Object.entries(SELL).every(([k, v]) => (SHOPS[id].sells.find(x => x.item === k) || {}).price === v) && Object.entries(BUY).every(([k, v]) => (SHOPS[id].buys.find(x => x.item === k) || {}).price === v)]));
+      const T = mkTown(); const { g, p } = T; g.rng = makeRng(99);
+      const xu = () => inv.countItem(p.inv, 'xu');
+      p.quests.done['chao-lang'] = true;
+      // nhận nhiệm vụ qua hội thoại
+      T.talk('truong-lang'); const jobs = T.say(0).v.find(e => e.t === 'dialog'); const jc = jobs.choices.find(c => c.text.includes('Vụ mùa'));
+      T.say(jc.i); out.accepted = g.questState('u1', 'harvest-1');
+      // bước 1: cuốc đất (chế ở bàn chế tạo đặt cạnh)
+      const px = Math.floor(p.x), pz = Math.floor(p.z), fy = Math.floor(p.y) - 1;                       // mặt đất dưới chân
+      for (let dx = -6; dx <= 6; dx++) for (let dz = -6; dz <= 6; dz++) { g.world.set(px + dx, fy, pz + dz, B.GRASS); for (let dy = 1; dy <= 3; dy++) g.world.set(px + dx, fy + dy, pz + dz, 0); }
+      const hold = (id) => { const i = p.inv.findIndex(s => s && s.id === id); [p.inv[0], p.inv[i]] = [p.inv[i], p.inv[0]]; p.sel = 0; };
+      g.world.set(px + 2, fy + 1, pz + 1, B.WORKBENCH); g.world.set(px - 2, fy + 1, pz + 1, B.FURNACE);
+      g.giveItem('u1', 'planks', 2); g.giveItem('u1', 'stick', 2); out.craftHoe = g.act('u1', { t: 'craft', id: 'wood_hoe' }).ok;
+      out.step1 = g.questProgress('u1', 'harvest-1')[0].n;
+      // mua hạt ở Kho làng
+      T.talk('truong-lang'); const shopEv = T.say(3).v.find(e => e.t === 'shop'); out.shopSells = shopEv ? shopEv.sells.map(x => x.item) : [];
+      g.giveItem('u1', 'xu', 40); const xu0 = xu(); out.buy = g.act('u1', { t: 'buy', item: 'wheat_seed', n: 8 }).ok; out.xuSpent = xu0 - xu();
+      // cày, gieo 8 hạt, chờ chín, thu hoạch bằng bấm phải cho tới khi đủ 9 lúa mì
+      const cells = []; for (let i = 0; i < 8; i++) cells.push({ x: px - 2 + (i % 4), y: fy, z: pz + 2 + Math.floor(i / 4) });
+      hold('wood_hoe'); out.till = cells.every(c => g.act('u1', { t: 'till', ...c }).ok);
+      hold('wheat_seed'); out.planted = cells.filter(c => g.act('u1', { t: 'plant', x: c.x, y: c.y, z: c.z }).ok).length;
+      let rounds = 0;
+      while (inv.countItem(p.inv, 'wheat') < 9 && rounds < 4) { for (let t = 0; t < 365; t++) g.tick(1); for (const c of cells) g.act('u1', { t: 'harvest', x: c.x, y: c.y + 1, z: c.z }); rounds++; p.x = px + 0.5; p.z = pz + 0.5; }
+      out.wheat = inv.countItem(p.inv, 'wheat'); out.rounds = rounds; out.step2 = g.questProgress('u1', 'harvest-1')[1].n;
+      // nấu bánh mì ở lò nung
+      g.giveItem('u1', 'log', 1); out.charcoal = g.act('u1', { t: 'craft', id: 'charcoal' }).ok; out.bread = g.act('u1', { t: 'craft', id: 'bread' }).ok;
+      out.state = g.questState('u1', 'harvest-1');
+      // trả nhiệm vụ: 30 xu + 2 súp rau
+      const xuBefore = xu(); T.talk('truong-lang'); const t = T.say(1); const tc = t.v.find(e => e.t === 'dialog').choices.find(c => c.text.includes('Vụ mùa')); T.say(tc.i);
+      out.done = g.questState('u1', 'harvest-1'); out.reward = [xu() - xuBefore, inv.countItem(p.inv, 'veg_soup')];
+      // bán nông sản (còn dư) cho thương nhân làng
+      T.talk('truong-lang'); T.say(3); const wheat = inv.countItem(p.inv, 'wheat'), x1 = xu(); out.sold = g.act('u1', { t: 'sell', item: 'wheat', n: wheat }).ok; out.gain = xu() - x1 === wheat * 3;
+      return out;
+    """)
+    assert all(r['tables'].values()), r
+    assert r['accepted'] == 'active' and r['craftHoe'] and r['step1'] == 1 and 'wheat_seed' in r['shopSells'] and r['buy'] and r['xuSpent'] == 32, r
+    assert r['till'] and r['planted'] == 8 and r['wheat'] >= 9 and r['step2'] == 6 and r['charcoal'] and r['bread'], r
+    assert r['state'] == 'ready' and r['done'] == 'done' and r['reward'] == [30, 2] and r['sold'] and r['gain'], r
+
+
+@test
+def test_survival_save_load(pg):
+    r = ev(pg, FARM_JS + r"""
+      const S = await imp('save.js'); const GG = Game; const out = {};
+      const F = mkFarm({ hunger: true }); const { g, p, cx, cz, y0 } = F; fixRng(g, 77);
+      F.till(-8, 0); F.plant(-8, 0); F.till(-8, 2); F.plant(-8, 2, 'carrot'); F.till(-1, 4); F.plant(-1, 4, 'potato'); F.till(-6, 6);                  // ruộng trống -> bộ đếm về dirt
+      runBig(g, 130, 0.5);
+      F.stand(0, 0); const pig = F.animal('lon', 0, 0, { persist: true, tamed: true }); pig.x = p.x - 1; pig.z = p.z - 2; giveHeld(g, p, 'carrot', 2); g.act('u1', { t: 'feed', id: pig.id });
+      const sheep = F.animal('cuu', 0, 0, { persist: true, tamed: true }); sheep.x = p.x + 1; sheep.z = p.z - 2; p.inv[1] = { id: 'shears', n: 1 }; p.sel = 1; g.act('u1', { t: 'shear', id: sheep.id });
+      const hen = F.animal('ga', 0, 0, { persist: true, tamed: true }); hen.fed = 123; hen.prodCd = 77.5; hen.frozen = true; hen.x = p.x; hen.z = p.z - 3;
+      runBig(g, 10, 0.5);
+      p.food = 13; p.fat = 22.5; p.inv[2] = { id: 'hearty_stew', n: 2 }; p.sel = 2; p.eatAt = -99; g.act('u1', { t: 'use' }); p.food = 13; p.fat = 22.5; hungerMod.poison(g, p, 6);
+      const lone = F.animal('lon', 0, 0); lone.x = p.x + 5; lone.z = p.z - 5;                                                                              // thú hoang không được lưu
+      const save = JSON.parse(JSON.stringify(g.toSave()));
+      out.v = save.v; out.saved = { crops: Object.keys(save.crops).length, farm: Object.keys(save.farm).length, animals: save.animals.length };
+      const g2 = GG.fromSave(save, { spawning: false, env: false, hunger: true }); const q = g2.addPlayer('u1', 'T'); g2.tick(0.05);
+      const close = (a, b, t = 0.2) => Math.abs(a - b) <= t;
+      out.crops = [...g.crops].every(([k, c]) => { const d = g2.crops.get(k); return d && d.k === c.k && d.s === c.s && close(d.g, c.g, 0.05); }) && g2.crops.size === g.crops.size;
+      out.farm = [...g.farm].every(([k, t]) => close(g2.farm.get(k), t, 0.05)) && g2.farm.size === g.farm.size;
+      out.blocks = [[-8, 0], [-8, 2], [-1, 4]].every(([dx, dz]) => g2.world.get(cx + dx, y0 + 1, cz + dz) === g.world.get(cx + dx, y0 + 1, cz + dz) && g2.world.get(cx + dx, y0, cz + dz) >= 40);
+      const A = (x) => [...x.ents.values()].filter(e => e.persist && e.kind === 'mob');
+      const a1 = A(g), a2 = A(g2); out.animals = a2.length === a1.length && a1.every(e => { const d = a2.find(f => f.type === e.type); return d && d.tamed && close(d.age, e.age) && close(d.love || 0, e.love || 0) && close(d.breedCd || 0, e.breedCd || 0) && close(d.fed || 0, e.fed || 0) && close(d.shearCd || 0, e.shearCd || 0) && close(d.home.x, e.home.x, 0.02) && d.hp === e.hp; });
+      out.sheepShorn = A(g2).find(e => e.type === 'cuu').shearCd > 0; out.henProd = [(A(g2).find(e => e.type === 'ga') || {}).prodCd, hen.prodCd];
+      out.player = { food: q.food, fat: q.fat, power: (q.fxView.find(f => f.id === 'power') || {}).left, poison: (q.fxView.find(f => f.id === 'poison') || {}).left };
+      out.orig = { power: (p.fxView.find(f => f.id === 'power') || {}).left };
+      // tiếp tục lớn đúng mốc: lúa mì đã có 140 giây -> giai đoạn 2 ở 240, 3 ở 360
+      const wk = F.key(-8, 0); out.progress = g2.crops.get(wk).g;
+      const wb = () => g2.world.get(cx - 8, y0 + 1, cz);
+      runBig(g2, 98, 0.5); out.s1 = wb(); runBig(g2, 4, 0.5); out.s2 = wb(); runBig(g2, 116, 0.5); out.s2b = wb(); runBig(g2, 4, 0.5); out.s3 = wb();
+      // save v1 cũ nạp được: food 20, không lỗi, cây vẫn được nhận lại từ block
+      const old = JSON.parse(JSON.stringify(save)); old.v = 1; delete old.crops; delete old.farm; delete old.animals; for (const pl of Object.values(old.players)) { delete pl.food; delete pl.fatigue; delete pl.fx; delete pl.poison; }
+      const chk = S.checkVersion(old); const g3 = GG.fromSave(chk, { spawning: false, hunger: true }); const q3 = g3.addPlayer('u1', 'T');
+      out.v1 = { v: chk.v, food: q3.food, fx: JSON.stringify(q3.fx), crops: g3.crops.size, animals: [...g3.ents.values()].filter(e => e.persist).length };
+      const raw = JSON.parse(JSON.stringify(save)); raw.v = 1; delete raw.crops; delete raw.players; out.rawV1 = GG.fromSave(raw, { spawning: false }).addPlayer('u2', 'N').food;       // dựng tay, không qua checkVersion
+      // xuất rồi nhập file .gz giữ nguyên
+      const blob = await S.exportWorld(save); const imp2 = await S.importWorld(blob); out.gz = JSON.stringify(imp2) === JSON.stringify(save);
+      // file hỏng: food NaN / quá lớn / hiệu ứng lạ bị làm sạch
+      const bad = JSON.parse(JSON.stringify(save)); Object.assign(bad.players.u1, { food: 'x', fatigue: -5, fx: { power: 1e9, hack: 50, regen: 'a' }, poison: 'zzz' });
+      const q4 = GG.fromSave(bad, { spawning: false }).addPlayer('u1', 'T'); out.bad = { food: q4.food, fat: q4.fat, fx: q4.fxView.map(f => f.id + ':' + f.left) };
+      bad.players.u1.food = 999; out.big = GG.fromSave(bad, { spawning: false }).addPlayer('u1', 'T').food;
+      // cây bị phá lúc tắt máy: bỏ mục; cây có block mà thiếu mục: tạo lại
+      const gone = JSON.parse(JSON.stringify(save)); gone.delta = JSON.parse(JSON.stringify(save.delta));
+      const g5 = GG.fromSave(gone, { spawning: false }); g5.world.set(cx - 8, y0 + 1, cz, 0); const again = JSON.parse(JSON.stringify(g5.toSave())); const g6 = GG.fromSave(again, { spawning: false });
+      out.removed = !g6.crops.has(F.key(-8, 0));
+      // kích thước: 1000 cây < 100 KB
+      const big = new GG({ seed: 1, spawning: false }); for (let i = 0; i < 1000; i++) { const k = (i % 40) + ',' + 30 + ',' + Math.floor(i / 40); big.crops.set(k, { k: 'wheat', s: 1, g: 150.55, x: 0, y: 0, z: 0 }); }
+      out.kb = JSON.stringify(big.toSave().crops).length / 1024;
+      // người chơi thoát rồi vào lại: đói và hiệu ứng ở lại
+      g.removePlayer('u1'); const back = g.addPlayer('u1', 'T'); out.rejoin = { food: back.food, power: (back.fxView.find(f => f.id === 'power') || {}).left };
+      return out;
+    """)
+    assert r['v'] == 2 and r['saved'] == {'crops': 3, 'farm': 1, 'animals': 3}, r
+    assert r['crops'] and r['farm'] and r['blocks'] and r['animals'] and r['sheepShorn'] and abs(r['henProd'][0] - r['henProd'][1]) < 0.1, r
+    assert r['player']['food'] == 13 and abs(r['player']['fat'] - 22.5) < 0.1 and abs(r['player']['power'] - r['orig']['power']) <= 1 and r['player']['poison'] >= 1, r
+    assert 139 <= r['progress'] <= 141 and r['s1'] == 43 and r['s2'] == 44 and r['s2b'] == 44 and r['s3'] == 45, r
+    assert r['v1'] == {'v': 2, 'food': 20, 'fx': '{}', 'crops': 3, 'animals': 0} and r['rawV1'] == 20 and r['gz'], r
+    assert r['bad']['food'] == 20 and r['bad']['fat'] == 0 and r['bad']['fx'] == ['power:300'] and r['big'] == 20 and r['removed'] and r['kb'] < 100, r
+    assert r['rejoin']['food'] == 13 and r['rejoin']['power'] >= 100, r
+
+
+@test
+def test_survival_e2e_two_players(pg):
+    r = ev(pg, NET_JS + r"""
+      const { B, CROP_BLOCKS } = await imp('world/blocks.js');
+      const { game, host } = await mkHost('FARMA', { hunger: true, env: false });
+      game.flags['boss:thu-linh-soi'] = true; game.flags['boss:bo-cap-chua'] = true;                 // mở vùng, không bị khí độc gặm máu
+      const cx = 2000, cz = 2000, y0 = 30;
+      for (let dx = -10; dx <= 10; dx++) for (let dz = -10; dz <= 10; dz++) { game.world.set(cx + dx, y0, cz + dz, B.GRASS); for (let dy = 1; dy <= 6; dy++) game.world.set(cx + dx, y0 + dy, cz + dz, 0); }
+      game.world.set(cx + 3, y0, cz, B.WATER);
+      const a = await join('FARMA', 'ua', 'An'), b = await join('FARMA', 'ub', 'Bình');
+      await until(() => game.players.size === 3 && a.snap && b.snap && a.you && b.you);
+      const pa = game.player('ua'), pb = game.player('ub'), at = (p, dx, dz) => game.teleportPlayer(p, cx + dx + 0.5, y0 + 1, cz + dz + 0.5);
+      at(pa, -1, 2); at(pb, 1, 3);
+      const slot = (s, id) => s.you.inv.findIndex(x => x && x.id === id), has = (s, id) => slot(s, id) >= 0;
+      const out = {}, cell = { x: cx - 2, y: y0, z: cz }, crop = { x: cx - 2, y: y0 + 1, z: cz }, stage = s => s.world.get(crop.x, crop.y, crop.z);
+      // A cuốc đất, gieo; B thấy ruộng và cây
+      game.giveItem('ua', 'wood_hoe', 1); game.giveItem('ua', 'wheat_seed', 4); await until(() => has(a, 'wood_hoe') && has(a, 'wheat_seed'));
+      a.act({ t: 'sel', i: slot(a, 'wood_hoe') }); await until(() => pa.sel === slot(a, 'wood_hoe'));
+      a.act({ t: 'till', ...cell }); await until(() => b.world.get(cell.x, cell.y, cell.z) === 40);
+      a.act({ t: 'sel', i: slot(a, 'wheat_seed') }); await until(() => pa.sel === slot(a, 'wheat_seed'));
+      a.act({ t: 'plant', ...cell }); await until(() => stage(b) === 42);
+      // cây lớn qua từng giai đoạn: cả hai thấy; người vào muộn nhận đúng giai đoạn cuối
+      for (let i = 0; i < 125; i++) game.tick(1); await until(() => stage(a) === 43 && stage(b) === 43); out.s1 = true;
+      for (let i = 0; i < 120; i++) game.tick(1); await until(() => stage(a) === 44 && stage(b) === 44); out.s2 = true;
+      for (let i = 0; i < 120; i++) game.tick(1); await until(() => stage(a) === 45 && stage(b) === 45); out.s3 = true;
+      const c = await join('FARMA', 'uc', 'Cường'); await until(() => c.snap && c.you); at(game.player('uc'), 2, 3); out.lateStage = c.world.get(crop.x, crop.y, crop.z);
+      out.lateFarm = c.world.get(cell.x, cell.y, cell.z);
+      // A thu hoạch bằng bấm phải: cây về giai đoạn 0 ở cả ba máy, A nhận lúa mì
+      a.act({ t: 'harvest', ...crop }); await until(() => stage(b) === 42 && stage(c) === 42 && has(a, 'wheat')); out.harvest = true;
+      // chơi chung: B và A cùng cho một con gà hoang ăn; chỉ một lần có hiệu lực, người kia bị từ chối và không bị trừ
+      const hen = spawnMob(game, 'ga', cx + 0.5, y0 + 1, cz + 4.5); hen.frozen = true;
+      at(pa, 0, 3); at(pb, 1, 3);
+      game.giveItem('ub', 'wheat_seed', 2); await until(() => has(b, 'wheat_seed')); b.act({ t: 'sel', i: slot(b, 'wheat_seed') }); await until(() => pb.sel === slot(b, 'wheat_seed'));
+      const cnt = (s) => s.you.inv.reduce((n, x) => n + (x && x.id === 'wheat_seed' ? x.n : 0), 0);
+      await until(() => cnt(a) > 0 && cnt(b) === 2); const before = game.player('ua').inv.reduce((n, x) => n + (x && x.id === 'wheat_seed' ? x.n : 0), 0) + 2;
+      const fails = []; a.on('ev', e => { if (e.t === 'fail') fails.push(e); }); b.on('ev', e => { if (e.t === 'fail') fails.push(e); });
+      a.act({ t: 'feed', id: hen.id }); b.act({ t: 'feed', id: hen.id });
+      await until(() => hen.tamed && fails.length >= 1); await wait(250);
+      const after = game.player('ua').inv.reduce((n, x) => n + (x && x.id === 'wheat_seed' ? x.n : 0), 0) + game.player('ub').inv.reduce((n, x) => n + (x && x.id === 'wheat_seed' ? x.n : 0), 0);
+      out.feed = { used: before - after, fails: fails.map(f => [f.a, f.reason]) };
+      await until(() => [a, b, c].every(s => s.snap.es.some(e => e.id === hen.id && e.tm === 1 && e.lv === 1))); out.flags = true;
+      // thanh đói của mỗi người độc lập
+      game.giveItem('ua', 'cooked_meat', 1); await until(() => has(a, 'cooked_meat')); const f0 = a.you.food; a.act({ t: 'sel', i: slot(a, 'cooked_meat') }); await until(() => pa.sel === slot(a, 'cooked_meat'));
+      pa.food = 5; game.touch(pa); await until(() => a.you.food === 5 && b.you.food > 5);
+      a.act({ t: 'use' }); await until(() => a.you.food === 13); out.food = [a.you.food, b.you.food, c.you.food];
+      game.giveItem('ua', 'veg_soup', 1); await until(() => has(a, 'veg_soup')); a.act({ t: 'sel', i: slot(a, 'veg_soup') }); await until(() => pa.sel === slot(a, 'veg_soup')); pa.eatAt = -99; pa.hp = 5; game.touch(pa); await until(() => a.you.hp === 5);
+      a.act({ t: 'use' }); await until(() => a.you.fx && a.you.fx.some(f => f.id === 'regen')); out.fxA = a.you.fx.map(f => f.id); out.fxB = b.you.fx.length;
+      for (const s of [a, b, c]) s.leave(); host.leave();
+      return out;
+    """)
+    assert r['s1'] and r['s2'] and r['s3'] and r['lateStage'] == 45 and r['lateFarm'] == 40 and r['harvest'] and r['flags'], r
+    assert r['feed']['used'] == 1 and len(r['feed']['fails']) == 1 and r['feed']['fails'][0][0] == 'feed' and r['feed']['fails'][0][1] == 'busy', r
+    assert r['food'][0] == 13 and r['food'][1] > 5 and r['fxA'] == ['regen'] and r['fxB'] == 0, r
+
+
+@test
+def test_survival_content_valid(pg, browser, base):
+    _open_game(pg, base)
+    r = pg.evaluate("""async () => {
+      const imp = p => import('/games/the-gioi-khoi/' + p);
+      const { validateContent, loadContent } = await imp('content/validate.js');
+      const { ITEMS } = await imp('content/items.js'); const { MOBS } = await imp('content/mobs.js'); const { QUESTS } = await imp('content/quests.js');
+      const { BLOCKS, CROP_BLOCKS, cropOf, B } = await imp('world/blocks.js'); const { CROPS } = await imp('content/farming.js'); const { makeAtlas } = await imp('render/atlas.js');
+      const { createIcons } = await imp('ui/icons.js'); const { TILES, ATLAS_COLS, BLOCK_BY_NAME } = await imp('world/blocks.js');
+      const c = await loadContent(); const errors = validateContent(c);
+      const ids = ['wood_hoe', 'stone_hoe', 'iron_hoe', 'shears', 'wheat_seed', 'wheat', 'carrot', 'potato', 'egg', 'wool', 'pork', 'chicken', 'bread', 'baked_potato', 'cooked_pork', 'cooked_chicken', 'veg_soup', 'hearty_stew', 'egg_cake'];
+      const icons = createIcons(makeAtlas()), urls = {}, blank = [];
+      for (const id of ids) {
+        urls[id] = icons.get(id);
+        const cv = icons.canvas(id), d = cv.getContext('2d').getImageData(0, 0, cv.width, cv.height).data; let n = 0; for (let i = 3; i < d.length; i += 4) if (d[i] > 40) n++;
+        if (n < 60) blank.push(id);
+      }
+      const atlas = makeAtlas(), actx = atlas.getContext('2d'), tiles = {};
+      for (const k of Object.keys(CROP_BLOCKS)) for (let s = 0; s < 4; s++) {
+        const t = TILES.indexOf(`crop_${k}_${s}`), d = actx.getImageData((t % ATLAS_COLS) * 16, Math.floor(t / ATLAS_COLS) * 16, 16, 16).data; let n = 0, key = '';
+        for (let i = 0; i < d.length; i += 4) { if (d[i + 3] > 128) n++; key += d[i] + ',' + d[i + 1] + ',' + d[i + 2] + ';'; }
+        tiles[k + s] = { n, key };
+      }
+      const farmTop = ['farmland_top', 'farmland_wet_top'].map(nm => { const t = TILES.indexOf(nm); return Array.from(actx.getImageData((t % ATLAS_COLS) * 16, Math.floor(t / ATLAS_COLS) * 16, 4, 4).data).join(); });
+      return { errors, distinct: new Set(Object.values(urls)).size, n: ids.length, blank, tileCounts: Object.values(tiles).map(t => t.n), tileDistinct: new Set(Object.values(tiles).map(t => t.key)).size,
+               farmDiff: farmTop[0] !== farmTop[1], blocks: BLOCKS.length, ids: [B.FARMLAND, B.FARMLAND_WET, CROP_BLOCKS.wheat[0], CROP_BLOCKS.potato[3]], farmland: [BLOCKS[40].name, BLOCKS[41].name, BLOCKS[42].name, BLOCKS[53].name],
+               plantFlags: [42, 45, 46, 53].map(i => [BLOCKS[i].plant, BLOCKS[i].deco, BLOCKS[i].solid]), farmSolid: [BLOCKS[40].solid, BLOCKS[40].drop, BLOCKS[41].drop],
+               mobs: ['ga', 'cuu', 'lon'].map(k => [MOBS[k].ai, !!MOBS[k].breed, MOBS[k].passive]), quest: QUESTS['harvest-1'] && QUESTS['harvest-1'].steps.map(s => s.type + ':' + s.item + ':' + s.n) };
+    }""")
+    assert r['errors'] == [], r
+    assert r['distinct'] == r['n'] and r['blank'] == [], r                                # mọi vật phẩm mới có icon vẽ riêng, không trống
+    assert all(n > 6 for n in r['tileCounts']) and r['tileDistinct'] == 12 and r['farmDiff'], r
+    assert r['blocks'] == 54 and r['ids'] == [40, 41, 42, 53] and r['farmland'] == ['farmland', 'farmland_wet', 'crop_wheat_0', 'crop_potato_3'], r
+    assert all(f == [True, True, False] for f in r['plantFlags']) and r['farmSolid'] == [True, 'dirt', 'dirt'], r
+    assert r['mobs'] == [['farm', True, True]] * 3 and r['quest'] == ['collect:wood_hoe:1', 'collect:wheat:6', 'collect:bread:1'], r
+
+
+@test
+def test_survival_ui(pg, browser, base):
+    _open_game(pg, base)
+    r = ev(pg, r"""
+      const g = __g, game = g.game, uid = g.S.uid, p = game.player(uid), out = {};
+      const H = await imp('sim/hunger.js'); const hudMod = await imp('ui/hud.js'); const { B } = await imp('world/blocks.js'); const { spawnMob } = await imp('sim/mobs.js');
+      const bar = () => { const e = document.getElementById('food'); return { n: e.querySelectorAll('i.ic').length, full: e.querySelectorAll('i.ic.full').length, half: e.querySelectorAll('i.ic.half').length, empty: e.querySelectorAll('i.ic.empty').length, pulse: e.classList.contains('pulse') }; };
+      const setFood = async (v) => { p.food = v; p.fat = 0; game.touch(p); await until(() => g.S.you.food === v); await wait(80); return bar(); };
+      out.f20 = await setFood(20); out.f7 = await setFood(7); out.f1 = await setFood(1); out.f0 = await setFood(0); await setFood(20);
+      // hiệu ứng: biểu tượng, tên, số giây đếm lùi; ngộ độc có biểu tượng riêng
+      H.addFx(game, p, 'power', 100); await until(() => document.querySelector('#fxbar .fx[data-id="power"]'));
+      const fx = document.querySelector('#fxbar .fx[data-id="power"]'); out.fx = { text: fx.innerText.replace(/\s+/g, ' ').trim(), title: fx.title, img: !!fx.querySelector('img') };
+      H.poison(game, p, 6); await until(() => document.querySelector('#fxbar .fx[data-id="poison"]')); out.poison = document.querySelector('#fxbar .fx[data-id="poison"]').title;
+      await wait(1300); out.fxLeft = Number(document.querySelector('#fxbar .fx[data-id="power"] .left').textContent);
+      p.psn = null; H.clearFx(game, p); game.touch(p); await until(() => document.querySelectorAll('#fxbar .fx').length === 0);
+      // tooltip vật phẩm ăn được
+      out.tipBread = hudMod.itemTip('bread'); out.tipSoup = hudMod.itemTip('veg_soup'); out.tipRaw = hudMod.itemTip('meat'); out.tipSword = hudMod.itemTip('iron_sword');
+      game.giveItem(uid, 'bread', 2); await until(() => [...document.querySelectorAll('#hotbar .slot')].some(s => (s.title || '').includes('Bánh mì')));
+      out.slotTitle = [...document.querySelectorAll('#hotbar .slot')].map(s => s.title).find(t => t && t.includes('Bánh mì'));
+      return out;
+    """)
+    assert r['f20'] == {'n': 10, 'full': 10, 'half': 0, 'empty': 0, 'pulse': False}, r
+    assert r['f7'] == {'n': 10, 'full': 3, 'half': 1, 'empty': 6, 'pulse': False} and r['f1'] == {'n': 10, 'full': 0, 'half': 1, 'empty': 9, 'pulse': False}, r
+    assert r['f0'] == {'n': 10, 'full': 0, 'half': 0, 'empty': 10, 'pulse': True}, r
+    assert 'Sức mạnh' in r['fx']['text'] and r['fx']['title'] == 'Sức mạnh' and r['fx']['img'] and 9 <= len(r['fx']['text']) <= 20 and r['poison'] == 'Ngộ độc', r
+    assert 96 <= r['fxLeft'] <= 99, r
+    assert 'Đói +6' in r['tipBread'] and 'Máu +2' in r['tipBread'] and 'Hồi phục' in r['tipSoup'] and '45' in r['tipSoup'] and 'ngộ độc' in r['tipRaw'].lower(), r
+    assert 'Bánh mì' in r['slotTitle'] and 'Đói +6' in r['slotTitle'] and 'Đói' not in r['tipSword'], r
+
+    # --- ngắm và bấm phải thật: cuốc, gieo, thu hoạch, ăn, cho ăn, cắt len; tooltip cây/ruộng/thú
+    pg.evaluate("""async () => {
+      const g = __g, game = g.game, uid = g.S.uid, p = game.player(uid), w = game.world, l = g.local;
+      const wait = ms => new Promise(r => setTimeout(r, ms)), until = async (f, ms = 4000) => { const t = Date.now(); while (!f()) { if (Date.now() - t > ms) throw new Error('hết giờ chờ: ' + String(f).slice(0, 100)); await wait(20); } };
+      const { B, CROP_BLOCKS } = await import('/games/the-gioi-khoi/world/blocks.js'); const { spawnMob } = await import('/games/the-gioi-khoi/sim/mobs.js');
+      const bx = Math.floor(l.x) + 4, bz = Math.floor(l.z) - 6, by = w.surfaceY(bx, bz);
+      for (let dx = -3; dx <= 8; dx++) for (let dz = -3; dz <= 3; dz++) { w.set(bx + dx, by, bz + dz, B.GRASS); for (let dy = 1; dy <= 4; dy++) w.set(bx + dx, by + dy, bz + dz, 0); }
+      p.x = bx + 1.5; p.z = bz + 4.5; p.y = by + 1; l.x = p.x; l.z = p.z; l.y = p.y; await wait(400);
+      const slotOf = id => g.S.you.inv.findIndex(s => s && s.id === id);
+      window.T = { bx, by, bz, B, CROP_BLOCKS, spawnMob, wait, until,
+        tip: () => document.getElementById('tip').innerText.trim(), toast: () => document.getElementById('toast').innerText.trim(),
+        count: id => g.S.you.inv.reduce((n, s) => n + (s && s.id === id ? s.n : 0), 0),
+        hold: async (id, n = 6) => { if (slotOf(id) < 0) game.giveItem(uid, id, n); await until(() => slotOf(id) >= 0); g.S.act({ t: 'sel', i: slotOf(id) }); await until(() => g.S.you.sel === slotOf(id) && p.sel === slotOf(id)); },
+        look: (x, y, z) => g.lookAt(x, y, z), hostCrop: (x, y, z, kind, s) => { game.setBlock(x, y, z, CROP_BLOCKS[kind][s]); game.crops.set(x + ',' + y + ',' + z, { k: kind, s, g: s * 100, x, y, z }); } };
+    }""")
+    pg.mouse.move(550, 300)
+    rclick = lambda: (pg.mouse.down(button='right'), pg.mouse.up(button='right'))
+    T = lambda js, arg=None: pg.evaluate("async (a) => { const T = window.T; " + js + " }", arg)
+
+    # tooltip cây (giai đoạn, độ ẩm) và gợi ý khi cầm hạt/cuốc
+    T("T.hostCrop(T.bx, T.by + 1, T.bz, 'wheat', 2); __g.game.setBlock(T.bx, T.by, T.bz, T.B.FARMLAND); T.look(T.bx + 0.5, T.by + 1.3, T.bz + 0.5); await T.until(() => T.tip().includes('Lúa mì'));")
+    tip1 = T("return T.tip();")
+    T("__g.game.setBlock(T.bx + 1, T.by, T.bz, T.B.FARMLAND_WET); T.hostCrop(T.bx + 1, T.by + 1, T.bz, 'carrot', 3); T.look(T.bx + 1.5, T.by + 1.3, T.bz + 0.5); await T.until(() => T.tip().includes('Cà rốt'));")
+    tip2 = T("return T.tip();")
+    T("__g.game.setBlock(T.bx + 2, T.by, T.bz, T.B.FARMLAND); await T.hold('wheat_seed'); T.look(T.bx + 2.5, T.by + 0.95, T.bz + 0.5); await T.until(() => T.tip().includes('gieo'));")
+    T("await T.hold('wood_hoe', 1); T.look(T.bx + 3.5, T.by + 0.95, T.bz + 0.5); await T.until(() => T.tip().includes('cày'));")
+    assert 'Lúa mì' in tip1 and '3/4' in tip1 and 'khô' in tip1, tip1
+    assert 'Cà rốt' in tip2 and '4/4' in tip2 and 'ướt' in tip2 and 'chín' in tip2, tip2
+
+    # cuốc đất: chuột phải lên cỏ bằng cuốc
+    rclick(); pg.wait_for_function("__g.game.world.get(window.T.bx + 3, window.T.by, window.T.bz) >= 40", timeout=8000)
+    # gieo: hạt lên ruộng; hạt lên cỏ thì báo "Hạt cần đặt lên đất cày"
+    T("await T.hold('wheat_seed'); T.look(T.bx + 4.5, T.by + 0.95, T.bz + 0.5);")
+    rclick(); pg.wait_for_timeout(300)
+    assert 'Hạt cần đặt lên đất cày' in T("return T.toast();")
+    seeds0 = T("return T.count('wheat_seed');")
+    T("T.look(T.bx + 3.5, T.by + 0.95, T.bz + 0.5);"); rclick()
+    pg.wait_for_function("__g.game.world.get(window.T.bx + 3, window.T.by + 1, window.T.bz) === 42", timeout=8000)
+    pg.wait_for_function("(n) => window.T.count('wheat_seed') === n - 1", arg=seeds0, timeout=8000)
+    # cây chưa chín: bấm phải tay không báo "Cây chưa chín"; cây chín: thu hoạch, về giai đoạn 0, nhận lúa mì
+    T("await T.hold('stick'); T.look(T.bx + 3.5, T.by + 1.3, T.bz + 0.5);"); rclick(); pg.wait_for_timeout(300)
+    assert 'Cây chưa chín' in T("return T.toast();")
+    T("T.hostCrop(T.bx + 3, T.by + 1, T.bz, 'wheat', 3); await T.wait(300);"); w0 = T("return T.count('wheat');")
+    rclick(); pg.wait_for_function("(n) => window.T.count('wheat') > n", arg=w0, timeout=8000)
+    pg.wait_for_function("__g.game.world.get(window.T.bx + 3, window.T.by + 1, window.T.bz) === 42", timeout=8000)
+    # ăn: chuột phải lên trời khi cầm thịt nướng
+    T("await T.hold('cooked_meat'); const p = __g.game.player(__g.S.uid); p.food = 10; p.fat = 0; __g.game.touch(p); await T.wait(200); __g.lookAt(__g.local.x, __g.local.y + 50, __g.local.z);")
+    rclick(); pg.wait_for_function("__g.game.player(__g.S.uid).food >= 17", timeout=8000)
+    # cho ăn: heo hoang đứng yên; thú đã thuần hiện tooltip (đã thuần, đang yêu, non, đã cắt len)
+    T("const e = T.spawnMob(__g.game, 'lon', __g.local.x + 1.5, T.by + 1, __g.local.z - 1.5); e.frozen = true; window.PIG = e.id; await T.hold('carrot'); await T.until(() => __g.interp.es.some(x => x.id === window.PIG)); const q = __g.interp.es.find(x => x.id === window.PIG); T.look(q.x, q.y + 0.5, q.z);")
+    rclick(); pg.wait_for_function("__g.game.ents.get(window.PIG).tamed === true", timeout=8000)
+    pg.wait_for_function("window.T.tip().includes('Lợn') && window.T.tip().includes('đã thuần') && window.T.tip().includes('yêu')", timeout=8000)
+    T("const e = __g.game.ents.get(window.PIG); e.age = 10; await T.wait(400); const q = __g.interp.es.find(x => x.id === window.PIG); T.look(q.x, q.y + 0.2, q.z); await T.until(() => T.tip().includes('non'));")
+    T("const e = T.spawnMob(__g.game, 'cuu', __g.local.x - 1.5, T.by + 1, __g.local.z - 1.5, { persist: true, tamed: true }); e.frozen = true; window.SHEEP = e.id; await T.hold('shears', 1); await T.until(() => __g.interp.es.some(x => x.id === window.SHEEP)); const q = __g.interp.es.find(x => x.id === window.SHEEP); T.look(q.x, q.y + 0.6, q.z);")
+    rclick(); pg.wait_for_function("window.T.count('wool') >= 1", timeout=8000)
+    pg.wait_for_function("window.T.tip().includes('cắt len')", timeout=8000)
+
+    # ảnh chụp: ruộng đủ 4 giai đoạn, không trống, nhiều màu ở vùng cây
+    shot = pg.evaluate("""async () => {
+      const T = window.T, g = __g, game = g.game, l = g.local, w = game.world;
+      for (let i = 0; i < 4; i++) { game.setBlock(T.bx - 2 + i, T.by, T.bz - 2, T.B.FARMLAND_WET); T.hostCrop(T.bx - 2 + i, T.by + 1, T.bz - 2, 'wheat', i); game.setBlock(T.bx - 2 + i, T.by, T.bz - 3, T.B.FARMLAND); T.hostCrop(T.bx - 2 + i, T.by + 1, T.bz - 3, i % 2 ? 'carrot' : 'potato', i); }
+      l.x = T.bx - 0.5; l.z = T.bz + 1.0; l.y = T.by + 1; T.look(T.bx - 0.5, T.by + 1.0, T.bz - 2.5); await T.wait(900); g.renderNow();
+      const src = g.scene.renderer.domElement, c = document.createElement('canvas'); c.width = 300; c.height = 170; const ctx = c.getContext('2d'); g.scene.render(); ctx.drawImage(src, 0, 0, 300, 170);
+      const d = ctx.getImageData(0, 30, 300, 110).data, colors = new Set(); let green = 0, yellow = 0;
+      for (let i = 0; i < d.length; i += 4) { colors.add((d[i] >> 4) + ',' + (d[i + 1] >> 4) + ',' + (d[i + 2] >> 4)); if (d[i + 1] > d[i] + 25 && d[i + 1] > d[i + 2] + 25) green++; if (d[i] > 110 && d[i + 1] > 90 && d[i + 2] < 85 && Math.abs(d[i] - d[i + 1]) < 60) yellow++; }
+      return { colors: colors.size, green, yellow, tris: g.scene.renderer.info.render.triangles };
+    }""")
+    pg.screenshot(path='/tmp/claude-464201200/-data-yuu-ai-data-yuu-self-c/ffbac0c7-dba7-4885-b0fa-42f49ea80379/scratchpad/shot_farm.png')
+    assert shot['colors'] >= 3 and shot['green'] > 20 and shot['yellow'] > 5 and shot['tris'] > 1000, shot
+
+
+@test
+def test_survival_perf(pg):
+    r = ev(pg, FARM_JS + r"""
+      const { buildChunkMesh } = await imp('render/mesher.js');
+      const g = new Game({ seed: 31337, spawning: false, env: false, hunger: true });
+      const ps = []; for (let i = 1; i <= 2; i++) { const p = g.addPlayer('u' + i, 'P' + i); p.hp = p.maxHp = 9999; p.x = 2000.5 + i * 6; p.z = 2000.5; p.y = 31; ps.push(p); }
+      const cx = 2000, cz = 2000, y0 = 30;
+      for (let dx = -14; dx <= 24; dx++) for (let dz = -14; dz <= 20; dz++) { g.world.set(cx + dx, y0, cz + dz, B.GRASS); for (let dy = 1; dy <= 6; dy++) g.world.set(cx + dx, y0 + dy, cz + dz, 0); }
+      const kinds = ['wheat', 'carrot', 'potato']; let n = 0;
+      for (let dx = -12; dx < 13; dx++) for (let dz = -10; dz < 10; dz++) {                                       // 500 cây (25 x 20) đủ giai đoạn
+        const kind = kinds[(dx + dz + 100) % 3], s = ((dx * 7 + dz * 3 + 100) % 4 + 4) % 4, x = cx + dx, z = cz + dz;
+        g.world.set(x, y0, z, dx % 5 === 0 ? B.FARMLAND_WET : B.FARMLAND); g.world.set(x, y0 + 1, z, CROP_BLOCKS[kind][s]);
+        g.crops.set(x + ',' + (y0 + 1) + ',' + z, { k: kind, s, g: CROPS[kind].secs * s / 3, x, y: y0 + 1, z }); n++;
+      }
+      const types = ['ga', 'cuu', 'lon'];
+      for (let i = 0; i < 24; i++) spawnMob(g, types[i % 3], cx + 0.5 + (i % 8) * 2 - 8, y0 + 1, cz + 12.5 + Math.floor(i / 8) * 2, { persist: true, tamed: true });
+      const hostile = ['soi-xam', 'xac-song', 'bo-cap', 'xuong-cung', 'gau-bang'];
+      for (let i = 0; i < 40; i++) { const p = ps[i % 2], x = p.x + Math.cos(i) * 10, z = p.z + Math.sin(i) * 10; spawnMob(g, hostile[i % 5], x, y0 + 1, z); }
+      for (let i = 0; i < 60; i++) { g.tick(0.05); for (const p of ps) p.hp = 9999; }                              // 3 lượt xử lý cây (cả chi phí đặt block khi đổi giai đoạn)
+      let worst = 0, sum = 0; const N = 100;
+      for (let i = 0; i < N; i++) { const t = performance.now(); g.tick(0.05); const d = performance.now() - t; sum += d; worst = Math.max(worst, d); for (const p of ps) p.hp = 9999; }
+      let pass = 0; for (let i = 0; i < 20; i++) { g.farmDirty = i % 2 === 0; const t = performance.now(); farmMod.farmTick(g, 1); pass += performance.now() - t; }
+      const t0 = performance.now(); const m = buildChunkMesh((x, y, z) => g.world.get(x, y, z), 125, 125); const mesh = performance.now() - t0;
+      const tame = [...g.ents.values()].filter(e => e.persist).length, mobs = [...g.ents.values()].filter(e => e.kind === 'mob').length;
+      const flips = (() => { const dirty0 = g.world.dirty.size; return dirty0; })();
+      return { n, avg: sum / N, worst, pass: pass / 20, mesh, plantVerts: m.plants.positions.length / 3, tame, mobs, crops: g.crops.size };
+    """)
+    assert r['n'] == 500 and r['tame'] == 24 and r['mobs'] == 64 and r['crops'] == 500, r
+    assert r['avg'] < 5 and r['worst'] < 25, r                      # ngưỡng giữ nguyên như test_perf_tick_with_40_mobs_and_5_players
+    assert r['pass'] < 3, r                                         # một lượt xử lý 500 cây (mục tiêu <= 1 ms trên máy thường)
+    assert r['mesh'] < 400 and r['plantVerts'] > 400, r             # dựng mesh chunk có cây không vượt ngưỡng chunk hiện tại
+
+
+@test
+def test_survival_world_delta_is_run_length_encoded_and_reads_old_format(pg):
+    r = ev(pg, GAME_JS + r"""
+      const { World } = await imp('world/world.js');
+      const w = new World(4242);
+      for (let x = 0; x < 12; x++) for (let z = 0; z < 5; z++) w.set(x, 40, z, 8);                    // một mảng phẳng cùng id: gộp thành vài đoạn
+      w.set(3, 41, 3, 42); w.set(4, 41, 3, 43);
+      const d = w.exportDelta(), json = JSON.stringify(d), old = {};
+      for (const [k, m] of w.delta) old[k] = Object.fromEntries(m);
+      const a = new World(4242); a.importDelta(JSON.parse(json));                                      // dạng mới
+      const b = new World(4242); b.importDelta(JSON.parse(JSON.stringify(old)));                       // dạng cũ { chỉ số: id } vẫn nạp được
+      let same = true; for (let x = -1; x < 14; x++) for (let z = -1; z < 7; z++) for (const y of [40, 41]) if (a.get(x, y, z) !== w.get(x, y, z) || b.get(x, y, z) !== w.get(x, y, z)) same = false;
+      return { same, rle: Object.values(d).every(Array.isArray), smaller: json.length < JSON.stringify(old).length / 3, again: JSON.stringify(a.exportDelta()) === json };
+    """)
+    assert r == {'same': True, 'rle': True, 'smaller': True, 'again': True}, r
+
+# ---------------------------------------------------------------- Gói 1: bài của Tester độc lập (phá hoại / biên)
+
+@test
+def test_survival_tester_garbage_args_never_throw(pg):
+    r = ev(pg, FARM_JS + r"""
+      const F = mkFarm(); const { g, p } = F; const bads = [null, undefined, {}, { x: NaN, y: 1, z: 1 }, { x: 1.5, y: 30, z: 2000 }, { x: '2000', y: 30, z: 2000 }, { x: 1e12, y: 1e12, z: 1e12 }, { x: -1, y: -5, z: 2000 }, { id: 'a' }, { id: -1 }, { id: 1e99 }, { id: NaN }, { id: null }, [], 'x', 7];
+      const errs = [], res = [];
+      giveHeld(g, p, 'wood_hoe');
+      for (const t of ['till', 'plant', 'harvest', 'feed', 'shear', 'use', 'sel']) for (const a of bads) {
+        try { const r = g.act('u1', a && typeof a === 'object' && !Array.isArray(a) ? { t, ...a } : { t, x: a, id: a }); res.push(r && r.ok); } catch (e) { errs.push(t + ':' + JSON.stringify(a) + ':' + e.message); }
+      }
+      return { errs, anyOk: res.filter(Boolean).length };
+    """)
+    assert r['errs'] == [], r
+
+
+@test
+def test_survival_tester_dead_player_cannot_farm_or_eat(pg):
+    r = ev(pg, FARM_JS + r"""
+      const F = mkFarm(); const { g, p } = F; F.till(0, 0); F.plant(0, 0); F.ripe(0, 0);
+      const hen = F.animal('ga', 1, 1); giveHeld(g, p, 'wheat_seed', 3); p.food = 3; g.touch(p);
+      p.dead = true; p.hp = 0;
+      const rs = [g.act('u1', { t: 'harvest', ...F.at(0, 0, 1) }), g.act('u1', { t: 'feed', id: hen.id }), g.act('u1', { t: 'use' }), g.act('u1', { t: 'till', ...F.at(2, 2) })].map(x => x.reason);
+      g.tick(1); g.tick(1);
+      return { rs, count: count(p, 'wheat_seed'), wheat: count(p, 'wheat'), tamed: !!hen.tamed, food: p.food };
+    """)
+    assert r['rs'] == ['dead'] * 4 and r['count'] == 3 and r['wheat'] == 0 and not r['tamed'], r
+
+
+@test
+def test_survival_tester_spam_conserves_items(pg):
+    r = ev(pg, FARM_JS + r"""
+      const F = mkFarm(); const { g, p } = F; F.stand(0, 0);
+      p.inv.fill(null); g.giveItem('u1', 'wheat_seed', 10); g.giveItem('u1', 'wood_hoe', 1); g.giveItem('u1', 'wheat', 5);
+      const si = p.inv.findIndex(s => s && s.id === 'wheat_seed'), hi = p.inv.findIndex(s => s && s.id === 'wood_hoe'), wi = p.inv.findIndex(s => s && s.id === 'wheat');
+      let okTill = 0, okPlant = 0;
+      p.sel = hi; for (let i = 0; i < 200; i++) if (g.act('u1', { t: 'till', ...F.at(0, 0) }).ok) okTill++;
+      p.sel = si; for (let i = 0; i < 200; i++) if (g.act('u1', { t: 'plant', ...F.at(0, 0) }).ok) okPlant++;
+      F.ripe(0, 0); let okH = 0; for (let i = 0; i < 200; i++) { if (g.act('u1', { t: 'harvest', ...F.at(0, 0, 1) }).ok) okH++; }
+      const hen = F.animal('ga', 1, 1); p.sel = si; let okF = 0; for (let i = 0; i < 100; i++) if (g.act('u1', { t: 'feed', id: hen.id }).ok) okF++;
+      p.sel = wi; let ate = 0; p.hp = 5; p.food = 1; for (let i = 0; i < 100; i++) { if (g.act('u1', { t: 'use' }).ok) ate++; }
+      return { okTill, okPlant, okH, okF, ate, seeds: count(p, 'wheat_seed'), crops: g.crops.size, farm: g.farm.size };
+    """)
+    assert r['okTill'] >= 1 and r['okPlant'] == 1 and r['okH'] == 1, r
+    assert r['okF'] <= 2, r
+
+
+@test
+def test_survival_tester_water_and_break_edge_cases(pg):
+    r = ev(pg, FARM_JS + r"""
+      const F = mkFarm(); const { g, p, cx, y0, cz } = F;
+      F.till(0, 0); F.plant(0, 0); const k = F.key(0, 0);
+      g.setBlock(cx, y0 + 1, cz, B.WATER);                       // nước chảy đè lên cây
+      const afterWater = { crop: g.crops.has(k), id: g.world.get(cx, y0 + 1, cz) };
+      g.setBlock(cx, y0 + 1, cz, 0);
+      const farmBack = g.farm.has(F.key(0, 0, 0));
+      // đất cày bị thay bằng nước, rồi tick lâu: không rác sổ
+      F.till(5, 5); F.plant(5, 5); g.setBlock(cx + 5, y0, cz + 5, B.WATER); runBig(g, 5);
+      const leftover = [...g.crops.keys()].filter(kk => kk === F.key(5, 5)).length;
+      // đặt cây lên rìa thế giới (y cao nhất)
+      F.stand(0, 0); const top = F.till(0, 3); 
+      return { afterWater, farmBack, leftover, cropsSize: g.crops.size, farmSize: g.farm.size, top: top.ok };
+    """)
+    assert r['leftover'] == 0 and not r['afterWater']['crop'], r
+
+
+@test
+def test_survival_tester_hostile_save_is_sanitized(pg):
+    r = ev(pg, FARM_JS + r"""
+      const F = mkFarm({ hunger: true }); const { g, p, cx, cz, y0 } = F;
+      F.till(0, 0); F.plant(0, 0); F.animal('cuu', 2, 2, { persist: true, tamed: true });
+      const save = JSON.parse(JSON.stringify(g.toSave()));
+      save.crops = { 'x,y,z': { k: 'wheat', g: 1 }, '1,2': null, [F.key(0, 0)]: { k: 'carrot', g: -5 }, __proto__x: 1 };
+      save.farm = { 'a,b,c': 5, [F.key(1, 1, 0)]: 'NaN' };
+      save.animals = [null, 5, { type: 'ga', x: NaN, y: 1, z: 1 }, { type: 'zombie', x: 1, y: 40, z: 1 }, ...Array.from({ length: 60 }, (_, i) => ({ type: 'lon', x: cx + i * 0.1, y: y0 + 1, z: cz, age: -9, hp: 1e9 }))];
+      for (const pl of Object.values(save.players || {})) { pl.food = NaN; pl.fx = { regen: 1e9, bogus: 5 }; pl.poison = -3; pl.fatigue = 'x'; }
+      let g2, err = null;
+      try { g2 = Game.fromSave(save, { spawning: false, env: false, hunger: true }); const q = g2.addPlayer('u1', 'T'); for (let i = 0; i < 40; i++) g2.tick(0.5); } catch (e) { err = e.message; }
+      if (err) return { err };
+      const tame = [...g2.ents.values()].filter(e => e.persist && e.kind === 'mob').length;
+      const q = g2.player('u1');
+      return { err, tame, food: q.food, fx: Object.keys(q.fx || {}), maxHp: [...g2.ents.values()].some(e => e.hp > 100), crops: g2.crops.size, nan: [...g2.crops.values()].some(c => !Number.isFinite(c.g)) };
+    """)
+    assert r['err'] is None and r['tame'] <= 24 and not r['maxHp'] and not r['nan'], r
 
 
 if __name__ == '__main__':

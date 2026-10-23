@@ -18,6 +18,10 @@ import { BOSSES } from '../content/bosses.js';
 import { REGIONS } from '../content/regions.js';
 import { breakTimeFor, canHarvest, nearBench, nearStations } from './rules.js';
 import { makeNoise } from './perception.js';
+import { SAVE_VERSION } from './version.js';
+import { hungerTick, restorePlayerState, serializePlayerState, FOOD_MAX } from './hunger.js';
+import * as farm from './farm.js';
+import * as animals from './animals.js';
 
 const ENV_TEXT = {
   heat: n => `Cái nóng ở ${n} thiêu đốt bạn. Mặc đồ chống nóng (vỏ bọ cạp, than hồng) để chịu được.`,
@@ -27,8 +31,10 @@ const ENV_TEXT = {
 export const REACH = 6.5, EYE = 1.62, MAX_HP = 20, RESPAWN_S = 3, CHEST_SLOTS = 27, ENV_TICK = 4;
 
 export class Game {
-  constructor({ seed, world, spawning = true, env = true } = {}) {
+  constructor({ seed, world, spawning = true, env = true, hunger = true } = {}) {
     this.seed = seed; this.spawning = spawning; this.env = env;       // env: false tắt nóng/lạnh/độc của vùng (dùng khi thử nghiệm)
+    this.hunger = hunger;                                              // hunger: false tắt đói, rủi ro ngộ độc và hồi máu theo đói (các bài thử cũ)
+    this.crops = new Map(); this.farm = new Map();                     // sổ cây trồng ('x,y,z' ô cây) và ruộng trống ('x,y,z' ô đất cày): xem sim/farm.js
     this.world = world || new World(seed);
     this.rng = makeRng(seed ^ 0x5eed);
     this.time = 0; this.tickNo = 0;
@@ -45,11 +51,11 @@ export class Game {
   toSave() {
     const players = { ...this.savedPlayers };
     for (const p of this.players.values()) players[p.uid] = this.playerSave(p);
-    return { v: 1, seed: this.seed, time: this.time, flags: this.flags, delta: this.world.exportDelta(), players, chests: this.chests };
+    return { v: SAVE_VERSION, seed: this.seed, time: this.time, flags: this.flags, delta: this.world.exportDelta(), players, chests: this.chests, ...farm.serializeFarm(this), animals: animals.serializeAnimals(this) };
   }
 
   // Người đang gục lưu ở điểm hồi sinh (không để họ hiện lại ngay tại xác).
-  playerSave(p) { const at = p.dead ? { x: this.spawn.x + 0.5, y: this.world.surfaceY(this.spawn.x, this.spawn.z) + 1, z: this.spawn.z + 0.5 } : p; return { name: p.name, x: at.x, y: at.y, z: at.z, hp: p.dead ? p.maxHp : p.hp, maxHp: p.maxHp, inv: p.inv, sel: p.sel, quests: p.quests, armor: p.armor, home: p.home || null, region: null }; }
+  playerSave(p) { const at = p.dead ? { x: this.spawn.x + 0.5, y: this.world.surfaceY(this.spawn.x, this.spawn.z) + 1, z: this.spawn.z + 0.5 } : p; return { name: p.name, x: at.x, y: at.y, z: at.z, hp: p.dead ? p.maxHp : p.hp, maxHp: p.maxHp, inv: p.inv, sel: p.sel, quests: p.quests, armor: p.armor, home: p.home || null, region: null, ...serializePlayerState(this, p) }; }
 
   static fromSave(save, opts = {}) {
     const g = new Game({ seed: save.seed, ...opts });
@@ -59,8 +65,10 @@ export class Game {
     g.rng = makeRng(save.seed ^ 0x5eed ^ Math.floor(g.time * 1000));
     g.savedPlayers = save.players || {};
     g.chests = save.chests || {};
+    farm.restoreFarm(g, save);
     if (g.flags.sites) g.buildStructures();                  // thế giới cũ: dựng thêm đấu trường/làng được bổ sung sau này
     g.ensureNpcs();
+    animals.restoreAnimals(g, save.animals);
     return g;
   }
 
@@ -73,9 +81,11 @@ export class Game {
     const sx = this.spawn.x, sz = this.spawn.z;
     const p = makePlayer(sx + 0.5, this.world.surfaceY(sx, sz) + 1, sz + 0.5);
     Object.assign(p, { uid, name: String(name || 'Khách').slice(0, 16), hp: MAX_HP, maxHp: MAX_HP, inv: makeInventory(), sel: 0, rev: 1,
-      armor: emptyArmor(), home: null, dead: false, respawnAt: 0, tpSeq: 0, lastHurt: -99, attackAt: 0, dig: null, lastState: this.time, quests: { active: {}, done: {} }, region: null });
+      armor: emptyArmor(), home: null, dead: false, respawnAt: 0, tpSeq: 0, lastHurt: -99, attackAt: 0, dig: null, lastState: this.time, quests: { active: {}, done: {} }, region: null,
+      food: FOOD_MAX, fat: 0, fx: {}, fxView: [], psn: null, eatAt: -99, hungerWarn: -99 });
     saved = saved || (Object.hasOwn(this.savedPlayers, uid) ? this.savedPlayers[uid] : null);
-    if (saved) Object.assign(p, JSON.parse(JSON.stringify(saved)), { uid, dead: false, name: p.name });
+    if (saved) { const { food, fatigue, fx, poison, ...rest } = JSON.parse(JSON.stringify(saved)); Object.assign(p, rest, { uid, dead: false, name: p.name }); }
+    restorePlayerState(this, p, saved || {});                // đói, mệt, hiệu ứng, ngộ độc: kẹp giá trị, đổi "giây còn lại" thành thời điểm hết hạn
     this.players.set(uid, p);
     return p;
   }
@@ -103,9 +113,12 @@ export class Game {
     return dx * dx + dy * dy + dz * dz <= REACH * REACH;
   }
 
-  setBlock(x, y, z, id) {
+  // q: đổi do hệ thống (cây lớn, đất ướt/khô): khách bỏ tiếng và hạt (xem game.js, onChange).
+  setBlock(x, y, z, id, q = false) {
+    const prev = this.world.get(x, y, z);
     if (!this.world.set(x, y, z, id)) return false;
-    this.emit(null, { t: 'block', x, y, z, id });
+    this.emit(null, q ? { t: 'block', x, y, z, id, q: 1 } : { t: 'block', x, y, z, id });
+    farm.onBlockSet(this, x, y, z, prev, id);
     return true;
   }
 
@@ -137,6 +150,11 @@ export class Game {
       case 'chest-move': return this.actChestMove(p, a);
       case 'hit': return combat.actHit(this, p, a);
       case 'use': return combat.actUse(this, p);
+      case 'till': return farm.actTill(this, p, a);
+      case 'plant': return farm.actPlant(this, p, a);
+      case 'harvest': return farm.actHarvest(this, p, a);
+      case 'feed': return animals.actFeed(this, p, a);
+      case 'shear': return animals.actShear(this, p, a);
       case 'respawn': return combat.actRespawn(this, p);
       case 'interact': return dialogue.interact(this, p, a);
       case 'dlg': return dialogue.choose(this, p, a);
@@ -166,6 +184,7 @@ export class Game {
     this.makeNoise(a.x + 0.5, a.y + 0.5, a.z + 0.5, def.tool === 'pick' ? 14 : def.tool === 'axe' ? 12 : id === B.LEAVES || isPlant(id) ? 4 : 7);
     if (canHarvest(id, hs ? hs.id : null) && def.drop) this.collect(p, def.drop, 1, a.x + 0.5, a.y + 0.5, a.z + 0.5);
     if (id === B.CHEST) this.spillChest(a.x, a.y, a.z);
+    farm.onBreak(this, p, a.x, a.y, a.z, id);              // cây trồng (sản lượng theo giai đoạn), hạt từ cỏ cao
     this.onBlockBroken?.(p, id);
     return { ok: true };
   }
@@ -303,7 +322,7 @@ export class Game {
   }
 
   makeNoise(x, y, z, radius) { makeNoise(this, x, y, z, radius); }
-  hurtPlayer(p, dmg, src, opts) { combat.hurtPlayer(this, typeof p === 'string' ? this.player(p) : p, dmg, src, opts); }
+  hurtPlayer(p, dmg, src, opts) { return combat.hurtPlayer(this, typeof p === 'string' ? this.player(p) : p, dmg, src, opts); }
   damageEntity(e, dmg, src) { return combat.damageEntity(this, e, dmg, src); }
 
   // ---- công trình, nhiệm vụ, boss ----
@@ -385,6 +404,9 @@ export class Game {
     combat.updateItems(this, dt);
     combat.updateProjectiles(this, dt);
     combat.updatePlayers(this, dt);
+    hungerTick(this, dt);
+    farm.farmTick(this, dt);
+    animals.animalTick(this, dt);
     this.tickExtra?.(dt);
   }
 }

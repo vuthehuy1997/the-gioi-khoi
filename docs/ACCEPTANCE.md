@@ -84,3 +84,41 @@ Chưa kiểm chứng bằng tai: độ hay, độ to cân bằng giữa nhạc v
 | M7 | Giao diện: ô trang bị và thông số giáp, công thức chia nhóm theo trạm (cập nhật khi đặt/đi gần trạm), bấm phải để mặc, bảng rương | `test_ui_*` | ✅ |
 
 Chưa làm: bậc thang và nửa khối, ánh sáng động từ đuốc, trang bị hiện trên người chơi khác, hiệu ứng riêng cho vũ khí di vật.
+
+## Sinh tồn và kinh tế (Gói 1: trồng trọt, nuôi thú, đói, nấu ăn)
+
+Đặc tả: `games/the-gioi-khoi/docs/specs/survival.md`; thiết kế kỹ thuật: `docs/specs/TECH.md` mục 3 và các Ruling (R-5, R-20, R-26, R-31, R-34). Bài mô phỏng chạy trực tiếp `Game` với bước thời gian thô (0,25 đến 1 giây) và bài ghi chú kết quả không phụ thuộc kích thước bước.
+
+| # | Tiêu chí | Test | Trạng thái |
+|---|---|---|---|
+| S-AC1 | Người mới `food` 20; đứng yên 900 giây hoặc chạy nước rút 450 giây thì về 0 (±1); không giảm khi gục, khi tắt `hunger`, khi host tạm dừng | `test_survival_hunger_drain` | ✅ |
+| S-AC2 | Mỗi đòn trúng quái cộng 2 mệt (23 đòn làm đói thêm đúng 1 điểm so với đối chứng) | `test_survival_hunger_exertion` | ✅ |
+| S-AC3 | Hồi máu theo đói (no 1 máu/2 giây sau 4 giây; vừa theo luật cũ; đói không hồi; cạn mất 1 máu/5 giây, giáp không giảm, dừng ở 2 máu); cảnh báo "đang đói" tối đa 1 lần/60 giây | `test_survival_hunger_regen_starve` | ✅ |
+| S-AC4 | 18 món ăn cộng đúng đói và máu (kẹp 20); hồi chiêu ăn 1 giây; từ chối `full` / `not-food` / `empty` không trừ vật phẩm | `test_survival_eat_table` | ✅ |
+| S-AC5 | Đồ sống ngộ độc đúng tỉ lệ (25% ±4% với 1000 mẫu); đúng 3 sát thương thuần trong 6 giây; ngộ độc không bao giờ xuống dưới 1 máu | `test_survival_eat_poison` | ✅ |
+| S-AC6 | Hồi phục (22 máu/45 giây), Sức mạnh (kiếm sắt 6 gây 8), Da dày (đòn 10 còn 9, đòn 20 còn 18: đo theo R-5), không cộng dồn (lấy max), chết xoá hết | `test_survival_food_effects` | ✅ |
+| S-AC7 | Cuốc đất cày cỏ/đất/bùn/rêu; từ chối đá, ô phía trên đặc, ngoài tầm, không cầm cuốc; ba bậc cuốc chế đúng công thức (gỗ/đá ở bàn, sắt ở đe) | `test_survival_till` | ✅ |
+| S-AC8 | Đất ướt khi có nước trong ±4 ngang và 0..-1 dọc; đặt/phá nước đổi trạng thái trong 5 giây | `test_survival_farmland_wetness` | ✅ |
+| S-AC9 | Ruộng trống 300 giây (người chơi ở gần) về dirt; có cây thì không | `test_survival_farmland_revert` | ✅ |
+| S-AC10 | Cây qua giai đoạn 1, 2, 3 đúng mốc (lúa mì khô 120/240/360 giây, ướt một nửa, cà rốt 300, khoai 420, vùng lạnh gấp đôi thời gian) ±5 giây | `test_survival_crop_growth` | ✅ |
+| S-AC11 | Cây ngoài 64 block (hoặc khi người chơi gục) đóng băng, quay lại thì tiếp tục từ tiến trình cũ | `test_survival_crop_chunk_sim` | ✅ |
+| S-AC12 | Gieo lên ruộng trừ 1 hạt; từ chối lên đất thường, ô có cây, ngoài tầm mà không trừ; phá đất dưới cây làm cây gãy và rơi 1 hạt; đặt block lên ruộng trống thì ruộng thành dirt | `test_survival_plant_rules` | ✅ |
+| S-AC13 | Thu hoạch (đào và bấm phải) cho sản lượng trong khoảng ở bảng (200 mẫu, đủ min và max); cây chưa chín chỉ trả 1 hạt; bấm phải đưa cây về giai đoạn 0; hai người cùng bấm thì chỉ một người nhận; kho đầy thì phần dư rơi xuống đất | `test_survival_harvest` | ✅ |
+| S-AC14 | Cỏ cao rơi hạt lúa mì 12% ±2%; Xác Sống rơi cà rốt và khoai tây mỗi loại 8% ±2% | `test_survival_seed_sources` | ✅ |
+| S-AC15 | Thuần hoá bằng đúng thức ăn trong 3 block (yêu 30 giây); sai thức ăn hoặc xa thì từ chối không trừ; thú hoang bỏ chạy, thú đã thuần không bỏ chạy và quanh quẩn gần chuồng; quái không nhắm vào thú | `test_survival_animal_tame_ai` | ✅ |
+| S-AC16 | Thú đã thuần đi theo người cầm đúng thức ăn (còn <= 3 block sau 10 giây), thôi theo khi đổi vật | `test_survival_animal_follow` | ✅ |
+| S-AC17 | Hai thú cùng loài đang yêu sinh đúng 1 con non sau ~6 giây, hết yêu, hồi chiêu 240 giây (cho ăn lại bị từ chối `busy`); con non nhỏ một nửa, cho ăn rút 30 giây, thành trưởng thành đúng mốc | `test_survival_animal_breed_grow` | ✅ |
+| S-AC18 | Gà thuần được cho ăn đẻ 1 trứng trong 150 đến 210 giây (20 mẫu), không đẻ khi đói hoặc còn non; kéo cắt cừu 1 đến 3 len, mọc lại sau 240 giây, tay không / cừu non bị từ chối; lợn chết rơi 1 đến 3 thịt lợn; cừu trọc không rơi len | `test_survival_animal_products` | ✅ |
+| S-AC19 | Trần 24 thú đã thuần (thuần hoá và nhân giống bị từ chối `cap`); thú nuôi không tính vào trần quái, không bị xoá khi đi xa, đóng băng khi ngoài tầm | `test_survival_animal_caps` | ✅ |
+| S-AC20 | 12 công thức mới chế đúng trạm, đúng nguyên liệu; mọi vật phẩm mới có nguồn (validator) và icon riêng, không trống; 12 tile cây khác nhau | `test_survival_cooking_recipes`, `test_survival_content_valid`, `test_content_valid`, `test_content_validator_catches_broken_references` | ✅ |
+| S-AC21 | Bảng giá mua/bán ở Kho làng, Thương nhân, Ngư dân; nhiệm vụ "Vụ mùa đầu tiên" làm từ đầu đến cuối bằng hành động thật (cày, gieo, chờ chín, thu hoạch, nấu bánh mì, trả nhiệm vụ) và trả thưởng | `test_survival_farm_shop_quest` | ✅ |
+| S-AC22 | Lưu/nạp (`toSave`/`fromSave`): cây, ruộng, thú (tuổi, yêu, hồi chiêu, len), đói, mệt, hiệu ứng, ngộ độc; cây tiếp tục lớn đúng mốc; save v1 nạp được; xuất/nhập `.gz` giữ nguyên; file hỏng bị làm sạch; 1000 cây < 100 KB | `test_survival_save_load` | ✅ |
+| S-AC23 | Host cùng hai khách qua transport bộ nhớ: khách thấy ruộng và cây ở mọi giai đoạn, người vào muộn nhận đúng giai đoạn, thu hoạch đồng bộ, hai người cùng cho gà ăn thì một lần có hiệu lực (người kia nhận `fail busy`), cờ `tm`/`lv` có trên snapshot, `you.food`/`you.fx` độc lập từng người | `test_survival_e2e_two_players` | ✅ |
+| S-AC24 | Giao diện: thanh đói đúng số biểu tượng (20, 7, 1, 0 và nhấp nháy khi 0), hàng hiệu ứng có tên và số giây đếm lùi, tooltip vật phẩm/cây/ruộng/thú, bấm phải thật (cày, gieo, thu hoạch, ăn, cho ăn, cắt len), toast tiếng Việt, ảnh chụp có ruộng nhiều giai đoạn; không lỗi console | `test_survival_ui` | ✅ |
+| S-AC25 | Hiệu năng: tick với 24 thú + 40 quái + 500 cây (2 người) avg < 5 ms, worst < 25 ms; một lượt xử lý 500 cây < 3 ms; dựng mesh chunk có cây < 400 ms | `test_survival_perf` | ✅ |
+| S-AC26 | Hồi quy: 106 bài cũ vẫn xanh (với `hunger: false` trong các bộ dựng thử), `test_net.py` 21 bài xanh | toàn bộ `tests/` | ✅ |
+| S-N1 | Hạ tầng dùng chung: `exportDelta` mã hoá chạy (RLE), nạp được cả dạng cũ | `test_survival_world_delta_is_run_length_encoded_and_reads_old_format` | ✅ |
+
+Bài cũ phải sửa có chủ đích: `test_save_load_roundtrip` (`v` = 2); `test_spawn_rules_by_region_and_time` (thú hiền ban ngày giờ gồm cả gà, cừu, lợn chia trọng số với nai và cáo); các bộ dựng thử `GAME_JS`, `ARENA_JS`, `NET_JS`, `mkTown` thêm `hunger: false` để đói không chen vào bài cũ.
+
+Giới hạn đã biết của Gói 1: Da dày chỉ giảm 12% nên đòn nhỏ (<= 4) không thấy khác sau khi làm tròn (R-5; cân bằng lại sau khi chơi thử, đề xuất +4 giáp nếu cần); host không kiểm được nước rút nên mệt tính theo `p.sprint` và vận tốc khách báo (không hứa chống gian lận); bài S-AC23 mở host và hai phiên khách trong cùng một trang (transport bộ nhớ), không mở nhiều tab; âm thanh mới (ăn, cày, gieo, thu hoạch, gà/cừu/lợn kêu) tổng hợp bằng code và chưa nghe thử bằng tai; `design/design-data.json` (bảng thiết kế) chưa dựng lại, script `tools/export_design_data.py` đã được kiểm chạy với dữ liệu mới (có thêm `crops`, `effects`).

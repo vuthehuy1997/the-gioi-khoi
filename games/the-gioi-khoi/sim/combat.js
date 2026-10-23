@@ -6,29 +6,35 @@ import { stepBody } from './mobs.js';
 import { B, isSolid } from '../world/blocks.js';
 
 export const HIT_REACH = 4.5, HIT_CD = 0.5, REGEN_AFTER = 8, REGEN_EVERY = 4;
+// Hồi máu theo đói: no (>= 18) hồi nhanh, vừa (7..17) như luật cũ, đói (<= 6) không tự hồi.
+export const REGEN_FAST_AFTER = 4, REGEN_FAST_EVERY = 2, FOOD_FAST = 18, FOOD_NONE = 6;
 
 import { aggro } from './perception.js';
 
 import { reduceDamage } from './armor.js';
+import { eat, exert, clearFx, powerMul, toughBonus, FOOD_ON_RESPAWN } from './hunger.js';
 
-// src: kẻ gây sát thương (quái, đạn); không có src hoặc opts.pure (khí độc, nóng lạnh, bỏng) thì giáp không làm nhẹ đi.
+// src: kẻ gây sát thương (quái, đạn); không có src hoặc opts.pure (khí độc, nóng lạnh, bỏng, đói, độc) thì giáp không làm nhẹ đi.
+// Trả { dealt, how } (how: null | 'roll' | 'shield' | 'perfect' dành cho gói Chiến đấu).
 export function hurtPlayer(g, p, dmg, src, opts = {}) {
-  if (p.dead || dmg <= 0) return;
-  if (src && !opts.pure) dmg = reduceDamage(dmg, p.armor);
+  if (p.dead || dmg <= 0) return { dealt: 0, how: null };
+  if (src && !opts.pure) dmg = reduceDamage(dmg, p.armor, toughBonus(g, p));
   g.makeNoise(p.x, p.y, p.z, 9);
   p.hp = Math.max(0, p.hp - dmg); p.lastHurt = g.time; g.touch(p);
   g.emit(p.uid, { t: 'hurt', hp: p.hp, by: src ? src.id : null });
   if (p.hp <= 0) {
-    p.dead = true; p.respawnAt = g.time + 3; p.dig = null;
+    p.dead = true; p.respawnAt = g.time + 3; p.dig = null; clearFx(g, p);
     g.emit(null, { t: 'died', uid: p.uid, name: p.name });
     g.onPlayerDeath?.(p);
   }
+  return { dealt: dmg, how: null };
 }
 
 export function dropLoot(g, e) {
   const d = (e.kind === 'boss' ? g.bossDef?.(e) : MOBS[e.type]);
   if (!d) return;
   for (const l of d.drops || []) {
+    if (l.unsheared && e.shearCd > 0) continue;                         // cừu đã cắt len thì không rơi len
     if (g.rng() > l.p) continue;
     const n = l.min + Math.floor(g.rng() * (l.max - l.min + 1));
     if (n > 0) g.dropItem(l.item, n, e.x, e.y + 0.5, e.z);
@@ -60,29 +66,22 @@ export function actHit(g, p, a) {
   const d = Math.hypot(e.x - p.x, (e.y + e.h / 2) - (p.y + 1.62), e.z - p.z) - e.w / 2;
   if (d > HIT_REACH) return { ok: false, reason: 'reach' };
   const h = g.held(p);
-  const dmg = h && h.dmg ? h.dmg : HAND_DAMAGE;
+  const dmg = Math.max(1, Math.ceil((h && h.dmg ? h.dmg : HAND_DAMAGE) * powerMul(g, p)));        // Sức mạnh: x1,25 làm tròn lên
   p.attackAt = g.time + HIT_CD;
+  if (g.hunger) exert(p, 2);                                             // đánh nhau tốn sức: nhanh đói hơn
   g.makeNoise(p.x, p.y, p.z, 12);                                        // đánh nhau gây tiếng động
   g.damageEntity(e, dmg, p);
   return { ok: true };
 }
 
 export function actUse(g, p) {
-  const s = p.inv[p.sel];
-  if (!s) return { ok: false, reason: 'empty' };
-  const it = ITEMS[s.id];
-  if (!it.heal) return { ok: false, reason: 'not-food' };
-  if (p.hp >= p.maxHp) return { ok: false, reason: 'full' };
-  p.hp = Math.min(p.maxHp, p.hp + it.heal);
-  removeItem(p.inv, s.id, 1); g.touch(p);
-  g.emit(p.uid, { t: 'hurt', hp: p.hp, by: null });
-  return { ok: true };
+  return eat(g, p);
 }
 
 export function actRespawn(g, p) {
   if (!p.dead) return { ok: false, reason: 'alive' };
   if (g.time < p.respawnAt) return { ok: false, reason: 'too-soon' };
-  p.dead = false; p.hp = p.maxHp; p.lastHurt = -99; g.touch(p);
+  p.dead = false; p.hp = p.maxHp; p.lastHurt = -99; p.food = FOOD_ON_RESPAWN; p.fat = 0; g.touch(p);
   const at = g.respawnPoint(p); g.teleportPlayer(p, at.x, at.y, at.z);
   g.emit(p.uid, { t: 'hurt', hp: p.hp, by: null });
   return { ok: true };
@@ -122,9 +121,11 @@ export function updateProjectiles(g, dt) {
 export function updatePlayers(g, dt) {
   for (const p of g.players.values()) {
     if (p.dead) continue;
-    if (p.hp < p.maxHp && g.time - p.lastHurt > REGEN_AFTER) {
+    const rule = !g.hunger ? 'old' : p.food >= FOOD_FAST ? 'fast' : p.food > FOOD_NONE ? 'old' : 'none';
+    const after = rule === 'fast' ? REGEN_FAST_AFTER : REGEN_AFTER, every = rule === 'fast' ? REGEN_FAST_EVERY : REGEN_EVERY;
+    if (rule !== 'none' && p.hp < p.maxHp && g.time - p.lastHurt > after) {
       p.regenAcc = (p.regenAcc || 0) + dt;
-      if (p.regenAcc >= REGEN_EVERY) { p.regenAcc -= REGEN_EVERY; p.hp = Math.min(p.maxHp, p.hp + 1); g.touch(p); g.emit(p.uid, { t: 'hurt', hp: p.hp, by: null }); }
+      if (p.regenAcc >= every) { p.regenAcc -= every; p.hp = Math.min(p.maxHp, p.hp + 1); g.touch(p); g.emit(p.uid, { t: 'hurt', hp: p.hp, by: null }); }
     } else p.regenAcc = 0;
   }
 }

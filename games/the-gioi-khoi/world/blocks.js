@@ -7,13 +7,21 @@ export const B = {
   GLOW_MUSHROOM: 21, REED: 22, EMBER_BLOOM: 23, CRYSTAL_BLOOM: 24,          // cây cỏ mới (id >= TALL_GRASS là cây cỏ)
   MOSS: 25, MUD: 26, ASH: 27, BASALT: 28, AMETHYST: 29,
   IRON_ORE: 30, FURNACE: 31, ANVIL: 32, CHEST: 33, BED: 34, DOOR: 35, DOOR_OPEN: 36, TORCH: 37, GLASS: 38, STONE_BRICK: 39,
+  FARMLAND: 40, FARMLAND_WET: 41,            // đất cày khô / ướt; 42..53 là cây trồng (xem CROP_BLOCKS)
 };
+// Cây trồng: mỗi giai đoạn (0 mầm .. 3 chín) là một id block riêng, vì delta chỉ lưu id block.
+export const CROP_BLOCKS = { wheat: [42, 43, 44, 45], carrot: [46, 47, 48, 49], potato: [50, 51, 52, 53] };
+const CROP_OF = new Map(Object.entries(CROP_BLOCKS).flatMap(([kind, ids]) => ids.map((id, stage) => [id, { kind, stage }])));
+export const cropOf = id => CROP_OF.get(id) || null;                // { kind, stage } nếu id là block cây trồng
+export const isCrop = id => CROP_OF.has(id);
+export const isFarmland = id => id === 40 || id === 41;
 
 export const TILES = ['stone', 'dirt', 'grass_top', 'grass_side', 'sand', 'snow', 'snow_side', 'log_side', 'log_top', 'leaves',
   'planks', 'ore', 'water', 'cactus_side', 'cactus_top', 'ice', 'bedrock', 'magma', 'bench_top', 'bench_side', 'gem_ore', 'tall_grass', 'flower_red', 'flower_yellow', 'dead_bush',
   'glow_mushroom', 'reed', 'ember_bloom', 'crystal_bloom', 'moss_top', 'moss_side', 'mud', 'ash', 'basalt', 'amethyst',
-  'iron_ore', 'furnace_side', 'furnace_top', 'anvil_top', 'anvil_side', 'chest_top', 'chest_side', 'bed_top', 'bed_side', 'door', 'door_open', 'torch', 'glass', 'stone_brick'];
-export const ATLAS_COLS = 8, ATLAS_ROWS = 7;
+  'iron_ore', 'furnace_side', 'furnace_top', 'anvil_top', 'anvil_side', 'chest_top', 'chest_side', 'bed_top', 'bed_side', 'door', 'door_open', 'torch', 'glass', 'stone_brick',
+  'farmland_top', 'farmland_wet_top', 'crop_wheat_0', 'crop_wheat_1', 'crop_wheat_2', 'crop_wheat_3', 'crop_carrot_0', 'crop_carrot_1', 'crop_carrot_2', 'crop_carrot_3', 'crop_potato_0', 'crop_potato_1', 'crop_potato_2', 'crop_potato_3'];
+export const ATLAS_COLS = 8, ATLAS_ROWS = 10;
 const T = Object.fromEntries(TILES.map((n, i) => [n, i]));
 
 const def = (id, name, o) => ({ id, name, solid: true, opaque: true, hardness: 1, tool: null, tier: 0, drop: name, ...o });
@@ -57,6 +65,12 @@ export const BLOCKS = [
   def(B.TORCH, 'torch', { solid: false, opaque: false, plant: true, deco: true, hardness: 0.05, tiles: [T.torch, T.torch, T.torch] }),
   def(B.GLASS, 'glass', { hardness: 0.4, opaque: false, tiles: [T.glass, T.glass, T.glass] }),
   def(B.STONE_BRICK, 'stone_brick', { hardness: 1.8, tool: 'pick', tier: 1, tiles: [T.stone_brick, T.stone_brick, T.stone_brick] }),
+  def(B.FARMLAND, 'farmland', { hardness: 0.5, tool: 'shovel', drop: 'dirt', tiles: [T.farmland_top, T.dirt, T.dirt] }),
+  def(B.FARMLAND_WET, 'farmland_wet', { hardness: 0.5, tool: 'shovel', drop: 'dirt', tiles: [T.farmland_wet_top, T.dirt, T.dirt] }),
+  ...Object.entries(CROP_BLOCKS).flatMap(([kind, ids]) => ids.map((id, stage) => {
+    const t = T[`crop_${kind}_${stage}`];
+    return def(id, `crop_${kind}_${stage}`, { solid: false, opaque: false, plant: true, deco: true, hardness: 0.05, drop: null, tiles: [t, t, t] });
+  })),
 ];
 
 export const BLOCK_BY_NAME = Object.fromEntries(BLOCKS.map(b => [b.name, b]));

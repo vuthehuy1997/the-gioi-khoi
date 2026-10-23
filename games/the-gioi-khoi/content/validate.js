@@ -8,23 +8,40 @@ import { NPCS, VILLAGES } from './npcs.js';
 import { QUESTS } from './quests.js';
 import { SHOPS } from './shops.js';
 import { REGIONS } from './regions.js';
+import { CROPS, EFFECTS } from './farming.js';
 import { BLOCKS, BLOCK_BY_NAME } from '../world/blocks.js';
 
 export async function loadContent() {
-  return { items: ITEMS, recipes: RECIPES, mobs: MOBS, bosses: BOSSES, npcs: NPCS, villages: VILLAGES, quests: QUESTS, shops: SHOPS, regions: REGIONS, blocks: BLOCKS };
+  return { items: ITEMS, recipes: RECIPES, mobs: MOBS, bosses: BOSSES, npcs: NPCS, villages: VILLAGES, quests: QUESTS, shops: SHOPS, regions: REGIONS, blocks: BLOCKS, crops: CROPS, effects: EFFECTS };
 }
 
-const AI_KINDS = ['chase-melee', 'flee', 'ranged-kite', 'guard'];
+const AI_KINDS = ['chase-melee', 'flee', 'ranged-kite', 'guard', 'farm'];
 const MOVE_TYPES = ['melee', 'leap', 'summon', 'volley', 'slam'];
 const STEP_TYPES = ['collect', 'kill', 'boss', 'reach', 'talk'];
 
 export function validateContent(c) {
   const errs = [], err = (m) => errs.push(m);
   const regionIds = new Set(c.regions.map(r => r.id));
+  const crops = c.crops || {}, effects = c.effects || {};
   const hasItem = (id, where) => { if (!c.items[id]) err(`${where}: vật phẩm không tồn tại "${id}"`); };
 
   for (const [id, it] of Object.entries(c.items)) if (it.block && !BLOCK_BY_NAME[it.block]) err(`vật phẩm ${id}: block không tồn tại "${it.block}"`);
   for (const b of c.blocks) if (b.drop && !c.items[b.drop]) err(`block ${b.name}: vật phẩm rơi không tồn tại "${b.drop}"`);
+
+  for (const [id, it] of Object.entries(c.items)) {                                  // thức ăn và hạt giống
+    if (it.food !== undefined && !(it.food >= 0 && it.food <= 20)) err(`vật phẩm ${id}: food ngoài 0..20`);
+    if (it.fx && !effects[it.fx.id]) err(`vật phẩm ${id}: hiệu ứng không tồn tại "${it.fx.id}"`);
+    if (it.fx && !(it.fx.secs > 0)) err(`vật phẩm ${id}: hiệu ứng thiếu thời lượng`);
+    if (it.risk && !(it.risk.poison >= 0 && it.risk.poison <= 1)) err(`vật phẩm ${id}: xác suất ngộ độc không hợp lệ`);
+    if (it.plant && !crops[it.plant]) err(`vật phẩm ${id}: gieo ra cây không tồn tại "${it.plant}"`);
+  }
+  for (const [id, cr] of Object.entries(crops)) {
+    hasItem(cr.seed, `cây ${id} (hạt)`);
+    if (c.items[cr.seed] && c.items[cr.seed].plant !== id) err(`cây ${id}: hạt ${cr.seed} không gieo ra đúng cây này`);
+    if (!(cr.secs > 0)) err(`cây ${id}: thời gian lớn không hợp lệ`);
+    for (const y of cr.yield) { hasItem(y.item, `cây ${id} (sản lượng)`); if (!(y.min >= 1 && y.max >= y.min)) err(`cây ${id}: sản lượng ${y.item} không hợp lệ`); }
+    if (!cr.yield.some(y => y.item === cr.seed)) err(`cây ${id}: sản lượng không có hạt để trồng lại`);
+  }
 
   for (const r of c.recipes) {
     hasItem(r.out.item, `công thức ${r.id}`);
@@ -35,6 +52,12 @@ export function validateContent(c) {
     if (!AI_KINDS.includes(m.ai)) err(`quái ${id}: kiểu AI lạ "${m.ai}"`);
     if (m.ai === 'ranged-kite' && !m.shot) err(`quái ${id}: ranged-kite thiếu shot`);
     if (['chase-melee', 'guard'].includes(m.ai) && !m.attack) err(`quái ${id}: ${m.ai} thiếu attack`);
+    if (m.ai === 'farm') {
+      if (!m.breed) err(`thú ${id}: ai farm thiếu breed`);
+      else { hasItem(m.breed.food, `thú ${id} (thức ăn)`); if (!(m.breed.cd > 0 && m.breed.love > 0)) err(`thú ${id}: breed.cd/love không hợp lệ`); }
+      if (!(m.adultSecs > 0)) err(`thú ${id}: thiếu adultSecs`);
+      if (m.product) hasItem(m.product.item, `thú ${id} (sản phẩm)`);
+    }
     for (const rg of m.regions || []) if (!regionIds.has(rg)) err(`quái ${id}: vùng không tồn tại "${rg}"`);
     for (const d of m.drops || []) hasItem(d.item, `quái ${id} (rơi)`);
   }
@@ -110,6 +133,8 @@ export function validateContent(c) {
   for (const b of Object.values(c.bosses)) for (const d of b.drops || []) sources.add(d.item);
   for (const r of c.recipes) sources.add(r.out.item);
   for (const s of Object.values(c.shops)) for (const x of s.sells) sources.add(x.item);
+  for (const cr of Object.values(crops)) for (const y of cr.yield) sources.add(y.item);
+  for (const m of Object.values(c.mobs)) if (m.product) sources.add(m.product.item);
   for (const q of Object.values(c.quests)) for (const r of q.reward.items) sources.add(r.item);
   for (const id of Object.keys(c.items)) if (!sources.has(id)) err(`vật phẩm ${id}: không có nguồn nào (không rơi, không chế tạo, không bán, không thưởng)`);
 

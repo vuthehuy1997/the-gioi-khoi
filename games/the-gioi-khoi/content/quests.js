@@ -6,6 +6,13 @@ export const QUESTS = {
     steps: [{ type: 'collect', item: 'log', n: 5, text: 'Chặt 5 thân gỗ' }, { type: 'collect', item: 'wood_pick', n: 1, text: 'Chế tạo một cuốc gỗ (cần đứng gần bàn chế tạo)' }],
     reward: { items: [{ item: 'wood_sword', n: 1 }, { item: 'xu', n: 10 }] },
   },
+  'harvest-1': {
+    name: 'Vụ mùa đầu tiên', giver: 'truong-lang', requires: { quest: 'chao-lang' },
+    steps: [{ type: 'collect', item: 'wood_hoe', n: 1, text: 'Sở hữu một cuốc đất (chế cuốc đất gỗ ở bàn chế tạo)' },
+      { type: 'collect', item: 'wheat', n: 6, text: 'Thu hoạch lúa mì, giữ 6 trong túi (hạt lấy từ cỏ cao hoặc mua ở Kho làng)' },
+      { type: 'collect', item: 'bread', n: 1, text: 'Nấu 1 bánh mì ở lò nung (3 lúa mì + 1 than củi)' }],
+    reward: { items: [{ item: 'xu', n: 30 }, { item: 'veg_soup', n: 2 }] },
+  },
   'san-soi': {
     name: 'Săn sói đêm', giver: 'truong-lang', requires: { quest: 'chao-lang' },
     steps: [{ type: 'kill', mob: 'soi-xam', n: 3, text: 'Hạ 3 con Sói Xám' }],

@@ -3,13 +3,14 @@ import { hash } from '../../world/noise.js';
 import { packUV, faceRect, makePainter, buildGeometry, instantiate, animate } from './kit.js';
 import { playerModel, ZOMBIE, SKELETON, NPC_MODELS, ICE_EMPEROR } from './humanoids.js';
 import { wolfModel, deerModel, scorpionModel, bearModel, wraithModel, golemModel } from './beasts.js';
+import { chickenModel, sheepModel, pigModel } from './farm.js';
 import { frogModel, snakeModel, crocModel, shroomModel, lizardModel, fireSpiritModel, spiderModel, crystalRabbitModel, sentinelModel, foxModel } from './creatures.js';
 
 export { animate };
 
 export const MOB_MODELS = { 'soi-xam': 'wolf', 'nai': 'deer', 'xac-song': 'zombie', 'bo-cap': 'scorpion', 'xuong-cung': 'skeleton', 'gau-bang': 'bear', 'ma-bang': 'wraith', 'tuong-da': 'golem',
   'ech-doc': 'frog', 'ran-lay': 'snake', 'ca-sau': 'croc', 'nam-di': 'shroom', 'than-lan-nham': 'lizard', 'linh-hoa': 'fire-spirit',
-  'nhen-pha-le': 'spider', 'tho-pha-le': 'crystal-rabbit', 'khoi-pha-le': 'sentinel', 'cao-lua': 'fox' };
+  'nhen-pha-le': 'spider', 'tho-pha-le': 'crystal-rabbit', 'khoi-pha-le': 'sentinel', 'cao-lua': 'fox', 'ga': 'chicken', 'cuu': 'sheep', 'lon': 'pig' };
 const BOSS_MODEL = { 'thu-linh-soi': 'wolf-lord', 'bo-cap-chua': 'scorpion-queen', 'bang-de': 'ice-emperor', 'chua-dam-lay': 'swamp-king', 'vua-nham-thach': 'magma-king', 'ho-ve-pha-le': 'crystal-guardian' };
 
 // Bảng màu người chơi: 12 kiểu để mỗi người nhìn khác nhau (chọn theo uid).
@@ -22,7 +23,7 @@ export function playerStyle(uid) {
 }
 
 export function modelIdFor(e) {
-  if (e.kind === 'mob') return MOB_MODELS[e.type];
+  if (e.kind === 'mob') return e.type === 'cuu' && e.sh ? 'sheep-shorn' : MOB_MODELS[e.type];          // cừu đã cắt len đổi sang mô hình trọc
   if (e.kind === 'boss') return BOSS_MODEL[e.type];
   if (e.kind === 'npc') return 'npc:' + e.npc;
   if (e.kind === 'player') { const s = playerStyle(e.uid || e.name || ''); return 'player:' + s.skin + s.hair + s.shirt + s.pants; }
@@ -37,13 +38,14 @@ function definition(id) {
     case 'zombie': return ZOMBIE; case 'skeleton': return SKELETON; case 'scorpion': return scorpionModel(); case 'scorpion-queen': return scorpionModel({ boss: true });
     case 'frog': return frogModel(); case 'snake': return snakeModel(); case 'croc': return crocModel(); case 'swamp-king': return crocModel({ boss: true }); case 'magma-king': return lizardModel({ boss: true }); case 'crystal-guardian': return sentinelModel({ boss: true }); case 'shroom': return shroomModel(); case 'lizard': return lizardModel();
     case 'fire-spirit': return fireSpiritModel(); case 'spider': return spiderModel(); case 'crystal-rabbit': return crystalRabbitModel(); case 'sentinel': return sentinelModel(); case 'fox': return foxModel();
+    case 'chicken': return chickenModel(); case 'sheep': return sheepModel(); case 'sheep-shorn': return sheepModel({ shorn: true }); case 'pig': return pigModel();
     case 'bear': return bearModel(); case 'wraith': return wraithModel(); case 'golem': return golemModel(); case 'ice-emperor': return ICE_EMPEROR;
   }
   throw new Error('không có mô hình: ' + id);
 }
 
 export const ALL_MODEL_IDS = ['wolf', 'deer', 'zombie', 'scorpion', 'skeleton', 'bear', 'wraith', 'golem', 'wolf-lord', 'scorpion-queen', 'ice-emperor', 'swamp-king', 'magma-king', 'crystal-guardian',
-  'frog', 'snake', 'croc', 'shroom', 'lizard', 'fire-spirit', 'spider', 'crystal-rabbit', 'sentinel', 'fox',
+  'frog', 'snake', 'croc', 'shroom', 'lizard', 'fire-spirit', 'spider', 'crystal-rabbit', 'sentinel', 'fox', 'chicken', 'sheep', 'sheep-shorn', 'pig',
   'npc:truong-lang', 'npc:tho-ren', 'npc:thuong-nhan', 'npc:an-si', 'npc:ngu-dan', 'npc:tho-lua', 'npc:hoc-gia', 'player:' + '#f1c8a0#2a1c14#3b6fd6#33384a'];
 
 // Thư viện mô hình gắn với một THREE và document.

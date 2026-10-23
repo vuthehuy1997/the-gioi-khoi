@@ -19,8 +19,8 @@ export function armorStats(armor) {
   return out;
 }
 
-// Sát thương sau khi giáp giảm; luôn còn ít nhất 1.
-export const reduceDamage = (dmg, armor) => Math.max(1, Math.round(dmg * (1 - armorStats(armor).reduce)));
+// Sát thương sau khi giáp giảm; luôn còn ít nhất 1. extra: điểm giáp ảo cộng thêm (hiệu ứng Da dày +3), vẫn trần MAX_REDUCE.
+export const reduceDamage = (dmg, armor, extra = 0) => Math.max(1, Math.round(dmg * (1 - Math.min(MAX_REDUCE, armorStats(armor).reduce + extra * REDUCE_PER_DEF))));
 
 // Mặc món ở ô kho i; món đang mặc (nếu có) về chính ô đó.
 export function equip(p, i) {

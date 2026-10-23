@@ -41,7 +41,7 @@ export function createEntityView(scene, { iconCanvas = null, onDeath = null } = 
     if (!indMats[kind]) {
       const c = document.createElement('canvas'); c.width = c.height = 64;
       const x = c.getContext('2d'); x.font = 'bold 56px sans-serif'; x.textAlign = 'center'; x.textBaseline = 'middle'; x.lineWidth = 7; x.strokeStyle = '#000d';
-      const ch = kind === 'chase' ? '!' : '?'; x.strokeText(ch, 32, 34); x.fillStyle = kind === 'chase' ? '#ff3b30' : kind === 'search' ? '#ff9f0a' : '#ffd60a'; x.fillText(ch, 32, 34);
+      const ch = kind === 'chase' ? '!' : kind === 'love' ? '♥' : '?'; x.strokeText(ch, 32, 34); x.fillStyle = kind === 'chase' ? '#ff3b30' : kind === 'search' ? '#ff9f0a' : kind === 'love' ? '#ff5a8a' : '#ffd60a'; x.fillText(ch, 32, 34);
       const t = new T.CanvasTexture(c); t.colorSpace = T.SRGBColorSpace;
       indMats[kind] = new T.SpriteMaterial({ map: t, depthTest: false, transparent: true });
     }
@@ -67,11 +67,11 @@ export function createEntityView(scene, { iconCanvas = null, onDeath = null } = 
   };
 
   function create(e) {
-    const o = { px: e.x, pz: e.z, phase: Math.random() * 6, speed: 0, hp: e.hp, flash: 0, swing: 0, dying: 0, kind: e.kind, radius: 0.4 };
+    const o = { px: e.x, pz: e.z, phase: Math.random() * 6, speed: 0, hp: e.hp, flash: 0, swing: 0, dying: 0, kind: e.kind, radius: 0.4, baseScale: 1 };
     const g = new T.Group(); o.g = g;
     const mid = modelIdFor(e);
     if (mid) {
-      o.rig = lib.spawn(mid); o.lib = o.rig.lib; g.add(o.rig.mesh);
+      o.mid = mid; o.rig = lib.spawn(mid); o.lib = o.rig.lib; g.add(o.rig.mesh);
       const h = o.lib.model.scale * 2.1; o.h = e.kind === 'boss' ? o.lib.model.scale * 2.4 : h;
       const d = e.kind === 'boss' ? BOSSES[e.type] : e.kind === 'mob' ? MOBS[e.type] : null;
       o.radius = d ? d.w * 0.75 : 0.45; o.tag = makeTag(e, o.h); if (o.tag) g.add(o.tag);
@@ -106,6 +106,12 @@ export function createEntityView(scene, { iconCanvas = null, onDeath = null } = 
           let best = null, bd = 49; for (const p of players) { const d2 = (p.x - e.x) ** 2 + (p.z - e.z) ** 2; if (d2 < bd) { bd = d2; best = p; } }
           if (best) g.rotation.y = Math.atan2(-(best.x - e.x), -(best.z - e.z));
         }
+        if (e.kind === 'mob' && o.rig) {                                                   // thú nuôi: con non nhỏ một nửa, cừu cắt len đổi mô hình
+          const bs = e.ba ? 0.5 : 1;
+          if (o.baseScale !== bs) { o.baseScale = bs; if (!o.dying) g.scale.setScalar(bs); }
+          const want = modelIdFor(e);
+          if (want && want !== o.mid) { g.remove(o.rig.mesh); o.rig = lib.spawn(want); o.lib = o.rig.lib; o.mid = want; o.flashing = false; g.add(o.rig.mesh); }
+        }
         if (o.rig && g.visible) {
           const far = dist > 56;
           if (!far || ((t * 60) | 0) % 3 === 0) animate(o.rig, { phase: o.phase, k: Math.min(1, o.speed / 2.2), t, pitch: e.pitch || 0, swing: o.swing > 0 ? o.swing / 0.25 : 0 });
@@ -122,9 +128,13 @@ export function createEntityView(scene, { iconCanvas = null, onDeath = null } = 
               const pulse = st === 2 ? 0.62 + Math.sin(t * 12) * 0.06 : 0.55; o.ind.scale.set(pulse, pulse, 1);
             } else if (o.ind) o.ind.visible = false;
           }
+          if (e.lv) {                                                                        // đang yêu: trái tim nổi trên đầu
+            if (!o.heart) { o.heart = indicator('love'); g.add(o.heart); }
+            o.heart.visible = dist < 30; o.heart.position.y = o.h + 0.9 + Math.sin(t * 4) * 0.06; o.heart.scale.set(0.5, 0.5, 1);
+          } else if (o.heart) o.heart.visible = false;
           if (o.tag) { const near = e.kind === 'boss' ? dist < 70 : e.kind === 'mob' ? dist < 16 : dist < 30; o.tag.visible = near && tagsShown < 12; if (o.tag.visible) tagsShown++; }
         }
-        if (o.radius && g.visible && sh < MAX_SHADOWS) { ps.set(e.x, e.y + 0.03, e.z); sc.set(o.radius, 1, o.radius); mtx.compose(ps, q, sc); shadows.setMatrixAt(sh++, mtx); }
+        if (o.radius && g.visible && sh < MAX_SHADOWS) { ps.set(e.x, e.y + 0.03, e.z); sc.set(o.radius * o.baseScale, 1, o.radius * o.baseScale); mtx.compose(ps, q, sc); shadows.setMatrixAt(sh++, mtx); }
       }
       // thực thể biến mất: quái/boss ngã ra rồi mới xoá
       for (const [k, o] of [...objs]) if (!seen.has(k)) {
@@ -144,7 +154,7 @@ export function createEntityView(scene, { iconCanvas = null, onDeath = null } = 
             g.rotation.z = o.side * (Math.PI / 2) * (ease + (fall >= 1 ? -bounce : 0)); g.position.y = o.baseY - 0.05 * ease + bounce * o.h * 0.3;
           }
           const shrink = f > 0.65 ? 1 - (f - 0.65) / 0.35 : 1;                        // 35% cuối: co lại và tan
-          g.scale.setScalar(Math.max(0.001, shrink));
+          g.scale.setScalar(Math.max(0.001, shrink) * o.baseScale);
           if (o.tag) o.tag.visible = false;
           setFlash(o, f < 0.25 || (f > 0.65 && ((f * 30) | 0) % 2 === 0));
           if (sh < MAX_SHADOWS) { ps.set(g.position.x, o.baseY + 0.03, g.position.z); sc.set(o.radius * shrink, 1, o.radius * shrink); mtx.compose(ps, q, sc); shadows.setMatrixAt(sh++, mtx); }

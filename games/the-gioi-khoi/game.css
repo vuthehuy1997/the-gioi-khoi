@@ -94,3 +94,16 @@ html,body{margin:0;height:100%;background:#12141a;color:#eeede8;font-family:'Seg
 .panel .slot.mini.miss b { color: #ff8a80; }
 .panel .rec:not(.ok) .rname { opacity: .75; }
 .panel .rec, .panel .rec.ok { opacity: 1; }
+
+/* đói, hiệu ứng thức ăn, chú giải khi ngắm */
+#food{position:absolute;left:12px;bottom:44px;display:flex;gap:1px;pointer-events:none}
+#food .ic{width:20px;height:20px;background-size:contain;background-repeat:no-repeat;filter:drop-shadow(0 0 2px #000)}
+#food.pulse .ic{animation:starve .8s infinite}
+@keyframes starve{0%,100%{filter:drop-shadow(0 0 2px #000)}50%{filter:drop-shadow(0 0 5px #f33) brightness(1.6) hue-rotate(-30deg)}}
+#fxbar{position:absolute;left:12px;bottom:70px;display:flex;gap:6px;flex-wrap:wrap;max-width:50vw;pointer-events:none}
+#fxbar .fx{display:flex;align-items:center;gap:3px;padding:1px 6px 1px 2px;border-radius:12px;background:#000a;font-size:12px;text-shadow:0 0 3px #000}
+#fxbar .fx img{width:18px;height:18px}
+#fxbar .fx.bad{background:#1c3a14cc;color:#c8f0a8}
+#fxbar .fx .left{font-weight:700;min-width:1.4em;text-align:right}
+#tip{position:absolute;left:50%;top:58%;transform:translateX(-50%);padding:3px 10px;border-radius:6px;background:#000b;font-size:13px;pointer-events:none;white-space:pre}
+#tip[hidden]{display:none}

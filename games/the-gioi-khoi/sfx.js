@@ -11,9 +11,10 @@ const FAMILY = {
   growl: { f: 95, wave: 'sawtooth', n: 500 }, moan: { f: 80, wave: 'sawtooth', n: 300, wob: true }, hiss: { f: 0, n: 5200 }, croak: { f: 130, wave: 'square', n: 0, pulse: 2 },
   squeak: { f: 1100, wave: 'sine', n: 0 }, rattle: { f: 0, n: 2600, ticks: 4 }, chitter: { f: 0, n: 4200, ticks: 6 }, crackle: { f: 0, n: 3000, ticks: 5, f2: 420 },
   chime: { f: 880, wave: 'sine', n: 0, bell: true }, boing: { f: 200, wave: 'triangle', n: 0 }, bleat: { f: 340, wave: 'triangle', n: 0 }, stone: { f: 60, wave: 'square', n: 250 },
+  cluck: { f: 760, wave: 'square', n: 0, pulse: 3 }, oink: { f: 150, wave: 'sawtooth', n: 450 }, baa: { f: 300, wave: 'triangle', n: 0, wob: true },       // gà, lợn, cừu
 };
 export const MOB_VOICE = { 'soi-xam': 'growl', 'gau-bang': 'growl', 'ca-sau': 'growl', 'than-lan-nham': 'growl', 'xac-song': 'moan', 'ran-lay': 'hiss', 'ech-doc': 'croak', 'tho-pha-le': 'squeak', 'cao-lua': 'squeak',
-  'xuong-cung': 'rattle', 'nhen-pha-le': 'chitter', 'bo-cap': 'chitter', 'linh-hoa': 'crackle', 'ma-bang': 'moan', 'khoi-pha-le': 'stone', 'tuong-da': 'stone', 'nam-di': 'boing', 'nai': 'bleat' };
+  'xuong-cung': 'rattle', 'nhen-pha-le': 'chitter', 'bo-cap': 'chitter', 'linh-hoa': 'crackle', 'ma-bang': 'moan', 'khoi-pha-le': 'stone', 'tuong-da': 'stone', 'nam-di': 'boing', 'nai': 'bleat', 'ga': 'cluck', 'lon': 'oink', 'cuu': 'baa' };
 const BOSS_VOICE = { 'thu-linh-soi': 'growl', 'bo-cap-chua': 'chitter', 'bang-de': 'stone', 'chua-dam-lay': 'growl', 'vua-nham-thach': 'crackle', 'ho-ve-pha-le': 'chime' };
 export const voiceOf = type => MOB_VOICE[type] || BOSS_VOICE[type] || 'growl';
 const near = d => { const k = Math.max(0, 1 - (d || 0) / 30); return k * k; };
@@ -61,6 +62,16 @@ const sounds = {
   boss: () => { tone(70, 0.9, 'sawtooth', 0.09, -25); noise(0.5, 0.06, 200); },
   victory: () => { [523, 659, 784, 1047].forEach((f, i) => tone(f, 0.28, 'triangle', 0.07, 0, 0)); },
   swing: () => { noise(0.06, 0.03, 2000); },
+  // trồng trọt, nuôi thú, ăn (mỗi âm dưới 0,5 giây)
+  eat: () => { for (let i = 0; i < 3; i++) setTimeout(() => { noise(0.05, 0.05, 1500 + i * 300); tone(190 + i * 25, 0.05, 'square', 0.025, -30); }, i * 90); },
+  till: () => { noise(0.14, 0.07, 500); tone(110, 0.12, 'triangle', 0.05, -40); },
+  sprout: () => { tone(420, 0.09, 'sine', 0.035, 160); setTimeout(() => tone(620, 0.1, 'sine', 0.03, 120), 70); },
+  harvest: () => { noise(0.08, 0.05, 2600); tone(520, 0.08, 'triangle', 0.05, 200); setTimeout(() => tone(780, 0.1, 'triangle', 0.045), 80); },
+  feed: () => { tone(660, 0.06, 'sine', 0.04); setTimeout(() => tone(880, 0.09, 'sine', 0.04), 70); },
+  shear: () => { for (let i = 0; i < 2; i++) setTimeout(() => { noise(0.04, 0.05, 4200); tone(1500, 0.03, 'square', 0.015); }, i * 110); },
+  cluck: () => voice({ type: 'ga', intent: 'idle', dist: 2 }),
+  oink: () => voice({ type: 'lon', intent: 'idle', dist: 2 }),
+  baa: () => voice({ type: 'cuu', intent: 'idle', dist: 2 }),
   die: () => { tone(260, 0.6, 'sawtooth', 0.08, -200); },
 };
 

@@ -28,6 +28,9 @@ export const RECIPES = [
   r('chest', ['chest', 1], { planks: 8 }, true),
   r('door', ['door', 1], { planks: 6 }, true),
   r('bed', ['bed', 1], { planks: 3, pelt: 3 }, true),
+  r('bed_wool', ['bed', 1], { planks: 3, wool: 3 }, true),
+  r('wood_hoe', ['wood_hoe', 1], { planks: 2, stick: 2 }, true),
+  r('stone_hoe', ['stone_hoe', 1], { stone: 2, stick: 2 }, true),
   r('stone_brick', ['stone_brick', 4], { stone: 4 }, true),
   r('torch', ['torch', 4], { stick: 1, charcoal: 1 }),
   // ---- lò nung: luyện quặng, nấu ----
@@ -35,11 +38,20 @@ export const RECIPES = [
   r('iron_ingot', ['iron_ingot', 1], { iron_ore: 1, charcoal: 1 }, 'furnace'),
   r('glass', ['glass', 2], { sand: 2, charcoal: 1 }, 'furnace'),
   r('cooked_meat', ['cooked_meat', 1], { meat: 1, charcoal: 1 }, 'furnace'),
+  r('bread', ['bread', 1], { wheat: 3, charcoal: 1 }, 'furnace'),
+  r('baked_potato', ['baked_potato', 1], { potato: 1, charcoal: 1 }, 'furnace'),
+  r('cooked_pork', ['cooked_pork', 1], { pork: 1, charcoal: 1 }, 'furnace'),
+  r('cooked_chicken', ['cooked_chicken', 1], { chicken: 1, charcoal: 1 }, 'furnace'),
+  r('veg_soup', ['veg_soup', 1], { carrot: 2, potato: 1, herb: 1 }, 'furnace'),
+  r('hearty_stew', ['hearty_stew', 1], { pork: 1, potato: 1, carrot: 1, charcoal: 1 }, 'furnace'),
+  r('egg_cake', ['egg_cake', 1], { egg: 2, wheat: 2, charcoal: 1 }, 'furnace'),
   // ---- đe rèn: công cụ sắt ----
   r('iron_pick', ['iron_pick', 1], { iron_ingot: 3, stick: 2 }, 'anvil'),
   r('iron_axe', ['iron_axe', 1], { iron_ingot: 3, stick: 2 }, 'anvil'),
   r('iron_shovel', ['iron_shovel', 1], { iron_ingot: 1, stick: 2 }, 'anvil'),
   r('iron_sword', ['iron_sword', 1], { iron_ingot: 2, stick: 1 }, 'anvil'),
+  r('iron_hoe', ['iron_hoe', 1], { iron_ingot: 2, stick: 2 }, 'anvil'),
+  r('shears', ['shears', 1], { iron_ingot: 2 }, 'anvil'),
   // ---- trang bị theo vùng: mỗi bộ dùng tài nguyên của một vùng và chống một loại môi trường ----
   ...set('fur', true, ['pelt', [3, 5, 4, 2]]),                                        // Rừng/Núi Băng: chống lạnh
   ...set('chitin', true, ['chitin', [3, 5, 4, 2]]),                                   // Sa Mạc/Núi Lửa: chống nóng

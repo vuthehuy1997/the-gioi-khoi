@@ -1,13 +1,22 @@
 // Lưu thế giới vào IndexedDB, xuất/nhập file nén (.gz), kiểm tra phiên bản dữ liệu.
 import { idbGet, idbSet, idbDel, idbKeys } from '../../platform/core/idb.js';
 
-export const SAVE_VERSION = 1;
+import { SAVE_VERSION } from './sim/version.js';
+export { SAVE_VERSION };
 const KEY = n => 'tgk-world:' + n;
 
 export function checkVersion(save) {
   if (!save || typeof save !== 'object' || typeof save.v !== 'number' || typeof save.seed !== 'number') throw new Error('bad-file');
   if (save.v > SAVE_VERSION) throw new Error('newer-version');
-  return save;          // các phiên bản cũ hơn được nâng cấp ở đây khi có
+  if (save.v < 2) upgradeV1(save);
+  return save;
+}
+
+// v1 -> v2: thêm cây trồng, ruộng, thú nuôi và trạng thái đói của người chơi (đầy bụng, không hiệu ứng). Trường thiếu luôn có mặc định khi nạp (Game.fromSave) nên hàm này chỉ điền cho gọn.
+function upgradeV1(save) {
+  save.crops = save.crops || {}; save.farm = save.farm || {}; save.animals = save.animals || [];
+  for (const p of Object.values(save.players || {})) if (p && typeof p === 'object') { p.food = p.food ?? 20; p.fatigue = p.fatigue ?? 0; p.fx = p.fx || {}; p.poison = p.poison ?? 0; }
+  save.v = 2;
 }
 
 export async function saveWorld(name, save) { await idbSet(KEY(name), { name, savedAt: Date.now(), save }); }

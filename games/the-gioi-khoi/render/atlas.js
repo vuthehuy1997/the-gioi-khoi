@@ -1,4 +1,4 @@
-// Atlas texture tự vẽ (pixel art 16x16, 8 cột x 5 hàng) từ nhiễu có seed, nên không phụ thuộc gói art ngoài.
+// Atlas texture tự vẽ (pixel art 16x16, 8 cột x 10 hàng) từ nhiễu có seed, nên không phụ thuộc gói art ngoài.
 import { hash } from '../world/noise.js';
 import { TILES, ATLAS_COLS, ATLAS_ROWS } from '../world/blocks.js';
 
@@ -7,6 +7,37 @@ export const TILE = 16;
 const clamp = v => Math.max(0, Math.min(255, v | 0));
 const rgb = (r, g, b, a = 255) => [clamp(r), clamp(g), clamp(b), a];
 const jitter = (c, amt, s, x, y) => { const j = (hash(s, x, y) - 0.5) * 2 * amt; return rgb(c[0] + j, c[1] + j, c[2] + j, c[3] ?? 255); };
+
+
+// Cây trồng: 4 giai đoạn (0 mầm .. 3 chín), hai mặt phẳng chéo nên mỗi ô là một bụi nhìn từ bên cạnh. Nền trong suốt.
+const T0 = rgb(0, 0, 0, 0);
+const WHEAT_STEMS = [3, 6, 9, 12];
+const cropWheat = stage => (x, y, s) => {
+  const h = [4, 7, 11, 13][stage], top = 16 - h;
+  const stem = WHEAT_STEMS.includes(x) || (stage > 0 && [1, 7, 14].includes(x) && y > 16 - h + 2);
+  if (!stem || y < top + (stage === 0 ? 0 : 2)) return stage >= 2 && WHEAT_STEMS.includes(x) && y >= top - 1 && y < top + 2 ? headColor(stage, s, x, y) : T0;
+  const green = stage === 3 ? rgb(196, 160, 60) : stage === 2 ? rgb(150, 170, 60) : rgb(82, 160, 52);
+  return jitter(green, 16, s, x, y);
+};
+const headColor = (stage, s, x, y) => jitter(stage === 3 ? rgb(232, 196, 76) : rgb(168, 180, 72), 14, s, x, y);
+const cropCarrot = stage => (x, y, s) => {
+  const leaf = [4.5, 7, 9, 11][stage], cx = 7.5;
+  const d = Math.hypot((x - cx) / (1.4 + stage * 1.1), (y - (15 - leaf * 0.7)) / (1 + leaf * 0.45));
+  if (d < 1 && y < 15) return jitter(stage === 3 ? rgb(60, 150, 50) : rgb(80, 170, 56), 22, s, x, y);
+  if (stage === 3 && y >= 12 && Math.abs(x - cx) < 2.2 - (y - 12) * 0.5) return jitter(rgb(238, 128, 30), 16, s, x, y);       // củ cam nhô lên
+  if (y >= 11 && Math.abs(x - cx) < 0.8 + stage * 0.3 && y < 15) return jitter(rgb(70, 150, 48), 12, s, x, y);
+  return T0;
+};
+const cropPotato = stage => (x, y, s) => {
+  const cx = 7.5, w = [3.2, 4.2, 5.4, 6][stage], hgt = [4, 6, 8, 9][stage];
+  const d = Math.hypot((x - cx) / w, (y - (15 - hgt * 0.5)) / (hgt * 0.55));
+  if (d < 1 && y < 16) {
+    if (stage === 3 && hash(s + 5, x >> 1, y >> 1) < 0.18) return rgb(250, 250, 236);                                             // hoa trắng
+    return jitter(stage === 3 ? rgb(70, 130, 56) : rgb(66, 146, 52), 20, s, x, y);
+  }
+  if (stage === 3 && y >= 14 && Math.abs(x - 5) < 2 - (y - 14) * 0.6) return jitter(rgb(188, 150, 96), 12, s, x, y);              // củ khoai
+  return T0;
+};
 
 const PAINT = {
   stone: (x, y, s) => jitter(rgb(125, 125, 128), 14, s, x, y),
@@ -57,6 +88,9 @@ const PAINT = {
   torch: (x, y, s) => { if ((x === 7 || x === 8) && y >= 6) return jitter(rgb(120, 82, 42), 10, s, x, y); const d = Math.hypot(x - 7.5, y - 3.5); return d < 3.2 ? (d < 1.6 ? rgb(255, 240, 150) : hash(s, x, y) < 0.5 ? rgb(255, 150, 40) : rgb(240, 90, 24)) : rgb(0, 0, 0, 0); },
   glass: (x, y, s) => (x === 0 || y === 0 || x === 15 || y === 15) ? rgb(196, 226, 240) : ((x + y === 5 || x + y === 6 || x + y === 11) && x > 1 && y > 1) ? rgb(236, 248, 255) : rgb(0, 0, 0, 0),
   stone_brick: (x, y, s) => { const row = y >> 2, off = (row % 2) * 4; return (y % 4 === 3 || (x + off) % 8 === 7) ? jitter(rgb(84, 84, 90), 8, s, x, y) : jitter(rgb(136, 136, 140), 10, s, x, y); },
+  farmland_top: (x, y, s) => (y % 4 === 1) ? jitter(rgb(66, 42, 24), 8, s, x, y) : jitter(rgb(112, 74, 42), 12, s, x, y),
+  farmland_wet_top: (x, y, s) => (y % 4 === 1) ? jitter(rgb(40, 26, 16), 6, s, x, y) : jitter(rgb(74, 48, 30), 10, s, x, y),
+  ...Object.fromEntries([0, 1, 2, 3].flatMap(st => [[`crop_wheat_${st}`, cropWheat(st)], [`crop_carrot_${st}`, cropCarrot(st)], [`crop_potato_${st}`, cropPotato(st)]])),
   bench_side: (x, y, s) => (y > 3 && y < 12 && x > 2 && x < 13 && ((x + y) % 4 === 0)) ? rgb(70, 70, 76) : jitter(rgb(150, 108, 60), 10, s, x, y),
 };
 

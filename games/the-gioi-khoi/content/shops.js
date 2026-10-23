@@ -1,5 +1,10 @@
 // Cửa hàng: giá tính bằng xu. sells: người chơi mua; buys: người chơi bán.
 export const SHOPS = {
+  'truong-lang': {
+    name: 'Kho làng',
+    sells: [{ item: 'wheat_seed', price: 4 }, { item: 'carrot', price: 5 }, { item: 'potato', price: 5 }, { item: 'shears', price: 25 }, { item: 'stone_hoe', price: 20 }],
+    buys: [{ item: 'wheat', price: 3 }, { item: 'carrot', price: 2 }, { item: 'potato', price: 2 }, { item: 'egg', price: 3 }, { item: 'wool', price: 6 }, { item: 'bread', price: 8 }, { item: 'cooked_pork', price: 9 }],
+  },
   'tho-ren': {
     name: 'Lò rèn',
     sells: [{ item: 'wood_pick', price: 8 }, { item: 'stone_pick', price: 20 }, { item: 'stone_sword', price: 25 }, { item: 'stone_axe', price: 18 }, { item: 'planks', price: 1 }, { item: 'stick', price: 1 }, { item: 'charcoal', price: 3 }, { item: 'iron_ingot', price: 20 }, { item: 'torch', price: 2 }],
@@ -7,13 +12,13 @@ export const SHOPS = {
   },
   'thuong-nhan': {
     name: 'Quầy thương nhân',
-    sells: [{ item: 'meat', price: 4 }, { item: 'herb', price: 10 }, { item: 'sand', price: 1 }, { item: 'crystal_pick', price: 60 }],
-    buys: [{ item: 'venom', price: 8 }, { item: 'cactus', price: 2 }, { item: 'shard', price: 8 }, { item: 'meat', price: 2 }, { item: 'wolf_heart', price: 60 }, { item: 'swamp_heart', price: 90 }, { item: 'magma_core', price: 110 }, { item: 'guardian_prism', price: 130 }, { item: 'scale', price: 6 }, { item: 'ember', price: 9 }, { item: 'silk', price: 7 }, { item: 'amethyst', price: 6 }, { item: 'pelt', price: 4 }, { item: 'frog_leg', price: 2 }],
+    sells: [{ item: 'meat', price: 4 }, { item: 'herb', price: 10 }, { item: 'sand', price: 1 }, { item: 'crystal_pick', price: 60 }, { item: 'wheat_seed', price: 4 }, { item: 'carrot', price: 5 }, { item: 'potato', price: 5 }, { item: 'shears', price: 25 }, { item: 'stone_hoe', price: 20 }],
+    buys: [{ item: 'venom', price: 8 }, { item: 'cactus', price: 2 }, { item: 'shard', price: 8 }, { item: 'meat', price: 2 }, { item: 'wolf_heart', price: 60 }, { item: 'swamp_heart', price: 90 }, { item: 'magma_core', price: 110 }, { item: 'guardian_prism', price: 130 }, { item: 'scale', price: 6 }, { item: 'ember', price: 9 }, { item: 'silk', price: 7 }, { item: 'amethyst', price: 6 }, { item: 'pelt', price: 4 }, { item: 'frog_leg', price: 2 }, { item: 'wheat', price: 3 }, { item: 'carrot', price: 2 }, { item: 'potato', price: 2 }, { item: 'egg', price: 3 }, { item: 'wool', price: 6 }, { item: 'bread', price: 8 }, { item: 'cooked_pork', price: 9 }],
   },
   'ngu-dan': {
     name: 'Quầy ngư dân',
-    sells: [{ item: 'stew', price: 12 }, { item: 'herb', price: 10 }, { item: 'mushroom', price: 3 }, { item: 'frog_leg', price: 5 }],
-    buys: [{ item: 'frog_leg', price: 3 }, { item: 'mushroom', price: 2 }, { item: 'scale', price: 8 }, { item: 'swamp_heart', price: 100 }],
+    sells: [{ item: 'stew', price: 12 }, { item: 'herb', price: 10 }, { item: 'mushroom', price: 3 }, { item: 'frog_leg', price: 5 }, { item: 'wheat_seed', price: 4 }, { item: 'carrot', price: 5 }, { item: 'potato', price: 5 }, { item: 'shears', price: 25 }, { item: 'stone_hoe', price: 20 }],
+    buys: [{ item: 'frog_leg', price: 3 }, { item: 'mushroom', price: 2 }, { item: 'scale', price: 8 }, { item: 'swamp_heart', price: 100 }, { item: 'wheat', price: 3 }, { item: 'carrot', price: 2 }, { item: 'potato', price: 2 }, { item: 'egg', price: 3 }, { item: 'wool', price: 6 }, { item: 'bread', price: 8 }, { item: 'cooked_pork', price: 9 }],
   },
   'tho-lua': {
     name: 'Lò nham thạch',

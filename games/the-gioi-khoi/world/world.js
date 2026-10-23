@@ -98,16 +98,27 @@ export class World {
     return true;
   }
 
+  // Mỗi chunk là mảng phẳng [chỉ số, độ dài, id, ...] (mã hoá chạy: ô liền kề cùng id gộp lại) nên gói chào và file lưu nhỏ.
   exportDelta() {
     const out = {};
-    for (const [k, m] of this.delta) out[k] = Object.fromEntries(m);
+    for (const [k, m] of this.delta) {
+      const idx = [...m.keys()].sort((a, b) => a - b), arr = [];
+      for (let i = 0; i < idx.length;) {
+        const id = m.get(idx[i]); let j = i + 1;
+        while (j < idx.length && idx[j] === idx[j - 1] + 1 && m.get(idx[j]) === id) j++;
+        arr.push(idx[i], j - i, id); i = j;
+      }
+      out[k] = arr;
+    }
     return out;
   }
 
+  // Nhận cả hai dạng: mảng RLE mới và đối tượng { chỉ số: id } của file cũ.
   importDelta(obj) {
     for (const k of Object.keys(obj)) {
-      const m = this.delta.get(k) || new Map();
-      for (const i of Object.keys(obj[k])) m.set(+i, obj[k][i]);
+      const m = this.delta.get(k) || new Map(), v = obj[k];
+      if (Array.isArray(v)) { for (let i = 0; i + 2 < v.length; i += 3) for (let n = 0; n < v[i + 1]; n++) m.set(v[i] + n, v[i + 2]); }
+      else for (const i of Object.keys(v)) m.set(+i, v[i]);
       this.delta.set(k, m);
       const [cx, cz] = k.split(',').map(Number), c = this.chunks.get(nkey(cx, cz));
       if (c) { for (const [i, id] of m) c[i] = id; this.dirty.add(k); }

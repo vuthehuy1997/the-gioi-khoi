@@ -5,14 +5,18 @@ import { isNight } from './daynight.js';
 import { B, isPlant } from '../world/blocks.js';
 import { perceive, turnToward, angDiff, yawTo } from './perception.js';
 import { WATER_LEVEL } from '../world/generate.js';
+import { farmAI } from './animals.js';
 
 export const MOB_CAP = 40, PER_PLAYER_CAP = 12;
 
-export function spawnMob(g, type, x, y, z) {
+// opts: { persist, tamed, dg } gán thẳng vào thực thể. persist (thú đã thuần, quái hầm): không bị xoá khi xa người chơi và không tính vào MOB_CAP/PER_PLAYER_CAP.
+export function spawnMob(g, type, x, y, z, opts = {}) {
   const d = MOBS[type];
   if (!d) throw new Error('quái không tồn tại: ' + type);
   const e = { id: g.nextId++, kind: 'mob', type, x, y, z, vx: 0, vy: 0, vz: 0, w: d.w, h: d.h, onGround: false, inWater: false,
     hp: d.hp, maxHp: d.hp, yaw: 0, atkAt: 0, home: { x, y, z }, wanderT: 0, wdx: 0, wdz: 0 };
+  if (d.farm) e.age = d.adultSecs;                                  // thú nuôi sinh hoang dã là trưởng thành; con non do sinh sản đặt age = 0
+  Object.assign(e, opts);
   g.ents.set(e.id, e);
   return e;
 }
@@ -32,7 +36,7 @@ function nearestPlayer(g, e, range) {
 function face(e, dx, dz) { e.yawT = yawTo(dx, dz); }
 
 // Đi theo hướng (dx, dz) với tốc độ speed; nhảy nếu vướng bậc 1 block.
-function walk(g, e, dx, dz, speed) {
+export function walk(g, e, dx, dz, speed) {
   const len = Math.hypot(dx, dz);
   if (len < 1e-6) { e.vx = 0; e.vz = 0; return; }
   dx /= len; dz /= len;
@@ -46,7 +50,7 @@ function walk(g, e, dx, dz, speed) {
 // Đứng yên và đảo mắt quanh (lục soát hoặc canh gác): quét qua lại để mở rộng vùng nhìn.
 function lookAround(g, e, amp = 1.3) { e.vx = 0; e.vz = 0; if (e.baseYaw === undefined) e.baseYaw = e.yaw; e.yawT = e.baseYaw + Math.sin(g.time * 1.6 + e.id) * amp; }
 
-function wander(g, e, d, dt, P) {
+export function wander(g, e, d, dt, P) {
   if (P && P.suspect && e.watch) { e.vx = 0; e.vz = 0; face(e, e.watch.x - e.x, e.watch.z - e.z); return; }   // nghi ngờ: dừng lại nhìn về phía đó
   e.wanderT -= dt;
   if (e.wanderT <= 0) {
@@ -69,7 +73,8 @@ function meleeAttack(g, e, d, t) {
   }
 }
 
-const AI = {
+export const AI = {
+  'farm': (g, e, d, dt) => farmAI(g, e, d, dt),                                          // thú nuôi: hoang thì chạy trốn, thuần thì ở gần người/chuồng (sim/animals.js)
   'chase-melee'(g, e, d, dt) {
     const P = perceive(g, e, d, dt), t = P.target;
     if (P.mode === 'chase' && t) {
@@ -128,7 +133,7 @@ export function stepBody(g, e, dt) {
 
 export function stepMobs(g, dt) {
   for (const e of [...g.ents.values()]) {
-    if (e.kind !== 'mob') continue;
+    if (e.kind !== 'mob' || e.dormant) continue;                          // dormant: thú nuôi xa mọi người, đóng băng hoàn toàn
     const d = MOBS[e.type];
     if (!e.frozen) AI[d.ai](g, e, d, dt); else { e.vx = 0; e.vz = 0; }
     if (e.yawT !== undefined) e.yaw = turnToward(e.yaw, e.yawT, (d.turn || 5) * dt);
@@ -149,7 +154,7 @@ export function spawnTick(g, dt) {
   g.spawnAcc = (g.spawnAcc || 0) + dt;
   if (g.spawnAcc < 1) return;
   g.spawnAcc -= 1;
-  const mobs = [...g.ents.values()].filter(e => e.kind === 'mob');
+  const mobs = [...g.ents.values()].filter(e => e.kind === 'mob' && !e.persist);      // thú đã thuần/quái hầm không tính vào trần và không bị xoá
   const night = isNight(g.time);
   // bỏ quái ở quá xa mọi người chơi (trừ lính gác)
   const ps = alive(g), all = [...g.players.values()];

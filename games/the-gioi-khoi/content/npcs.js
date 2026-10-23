@@ -10,6 +10,7 @@ export const NPCS = {
         { text: 'Cho tôi một việc để làm.', goto: 'jobs' },
         { text: 'Tôi muốn trả nhiệm vụ.', goto: 'turnin', if: { anyReady: true } },
         { text: 'Kể tôi nghe về vùng đất này.', goto: 'lore' },
+        { text: 'Cho tôi xem Kho làng (hạt giống, nông sản).', do: [{ shop: 'truong-lang' }], goto: null },
         { text: 'Tạm biệt.', goto: null },
       ] },
       jobs: { text: 'Chúng tôi đang cần người giúp đỡ.', choices: [
@@ -18,6 +19,7 @@ export const NPCS = {
         { text: 'Nhận: Hạ Thủ Lĩnh Sói.', do: [{ accept: 'diet-thu-linh' }], goto: 'ok', if: { quest: 'diet-thu-linh', state: 'none', requires: true } },
         { text: 'Nhận: Nấm của đầm lầy.', do: [{ accept: 'dam-lay-nam' }], goto: 'ok', if: { quest: 'dam-lay-nam', state: 'none', requires: true } },
         { text: 'Nhận: Chúa của đầm lầy.', do: [{ accept: 'diet-chua-dam' }], goto: 'ok', if: { quest: 'diet-chua-dam', state: 'none', requires: true } },
+        { text: 'Nhận: Vụ mùa đầu tiên (trồng lúa, nấu bánh mì).', do: [{ accept: 'harvest-1' }], goto: 'ok', if: { quest: 'harvest-1', state: 'none', requires: true } },
         { text: 'Quay lại.', goto: 'hi' },
       ] },
       turnin: { text: 'Bạn đã làm xong? Để tôi xem.', choices: [
@@ -26,6 +28,7 @@ export const NPCS = {
         { text: 'Trả: Chào làng.', do: [{ turnin: 'chao-lang' }], goto: 'thanks', if: { quest: 'chao-lang', state: 'ready' } },
         { text: 'Trả: Săn sói đêm.', do: [{ turnin: 'san-soi' }], goto: 'thanks', if: { quest: 'san-soi', state: 'ready' } },
         { text: 'Trả: Hạ Thủ Lĩnh Sói.', do: [{ turnin: 'diet-thu-linh' }], goto: 'thanks', if: { quest: 'diet-thu-linh', state: 'ready' } },
+        { text: 'Trả: Vụ mùa đầu tiên.', do: [{ turnin: 'harvest-1' }], goto: 'thanks', if: { quest: 'harvest-1', state: 'ready' } },
         { text: 'Quay lại.', goto: 'hi' },
       ] },
       ok: { text: 'Cảm ơn bạn. Cứ làm xong rồi quay lại báo tôi nhé.', choices: [{ text: 'Được.', goto: null }] },
