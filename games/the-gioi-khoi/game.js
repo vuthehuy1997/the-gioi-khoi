@@ -117,7 +117,7 @@ async function begin(session) {
   view = new ChunkView(S.world, scene, { radius: Number(params.get('r')) || 6 });
   applyQuality(quality, !params.get('r'), false);
   if (software) hud.toast('Trình duyệt đang vẽ bằng CPU (WebGL phần mềm). Bật tăng tốc phần cứng trong cài đặt trình duyệt để mượt hơn.', 8000);
-  ents = createEntityView(scene, { iconCanvas: id => icons.canvas(id) });
+  ents = createEntityView(scene, { iconCanvas: id => icons.canvas(id), onDeath: (x, y, z, h, boss) => fx.burst(x, y, z, [0.78, 0.78, 0.82], boss ? 40 : 14, boss ? 3.4 : 2) });
   panels = createPanels({ act: a => S.act(a), onClose: () => { if (S && !S.you.dead) lockPointer(); } });
   S.on('ev', handleEvent);
   director.start();

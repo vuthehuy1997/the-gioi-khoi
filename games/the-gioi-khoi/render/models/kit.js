@@ -157,6 +157,11 @@ export function animate(rig, st) {
       case 'claw': rx += Math.sin(st.t * 2 + (b.ph || 0)) * 0.08 - st.swing * 0.7; break;
       default: break;
     }
+    if (st.dead) {                                                  // tư thế chết: chân co, tay buông, đầu gục, cánh khép
+      const d = st.dead;
+      if (b.role === 'leg') rx += d * 0.9; else if (b.role === 'arm' || b.role === 'armstill') rx += d * 0.8;
+      else if (b.role === 'head') rx += d * 0.55; else if (b.role === 'flap') rz += d * 1.1; else if (b.role === 'tail' || b.role === 'tailseg') rx += d * 0.4;
+    }
     bone.rotation.set(rx, ry, rz);
   }
   if (rig.model.hover) rig.root.position.y = Math.sin(st.t * 2) * 0.12 * rig.model.scale + rig.model.hover * rig.model.scale / 16;

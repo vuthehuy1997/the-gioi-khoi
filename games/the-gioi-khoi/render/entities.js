@@ -6,7 +6,7 @@ import { BOSSES } from '../content/bosses.js';
 
 const MAX_SHADOWS = 128;
 
-export function createEntityView(scene, { iconCanvas = null } = {}) {
+export function createEntityView(scene, { iconCanvas = null, onDeath = null } = {}) {
   const T = scene.THREE, group = new T.Group(); scene.scene.add(group);
   const lib = createModelLib(T);
   const objs = new Map(), tagMats = new Map(), rings = [], itemMats = new Map(), dead = new Set(), indMats = {};
@@ -128,11 +128,27 @@ export function createEntityView(scene, { iconCanvas = null } = {}) {
       }
       // thực thể biến mất: quái/boss ngã ra rồi mới xoá
       for (const [k, o] of [...objs]) if (!seen.has(k)) {
-        if ((o.kind === 'mob' || o.kind === 'boss') && o.rig && o.dying < 1 && !dead.has(k)) { dead.add(k); o.dying = 0.6; o.swing = 0; setFlash(o, true); seen.add(k); objs.set(k, o); }
-        else if (dead.has(k) && o.dying > 0) {
-          o.dying -= dt; const f = 1 - Math.max(0, o.dying) / 0.6;
-          o.g.rotation.z = -Math.PI / 2 * Math.min(1, f * 1.6); o.g.position.y -= f * 0.1; if (o.tag) o.tag.visible = false;
-          if (sh < MAX_SHADOWS) { ps.set(o.g.position.x, o.g.position.y + 0.03, o.g.position.z); sc.set(o.radius, 1, o.radius); mtx.compose(ps, q, sc); shadows.setMatrixAt(sh++, mtx); }
+        if ((o.kind === 'mob' || o.kind === 'boss') && o.rig && o.dying < 1 && !dead.has(k)) {
+          dead.add(k); o.total = o.kind === 'boss' ? 1.6 : 0.8; o.dying = o.total; o.swing = 0; o.flash = 0; setFlash(o, true);
+          o.side = (k.length + (o.phase * 7 | 0)) % 2 ? 1 : -1; o.spin = !!o.rig.model.hover || o.lib.model.bones.some(b => b.role === 'flap');
+          o.baseY = o.g.position.y; o.puffed = false; seen.add(k); objs.set(k, o);
+        } else if (dead.has(k) && o.dying > 0) {
+          o.dying -= dt; const f = 1 - Math.max(0, o.dying) / o.total, g = o.g;
+          const fall = Math.min(1, f / 0.4), ease = 1 - (1 - fall) ** 3;
+          animate(o.rig, { phase: o.phase, k: 0, t, pitch: 0, swing: 0, dead: ease });
+          if (o.spin) {                                                              // bay lượn: xoay tròn rồi rơi
+            g.rotation.y += dt * 9 * (1 - f); g.rotation.x = 0.9 * ease; g.rotation.z = 0;
+            o.rig.root.position.y *= 1 - ease; g.position.y = o.baseY - 0.25 * f * f;
+          } else {                                                                   // ngã nghiêng, nảy nhẹ khi chạm đất
+            const bounce = fall >= 1 ? Math.sin(Math.min(1, (f - 0.4) / 0.15) * Math.PI) * 0.06 : 0;
+            g.rotation.z = o.side * (Math.PI / 2) * (ease + (fall >= 1 ? -bounce : 0)); g.position.y = o.baseY - 0.05 * ease + bounce * o.h * 0.3;
+          }
+          const shrink = f > 0.65 ? 1 - (f - 0.65) / 0.35 : 1;                        // 35% cuối: co lại và tan
+          g.scale.setScalar(Math.max(0.001, shrink));
+          if (o.tag) o.tag.visible = false;
+          setFlash(o, f < 0.25 || (f > 0.65 && ((f * 30) | 0) % 2 === 0));
+          if (sh < MAX_SHADOWS) { ps.set(g.position.x, o.baseY + 0.03, g.position.z); sc.set(o.radius * shrink, 1, o.radius * shrink); mtx.compose(ps, q, sc); shadows.setMatrixAt(sh++, mtx); }
+          if (f > 0.65 && !o.puffed) { o.puffed = true; if (onDeath) onDeath(g.position.x, o.baseY + o.h * 0.3, g.position.z, o.h, o.kind === 'boss'); }
           if (o.dying <= 0) { group.remove(o.g); objs.delete(k); dead.delete(k); }
         } else { group.remove(o.g); objs.delete(k); dead.delete(k); }
       }
@@ -146,6 +162,7 @@ export function createEntityView(scene, { iconCanvas = null } = {}) {
       const by = role => o.lib.model.bones.filter(b => b.role === role).map(b => o.rig.bones[b.id].rotation.x);
       return { legs: by('leg'), arms: [...by('arm'), ...by('armstill')], flashing: !!o.flashing, hasShadow: shadows.count > 0, drawCalls: 1, bones: o.lib.model.bones.length, dying: dead.has(key) };
     },
+    deathPose(key) { const o = objs.get(key); return o && dead.has(key) ? { rz: o.g.rotation.z, rx: o.g.rotation.x, scale: o.g.scale.x, spin: o.spin, left: o.dying } : null; },
     telegraph(x, y, z, r, time) {
       const m = new T.Mesh(new T.CircleGeometry(r, 40), new T.MeshBasicMaterial({ color: '#ff3b3b', transparent: true, opacity: 0.3, depthWrite: false, side: T.DoubleSide }));
       m.rotation.x = -Math.PI / 2; m.position.set(x, y + 0.08, z); group.add(m); rings.push({ m, life: time, total: time });

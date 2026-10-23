@@ -1512,13 +1512,17 @@ def test_entity_view_draw_calls_dying_and_cpu_budget(pg, browser, base):
       // chết: biến mất khỏi danh sách -> ngã xuống rồi mới xoá
       const gone = list.slice(1); v.update(gone, 3, 0.016, [], g.scene.camera.position);
       const dying = v.rigOf('e:500') && v.rigOf('e:500').dying;
+      const poses = []; let puffs = 0; v.onDeathCount = 0;
+      for (let i = 0; i < 50; i++) { v.update(gone, 3 + i * 0.016, 0.016, [], g.scene.camera.position); const pz = v.deathPose('e:500'); if (pz) poses.push(pz); }
       for (let i = 0; i < 60; i++) v.update(gone, 3 + i * 0.016, 0.016, [], g.scene.camera.position);
       const after = v.rigOf('e:500');
-      return { base0, withAll, perFrame, dying, after, shadows: v.shadowCount(), n: v.count() };
+      return { base0, withAll, perFrame, dying, poses, after, shadows: v.shadowCount(), n: v.count() };
     }""")
     assert r['withAll'] - r['base0'] <= 48 * 1.15 + 6, r                  # tối đa ~1 lệnh vẽ mỗi thực thể (+ bóng và thẻ tên)
     assert r['perFrame'] < 2.5, r                                         # cập nhật 48 thực thể có xương dưới 2,5 ms
     assert r['dying'] and r['after'] is None and r['n'] == 47, r
+    ps = r['poses']; assert len(ps) > 20, r                              # hoạt hoạ chết: ngã nghiêng gần 90 độ rồi co lại
+    assert max(abs(p['rz']) for p in ps) > 1.4 and min(p['scale'] for p in ps) < 0.5, ps[-1]
     assert r['shadows'] <= 128, r
 
 
