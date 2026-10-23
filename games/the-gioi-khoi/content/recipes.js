@@ -66,4 +66,7 @@ export const RECIPES = [
   r('swamp_club', ['swamp_club', 1], { iron_ingot: 3, scale: 6, swamp_heart: 1, stick: 1 }, 'anvil'),
   r('magma_blade', ['magma_blade', 1], { iron_ingot: 3, ember: 6, magma_core: 1 }, 'anvil'),
   r('prism_blade', ['prism_blade', 1], { gem: 2, amethyst: 6, silk: 4, guardian_prism: 1 }, 'anvil'),
+  // ---- đồ cổ vật: Mảnh Cổ Vật lấy từ rương và chủ hầm ngục ----
+  r('ancient_pick', ['ancient_pick', 1], { ancient_shard: 5, stick: 2 }, 'anvil'),
+  r('delver_blade', ['delver_blade', 1], { ancient_shard: 8, iron_ingot: 2, crystal: 1 }, 'anvil'),
 ];

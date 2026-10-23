@@ -104,6 +104,18 @@ export function createPanels({ act, onClose }) {
     close,
     openInventory(ctx) { invCtx = ctx; open('inventory'); renderInventory(); },
     refresh(ctx) { invCtx = ctx; if (kind === 'inventory') renderInventory(); else if (kind === 'chest' && chest) renderChest(); else if (kind === 'shop' && shop) this.showShop(shop, ctx.you); },
+    // Bảng "Chiến lợi phẩm" khi mở rương hầm: ev = { title, items: [{ item, n }], claimed? }
+    showLoot(ev) {
+      open('loot'); head('Chiến lợi phẩm');
+      const sub = document.createElement('p'); sub.className = 'hint'; sub.textContent = ev.title || 'Rương hầm'; root.appendChild(sub);
+      if (ev.claimed) { const p = document.createElement('p'); p.textContent = 'Bạn đã nhận phần thưởng rương này.'; root.appendChild(p); }
+      else for (const it of ev.items || []) {
+        const row = document.createElement('div'); row.className = 'lootrow';
+        const nm = document.createElement('span'); nm.textContent = `${itemName(it.item)} ×${it.n}`;
+        row.append(slotEl({ id: it.item, n: it.n }), nm); root.appendChild(row);
+      }
+      root.appendChild(btn('Đóng', () => close()));
+    },
     showChest(ev, ctx) { invCtx = ctx; chest = ev; if (kind !== 'chest') open('chest'); renderChest(); },
     showDialog(v) {
       open('dialog'); head(v.npc.name);

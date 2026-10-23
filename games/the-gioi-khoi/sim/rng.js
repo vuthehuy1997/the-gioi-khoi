@@ -10,3 +10,10 @@ export function makeRng(seed) {
   rand.state = () => a;
   return rand;
 }
+
+// Băm chuỗi 32 bit (FNV-1a) làm seed: phần thưởng tất định không dùng g.rng (thứ tự gọi đổi theo hành động khác).
+export function hashStr(s) {
+  let h = 0x811c9dc5;
+  for (let i = 0; i < s.length; i++) { h ^= s.charCodeAt(i); h = Math.imul(h, 0x01000193); }
+  return h >>> 0;
+}

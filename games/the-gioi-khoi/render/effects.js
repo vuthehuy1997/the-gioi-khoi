@@ -34,8 +34,34 @@ export function createEffects(sc) {
   let head = 0, alive = 0;
   for (let i = 0; i < N; i++) pos[i * 3 + 1] = -999;
 
+  // bẫy hầm ngục: gai (4 chóp nhỏ mỗi ô khi báo hiệu rung / khi nhô lên) và ống phun (vầng sáng báo hiệu, cột hơi khi phun); danh sách từ sim/dungeon.js trapView
+  const MAXS = 640, MAXV = 24, spikeGeo = new T.ConeGeometry(0.5, 1, 4), cubeGeo = new T.BoxGeometry(1, 1, 1);
+  const spikes = new T.InstancedMesh(spikeGeo, new T.MeshBasicMaterial({ color: '#cfd3de' }), MAXS);
+  const vents = new T.InstancedMesh(cubeGeo, new T.MeshBasicMaterial({ color: '#ffffff', transparent: true, opacity: 0.75, depthWrite: false }), MAXV);
+  for (const m of [spikes, vents]) { m.count = 0; m.frustumCulled = false; m.renderOrder = 3; root.add(m); }
+  const m4 = new T.Matrix4(), q0 = new T.Quaternion(), v3 = new T.Vector3(), vs = new T.Vector3(), tint = new T.Color();
+
   return {
-    root, outline, crack, points,
+    root, outline, crack, points, spikes, vents,
+    setTraps(list, t = 0) {
+      let ns = 0, nv = 0;
+      for (const o of list) {
+        if (o.k === 'spike') {
+          if (o.s === 'down') continue;
+          const h = o.s === 'warn' ? 0.16 : 0.62, jx = o.s === 'warn' ? Math.sin(t * 70 + o.x * 3 + o.z) * 0.04 : 0;
+          for (const [dx, dz] of [[0.25, 0.25], [0.75, 0.25], [0.25, 0.75], [0.75, 0.75]]) {
+            if (ns >= MAXS) break;
+            m4.compose(v3.set(o.x + dx + jx, o.y + h / 2, o.z + dz), q0, vs.set(0.36, h, 0.36)); spikes.setMatrixAt(ns++, m4);
+          }
+        } else if (o.k === 'vent' && o.s !== 'rest' && nv < MAXV) {
+          const spray = o.s === 'spray', h = spray ? 1.7 : 0.07;
+          m4.compose(v3.set(o.x + 0.5, o.y + (spray ? 0.2 : 0) + h / 2 + (spray ? 0 : 0.02), o.z + 0.5), q0, vs.set(spray ? 0.8 : 0.9, h, spray ? 0.8 : 0.9));
+          vents.setMatrixAt(nv, m4); vents.setColorAt(nv, tint.set(spray ? '#d4f2ff' : '#ff9a3a')); nv++;
+        }
+      }
+      spikes.count = ns; vents.count = nv;
+      spikes.instanceMatrix.needsUpdate = true; vents.instanceMatrix.needsUpdate = true; if (vents.instanceColor) vents.instanceColor.needsUpdate = true;
+    },
     get particleCount() { return alive; },
     // pos: ô block đang nhắm hoặc null; progress 0..1 hoặc null
     setTarget(p, progress) {

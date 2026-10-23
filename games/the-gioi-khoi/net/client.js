@@ -54,6 +54,10 @@ export class ClientSession {
     if (ev.t === 'block') this.world.set(ev.x, ev.y, ev.z, ev.id);
     else if (ev.t === 'you') this.you = ev;
     else if (ev.t === 'boss-defeated') this.flags['boss:' + ev.type] = true;
+    else if (ev.t === 'dungeon') {                                    // trạng thái hầm ngục (phòng đã dọn, cổng đã mở, chủ đã hạ): ghép vào cờ của khách
+      const all = this.flags.dungeons || (this.flags.dungeons = {}), st = all[ev.id] || (all[ev.id] = { rooms: {}, gates: {}, claimed: {} });
+      Object.assign(st.rooms, ev.rooms || {}); Object.assign(st.gates, ev.gates || {}); if (ev.boss) st.boss = true;
+    }
     else if (ev.t === 'teleport') this.seq = ev.seq | 0;
     this.emit('ev', ev);
   }

@@ -11,7 +11,9 @@ export { animate };
 export const MOB_MODELS = { 'soi-xam': 'wolf', 'nai': 'deer', 'xac-song': 'zombie', 'bo-cap': 'scorpion', 'xuong-cung': 'skeleton', 'gau-bang': 'bear', 'ma-bang': 'wraith', 'tuong-da': 'golem',
   'ech-doc': 'frog', 'ran-lay': 'snake', 'ca-sau': 'croc', 'nam-di': 'shroom', 'than-lan-nham': 'lizard', 'linh-hoa': 'fire-spirit',
   'nhen-pha-le': 'spider', 'tho-pha-le': 'crystal-rabbit', 'khoi-pha-le': 'sentinel', 'cao-lua': 'fox', 'ga': 'chicken', 'cuu': 'sheep', 'lon': 'pig' };
-const BOSS_MODEL = { 'thu-linh-soi': 'wolf-lord', 'bo-cap-chua': 'scorpion-queen', 'bang-de': 'ice-emperor', 'chua-dam-lay': 'swamp-king', 'vua-nham-thach': 'magma-king', 'ho-ve-pha-le': 'crystal-guardian' };
+const BOSS_MODEL = { 'thu-linh-soi': 'wolf-lord', 'bo-cap-chua': 'scorpion-queen', 'bang-de': 'ice-emperor', 'chua-dam-lay': 'swamp-king', 'vua-nham-thach': 'magma-king', 'ho-ve-pha-le': 'crystal-guardian',
+  // chủ hầm ngục dùng lại mô hình boss có sẵn (chưa đổi màu riêng)
+  'ham-chu-re-muc': 'wolf-lord', 'ham-chu-cat-chon': 'scorpion-queen', 'ham-chu-bang-gia': 'ice-emperor', 'ham-chu-bun-lay': 'swamp-king', 'ham-chu-tro-tan': 'magma-king', 'ham-chu-lang-kinh': 'crystal-guardian' };
 
 // Bảng màu người chơi: 12 kiểu để mỗi người nhìn khác nhau (chọn theo uid).
 const SKINS = ['#f1c8a0', '#e0ac7e', '#c68a5c', '#8d5a3a', '#f4d3b8'];

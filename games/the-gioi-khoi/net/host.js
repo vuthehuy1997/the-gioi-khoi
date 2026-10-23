@@ -6,7 +6,7 @@ import { cleanName } from '../../../platform/net/protocol.js';
 import { snapshotFor, youOf } from './snapshot.js';
 
 const ACT_PER_SEC = 40;
-const REPORT = new Set(['break', 'dig', 'place', 'buy', 'sell', 'craft', 'use', 'respawn', 'interact', 'equip', 'unequip', 'toggle', 'sleep', 'chest-open', 'chest-move', 'till', 'plant', 'harvest', 'feed', 'shear']);
+const REPORT = new Set(['break', 'dig', 'place', 'buy', 'sell', 'craft', 'use', 'respawn', 'interact', 'equip', 'unequip', 'toggle', 'sleep', 'chest-open', 'chest-move', 'till', 'plant', 'harvest', 'feed', 'shear', 'gate', 'dchest']);
 
 export class HostSession {
   constructor(game, room, uid, name) {

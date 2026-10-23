@@ -98,4 +98,35 @@ export const QUESTS = {
     steps: [{ type: 'kill', mob: 'tho-pha-le', n: 2, text: 'Quan sát và hạ 2 Thỏ Pha Lê' }, { type: 'collect', item: 'amethyst', n: 5, text: 'Đào 5 thạch anh tím' }], consume: true,
     reward: { items: [{ item: 'gem', n: 2 }, { item: 'xu', n: 130 }] },
   },
+  // ---- dọn hầm ngục: hạ chủ hầm (mỗi vùng một hầm; vùng phải đã mở) ----
+  'don-ham-re-muc': {
+    name: 'Dọn Hầm Rễ Mục', giver: 'truong-lang',
+    steps: [{ type: 'boss', boss: 'ham-chu-re-muc', text: 'Hạ Lão Mộ Vương ở Hầm Rễ Mục (tìm miệng hầm trong Rừng Sương)' }],
+    reward: { items: [{ item: 'xu', n: 100 }, { item: 'heal_potion', n: 2 }] },
+  },
+  'don-ham-cat-chon': {
+    name: 'Dọn Hầm Cát Chôn', giver: 'thuong-nhan', requires: { flag: 'boss:thu-linh-soi' },
+    steps: [{ type: 'boss', boss: 'ham-chu-cat-chon', text: 'Hạ Xác Ướp Chúa ở Hầm Cát Chôn (trong Sa Mạc Lửa)' }],
+    reward: { items: [{ item: 'xu', n: 120 }, { item: 'heal_potion', n: 2 }] },
+  },
+  'don-ham-bang-gia': {
+    name: 'Dọn Hầm Băng Giá', giver: 'an-si', requires: { flag: 'boss:bo-cap-chua' },
+    steps: [{ type: 'boss', boss: 'ham-chu-bang-gia', text: 'Hạ Tù Trưởng Băng Cổ ở Hầm Băng Giá (trong Núi Băng)' }],
+    reward: { items: [{ item: 'xu', n: 140 }, { item: 'heal_potion', n: 2 }] },
+  },
+  'don-ham-bun-lay': {
+    name: 'Dọn Hầm Bùn Lầy', giver: 'ngu-dan',
+    steps: [{ type: 'boss', boss: 'ham-chu-bun-lay', text: 'Hạ Thủy Quái Cổ ở Hầm Bùn Lầy (trong Đầm Lầy Mục)' }],
+    reward: { items: [{ item: 'xu', n: 160 }, { item: 'heal_potion', n: 2 }] },
+  },
+  'don-ham-tro-tan': {
+    name: 'Dọn Hầm Tro Tàn', giver: 'tho-lua', requires: { flag: 'boss:thu-linh-soi' },
+    steps: [{ type: 'boss', boss: 'ham-chu-tro-tan', text: 'Hạ Pháp Sư Tro ở Hầm Tro Tàn (trong Núi Lửa Tro)' }],
+    reward: { items: [{ item: 'xu', n: 180 }, { item: 'heal_potion', n: 2 }] },
+  },
+  'don-ham-lang-kinh': {
+    name: 'Dọn Hầm Lăng Kính', giver: 'hoc-gia', requires: { flag: 'boss:bo-cap-chua' },
+    steps: [{ type: 'boss', boss: 'ham-chu-lang-kinh', text: 'Hạ Linh Hồn Lăng Kính ở Hầm Lăng Kính (trong Vực Pha Lê)' }],
+    reward: { items: [{ item: 'xu', n: 200 }, { item: 'heal_potion', n: 2 }] },
+  },
 };

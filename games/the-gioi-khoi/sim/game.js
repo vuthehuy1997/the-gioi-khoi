@@ -22,6 +22,7 @@ import { SAVE_VERSION } from './version.js';
 import { hungerTick, restorePlayerState, serializePlayerState, FOOD_MAX } from './hunger.js';
 import * as farm from './farm.js';
 import * as animals from './animals.js';
+import * as dungeon from './dungeon.js';
 
 const ENV_TEXT = {
   heat: n => `Cái nóng ở ${n} thiêu đốt bạn. Mặc đồ chống nóng (vỏ bọ cạp, than hồng) để chịu được.`,
@@ -34,6 +35,7 @@ export class Game {
   constructor({ seed, world, spawning = true, env = true, hunger = true } = {}) {
     this.seed = seed; this.spawning = spawning; this.env = env;       // env: false tắt nóng/lạnh/độc của vùng (dùng khi thử nghiệm)
     this.hunger = hunger;                                              // hunger: false tắt đói, rủi ro ngộ độc và hồi máu theo đói (các bài thử cũ)
+    this.dg = {};                                                      // trạng thái chạy của hầm ngục (đợt quái, bẫy hẹn giờ): không lưu, xem sim/dungeon.js
     this.crops = new Map(); this.farm = new Map();                     // sổ cây trồng ('x,y,z' ô cây) và ruộng trống ('x,y,z' ô đất cày): xem sim/farm.js
     this.world = world || new World(seed);
     this.rng = makeRng(seed ^ 0x5eed);
@@ -155,6 +157,8 @@ export class Game {
       case 'harvest': return farm.actHarvest(this, p, a);
       case 'feed': return animals.actFeed(this, p, a);
       case 'shear': return animals.actShear(this, p, a);
+      case 'gate': return dungeon.actGate(this, p, a);
+      case 'dchest': return dungeon.actDChest(this, p, a);
       case 'respawn': return combat.actRespawn(this, p);
       case 'interact': return dialogue.interact(this, p, a);
       case 'dlg': return dialogue.choose(this, p, a);
@@ -185,6 +189,7 @@ export class Game {
     if (canHarvest(id, hs ? hs.id : null) && def.drop) this.collect(p, def.drop, 1, a.x + 0.5, a.y + 0.5, a.z + 0.5);
     if (id === B.CHEST) this.spillChest(a.x, a.y, a.z);
     farm.onBreak(this, p, a.x, a.y, a.z, id);              // cây trồng (sản lượng theo giai đoạn), hạt từ cỏ cao
+    dungeon.onBreak(this, p, a.x, a.y, a.z, id);           // tấm áp lực / ống phun: sàn không thủng
     this.onBlockBroken?.(p, id);
     return { ok: true };
   }
@@ -216,6 +221,8 @@ export class Game {
     });
     if (!nb) return { ok: false, reason: 'floating' };
     if (this.occupied(a.x, a.y, a.z)) return { ok: false, reason: 'blocked' };
+    const dr = dungeon.beforePlace(this, p, a);            // đặt lên gai: chỉ khi gai đang hạ, gai bị đè hết hiệu lực
+    if (dr) return dr;
     this.setBlock(a.x, a.y, a.z, BLOCK_BY_NAME[it.block].id);
     this.makeNoise(a.x + 0.5, a.y + 0.5, a.z + 0.5, 7);
     removeItem(p.inv, s.id, 1); this.touch(p);
@@ -286,7 +293,9 @@ export class Game {
     const c = this.chestOf(p, a); if (!c) return { ok: false, reason: 'reach' };
     const src = a.from === 'chest' ? c : a.from === 'inv' ? p.inv : null, dst = src === c ? p.inv : c;
     if (!src || !Number.isInteger(a.slot) || a.slot < 0 || a.slot >= src.length || !src[a.slot]) return { ok: false, reason: 'bad-slot' };
-    const s = src[a.slot], left = addItem(dst, s.id, s.n);
+    const s = src[a.slot];
+    if (dst === c && ITEMS[s.id] && ITEMS[s.id].bound) return { ok: false, reason: 'bound' };       // chìa hầm gắn với người chơi: không cất vào rương đặt
+    const left = addItem(dst, s.id, s.n);
     if (left === s.n) return { ok: false, reason: 'full' };
     if (left) s.n = left; else src[a.slot] = null;
     this.touch(p); this.sendChest(p, a, c);
@@ -341,6 +350,7 @@ export class Game {
     if (e.kind === 'boss') {
       const d = BOSSES[e.type];
       this.flags[d.flag] = true;
+      if (d.dungeon) dungeon.onBossKilled(this, e, d);                 // chủ hầm: rương kho báu hiện ra
       for (const m of e.minions || []) this.ents.delete(m);
       this.emit(null, { t: 'boss-defeated', id: e.id, type: e.type, name: d.name });
       const near = this.nearbyPlayers(e, (e.arena ? e.arena.r : d.radius) + 10);
@@ -407,6 +417,7 @@ export class Game {
     hungerTick(this, dt);
     farm.farmTick(this, dt);
     animals.animalTick(this, dt);
+    dungeon.dungeonTick(this, dt);
     this.tickExtra?.(dt);
   }
 }

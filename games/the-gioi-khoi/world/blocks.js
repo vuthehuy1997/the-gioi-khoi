@@ -8,6 +8,7 @@ export const B = {
   MOSS: 25, MUD: 26, ASH: 27, BASALT: 28, AMETHYST: 29,
   IRON_ORE: 30, FURNACE: 31, ANVIL: 32, CHEST: 33, BED: 34, DOOR: 35, DOOR_OPEN: 36, TORCH: 37, GLASS: 38, STONE_BRICK: 39,
   FARMLAND: 40, FARMLAND_WET: 41,            // đất cày khô / ướt; 42..53 là cây trồng (xem CROP_BLOCKS)
+  DUNGEON_WALL: 54, GATE_IRON: 55, GATE_BOSS: 56, SPIKES: 57, PLATE: 58, DART_TRAP: 59, VENT: 60, DCHEST: 61,   // hầm ngục (sim/dungeon.js)
 };
 // Cây trồng: mỗi giai đoạn (0 mầm .. 3 chín) là một id block riêng, vì delta chỉ lưu id block.
 export const CROP_BLOCKS = { wheat: [42, 43, 44, 45], carrot: [46, 47, 48, 49], potato: [50, 51, 52, 53] };
@@ -20,7 +21,8 @@ export const TILES = ['stone', 'dirt', 'grass_top', 'grass_side', 'sand', 'snow'
   'planks', 'ore', 'water', 'cactus_side', 'cactus_top', 'ice', 'bedrock', 'magma', 'bench_top', 'bench_side', 'gem_ore', 'tall_grass', 'flower_red', 'flower_yellow', 'dead_bush',
   'glow_mushroom', 'reed', 'ember_bloom', 'crystal_bloom', 'moss_top', 'moss_side', 'mud', 'ash', 'basalt', 'amethyst',
   'iron_ore', 'furnace_side', 'furnace_top', 'anvil_top', 'anvil_side', 'chest_top', 'chest_side', 'bed_top', 'bed_side', 'door', 'door_open', 'torch', 'glass', 'stone_brick',
-  'farmland_top', 'farmland_wet_top', 'crop_wheat_0', 'crop_wheat_1', 'crop_wheat_2', 'crop_wheat_3', 'crop_carrot_0', 'crop_carrot_1', 'crop_carrot_2', 'crop_carrot_3', 'crop_potato_0', 'crop_potato_1', 'crop_potato_2', 'crop_potato_3'];
+  'farmland_top', 'farmland_wet_top', 'crop_wheat_0', 'crop_wheat_1', 'crop_wheat_2', 'crop_wheat_3', 'crop_carrot_0', 'crop_carrot_1', 'crop_carrot_2', 'crop_carrot_3', 'crop_potato_0', 'crop_potato_1', 'crop_potato_2', 'crop_potato_3',
+  'dungeon_wall', 'gate_iron', 'gate_boss', 'spikes', 'plate', 'dart_trap', 'vent', 'dchest_top', 'dchest_side'];
 export const ATLAS_COLS = 8, ATLAS_ROWS = 10;
 const T = Object.fromEntries(TILES.map((n, i) => [n, i]));
 
@@ -71,6 +73,15 @@ export const BLOCKS = [
     const t = T[`crop_${kind}_${stage}`];
     return def(id, `crop_${kind}_${stage}`, { solid: false, opaque: false, plant: true, deco: true, hardness: 0.05, drop: null, tiles: [t, t, t] });
   })),
+  // hầm ngục: tường/cổng/rương không đào được; bẫy (tấm áp lực, ống tên, ống phun) gỡ được bằng cuốc bậc 1. Gai, tấm, ống phun là block rắn ở lớp sàn (người chơi đứng trên mặt trên).
+  def(B.DUNGEON_WALL, 'dungeon_wall', { hardness: -1, drop: null, tiles: [T.dungeon_wall, T.dungeon_wall, T.dungeon_wall] }),
+  def(B.GATE_IRON, 'gate_iron', { hardness: -1, drop: null, tiles: [T.gate_iron, T.gate_iron, T.gate_iron] }),
+  def(B.GATE_BOSS, 'gate_boss', { hardness: -1, drop: null, tiles: [T.gate_boss, T.gate_boss, T.gate_boss] }),
+  def(B.SPIKES, 'spikes', { hardness: -1, drop: null, tiles: [T.spikes, T.dungeon_wall, T.dungeon_wall] }),
+  def(B.PLATE, 'plate', { hardness: 2, tool: 'pick', tier: 1, drop: null, tiles: [T.plate, T.dungeon_wall, T.dungeon_wall] }),
+  def(B.DART_TRAP, 'dart_trap', { hardness: 2, tool: 'pick', tier: 1, drop: null, tiles: [T.dart_trap, T.dart_trap, T.dart_trap] }),
+  def(B.VENT, 'vent', { hardness: 2, tool: 'pick', tier: 1, drop: null, tiles: [T.vent, T.dungeon_wall, T.dungeon_wall] }),
+  def(B.DCHEST, 'dchest', { hardness: -1, drop: null, tiles: [T.dchest_top, T.dchest_side, T.dchest_top] }),
 ];
 
 export const BLOCK_BY_NAME = Object.fromEntries(BLOCKS.map(b => [b.name, b]));

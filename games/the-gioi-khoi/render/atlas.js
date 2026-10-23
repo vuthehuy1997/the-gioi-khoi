@@ -92,6 +92,16 @@ const PAINT = {
   farmland_wet_top: (x, y, s) => (y % 4 === 1) ? jitter(rgb(40, 26, 16), 6, s, x, y) : jitter(rgb(74, 48, 30), 10, s, x, y),
   ...Object.fromEntries([0, 1, 2, 3].flatMap(st => [[`crop_wheat_${st}`, cropWheat(st)], [`crop_carrot_${st}`, cropCarrot(st)], [`crop_potato_${st}`, cropPotato(st)]])),
   bench_side: (x, y, s) => (y > 3 && y < 12 && x > 2 && x < 13 && ((x + y) % 4 === 0)) ? rgb(70, 70, 76) : jitter(rgb(150, 108, 60), 10, s, x, y),
+  // hầm ngục: gạch tối xanh xám, cổng sắt (chấn song), cổng chủ (song đỏ vàng), mặt trên các bẫy, rương hầm tím vàng
+  dungeon_wall: (x, y, s) => { const row = y >> 2, off = (row % 2) * 4; return (y % 4 === 3 || (x + off) % 8 === 7) ? jitter(rgb(26, 26, 36), 5, s, x, y) : jitter(rgb(58, 60, 76), 8, s, x, y); },
+  gate_iron: (x, y, s) => { if (x < 1 || x > 14 || y < 1 || y > 14) return rgb(40, 42, 50); if (x % 4 === 2) return jitter(rgb(150, 154, 166), 8, s, x, y); if (y === 4 || y === 11) return jitter(rgb(104, 108, 120), 6, s, x, y); return jitter(rgb(30, 32, 40), 4, s, x, y); },
+  gate_boss: (x, y, s) => { if (x < 1 || x > 14 || y < 1 || y > 14) return rgb(60, 30, 36); if (x % 4 === 2) return jitter(rgb(168, 56, 52), 8, s, x, y); if (y === 7 || y === 8) return jitter(rgb(222, 178, 70), 8, s, x, y); return jitter(rgb(34, 22, 30), 4, s, x, y); },
+  spikes: (x, y, s) => { const px = x % 8, py = y % 8, d = Math.hypot(px - 3.5, py - 3.5); return d < 2.2 ? jitter(rgb(206, 210, 220), 10, s, x, y) : d < 3.2 ? rgb(70, 72, 84) : jitter(rgb(46, 48, 60), 6, s, x, y); },
+  plate: (x, y, s) => { if (x === 0 || y === 0 || x === 15 || y === 15) return rgb(34, 34, 44); const inner = x > 2 && x < 13 && y > 2 && y < 13; if (inner && (x === 7 || x === 8 || y === 7 || y === 8)) return jitter(rgb(176, 84, 64), 8, s, x, y); return inner ? jitter(rgb(120, 122, 136), 8, s, x, y) : jitter(rgb(72, 74, 90), 6, s, x, y); },
+  dart_trap: (x, y, s) => { const d = Math.max(Math.abs(x - 7.5), Math.abs(y - 7.5)); return d < 2.5 ? rgb(10, 10, 14) : d < 3.5 ? rgb(150, 110, 60) : jitter(rgb(66, 68, 84), 8, s, x, y); },
+  vent: (x, y, s) => { if (x === 0 || y === 0 || x === 15 || y === 15) return rgb(36, 36, 46); return (y % 3 === 1) ? jitter(rgb(14, 14, 18), 3, s, x, y) : jitter(rgb(96, 98, 112), 8, s, x, y); },
+  dchest_top: (x, y, s) => (x === 0 || y === 0 || x === 15 || y === 15) ? rgb(34, 22, 52) : (x === 7 || x === 8) ? jitter(rgb(224, 184, 70), 8, s, x, y) : jitter(rgb(104, 62, 150), 10, s, x, y),
+  dchest_side: (x, y, s) => { if (y === 6 || x === 0 || x === 15 || y === 0 || y === 15) return rgb(34, 22, 52); if (x > 6 && x < 10 && y > 4 && y < 9) return rgb(240, 206, 90); return jitter(rgb(104, 62, 150), 10, s, x, y); },
 };
 
 export const tileColors = [];   // màu trung bình mỗi ô, điền khi makeAtlas() chạy (dùng cho hạt vỡ block)

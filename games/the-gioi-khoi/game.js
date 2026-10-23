@@ -30,6 +30,8 @@ import { BOSSES } from './content/bosses.js';
 import { ITEMS } from './content/items.js';
 import { BLOCKS, B, BLOCK_BY_NAME, cropOf, isCrop, isFarmland, isPlant } from './world/blocks.js';
 import { CROPS, SOIL } from './content/farming.js';
+import { DUNGEONS } from './content/dungeons.js';
+import { dungeonAt, trapView, compass, ROOM_NO } from './sim/dungeon.js';
 import { saveWorld, loadWorld, exportWorld, importWorld } from './save.js';
 
 const params = new URLSearchParams(location.search);
@@ -54,6 +56,7 @@ let quality = (software && !store.get('tgk-quality-user') ? 'low' : store.get('t
 let level = presetOf(quality).level, maxLevel = level;
 const gov = { slow: 0, fast: 0 }, rawDts = []; let maxRadius = 6, wasOnGround = true, stepDist = 0, digSoundT = 0, loadingPhase = true;
 let S = null, game = null, local = null, view = null, ents = null, panels = null;
+const dgLeft = {}; let dgLast = null, dgPoll = 0, dgSound = new Map();                       // hầm ngục: số quái còn (từ sự kiện host), hầm đang ở, nhịp bẫy lần trước
 let pending = 1, paused = false, wasLocked = false, lastHit = 0, dig = null, digCooldown = 0, lastSel = -1;
 const keys = new Set(), mouse = { left: false };
 const buf = [];                                  // vài ảnh chụp gần nhất để nội suy
@@ -128,6 +131,7 @@ async function begin(session) {
     if (sys(id) && sys(prev)) return;                                                         // cây lớn, đất ướt/khô: thay đổi hệ thống, im lặng
     if (isFarmland(prev) && id === B.DIRT) return;                                            // ruộng bỏ hoang về đất
     if (isCrop(id) && !prev) { sfx.play('sprout'); return; }                                  // gieo
+    if ((prev === B.GATE_IRON || prev === B.GATE_BOSS) && id === 0) { sfx.play('gate'); return; }   // cổng hầm mở
     if (prev && BLOCKS[prev] && id === 0) sfx.play('break', { block: prev }); else if (id) sfx.play('place', { block: id });
     if (prev && BLOCKS[prev] && id === 0) fx.burst(x + 0.5, y + 0.5, z + 0.5, BLOCKS[prev].tiles[1], 16);
     else if (id && BLOCKS[id]) fx.burst(x + 0.5, y + 0.5, z + 0.5, BLOCKS[id].tiles[0], 5, 1.2);
@@ -144,6 +148,8 @@ async function begin(session) {
 function onSnap(snap) { buf.push({ t: performance.now(), snap }); if (buf.length > 5) buf.shift(); }
 
 const FAIL_TEXT = { poor: 'Không đủ xu.', 'inventory-full': 'Kho đồ đã đầy.', reach: 'Ở quá xa.', 'not-sold': 'Cửa hàng không bán món này.', 'not-bought': 'Cửa hàng không thu món này.',
+  'need-key': 'Cần Chìa Hầm để mở cổng này.', 'need-boss-key': 'Cần Chìa Chủ Hầm để mở cổng này.', locked: 'Rương chưa mở được: hãy dọn sạch phòng canh gác trước.',
+  bound: 'Chìa gắn với bạn, không cất vào rương được.', 'spike-up': 'Gai đang nhô lên: chờ gai hạ xuống rồi hãy đặt block.',
   missing: 'Bạn không có đủ món này.', full: 'Bạn đang no và đầy máu.', cooldown: 'Ăn chậm thôi.', unripe: 'Cây chưa chín.', 'not-hoe': 'Cần cầm cuốc đất.', 'not-soil': 'Cuốc chỉ cày được đất, cỏ, bùn, rêu.', 'not-seed': 'Cần cầm hạt giống.', 'not-farmland': 'Hạt cần đặt lên đất cày.',
   'not-crop': 'Ở đó không có cây trồng.', 'not-food': 'Con vật không ăn món này.', busy: 'Con vật đang bận.', cap: 'Chuồng đã đầy (24/24).', young: 'Cừu non chưa cắt len được.', sheared: 'Cừu chưa mọc lại len.', 'not-shears': 'Cần cầm kéo.', 'no-target': 'Không có con vật nào ở đó.', 'cannot-craft': 'Chưa đủ nguyên liệu hoặc cần đứng gần bàn chế tạo.', blocked: 'Có vật cản ở đó.', floating: 'Cần đặt cạnh một block khác.', 'too-soon': 'Chưa thể hồi sinh ngay.', far: 'Ở quá xa NPC.' };
 // Cập nhật lạc quan cho khách: thấy kết quả ngay, hoàn tác nếu host từ chối (không phải chờ một vòng mạng).
@@ -189,6 +195,8 @@ function handleEvent(ev) {
     case 'shop': document.exitPointerLock?.(); panels.showShop(ev, S.you); break;
     case 'chest': document.exitPointerLock?.(); panels.showChest(ev, { you: S.you, near: nearStations(S.world, local.x, local.y, local.z) }); break;
     case 'quests': hud.setQuests(ev.list); break;
+    case 'dungeon': dgLeft[ev.id] = ev.left || 0; break;
+    case 'loot': document.exitPointerLock?.(); panels.showLoot(ev); break;
     case 'region': hud.setRegion(ev.name); break;
     case 'swing': { ents.swing('e:' + ev.id); const b = interp.es.find(e => e.id === ev.id); if (b && b.kind === 'boss' && Math.hypot(b.x - local.x, b.z - local.z) < 40) sfx.play('bossSwing'); break; }
     case 'died': if (ev.uid === uid) sfx.play('die'); hud.toast(ev.uid === uid ? 'Bạn đã gục ngã.' : `${ev.name} đã gục ngã.`); break;
@@ -295,6 +303,7 @@ function heldId() { const s = S.you.inv[S.you.sel]; return s ? s.id : null; }
 const USABLE = {
   [B.DOOR]: p => ({ t: 'toggle', ...p }), [B.DOOR_OPEN]: p => ({ t: 'toggle', ...p }),
   [B.CHEST]: p => ({ t: 'chest-open', ...p }), [B.BED]: p => ({ t: 'sleep', ...p }),
+  [B.GATE_IRON]: p => ({ t: 'gate', ...p }), [B.GATE_BOSS]: p => ({ t: 'gate', ...p }), [B.DCHEST]: p => ({ t: 'dchest', ...p }),      // hầm ngục: cổng cần chìa, rương thưởng
 };
 
 const SOIL_IDS = new Set(SOIL.map(n => BLOCK_BY_NAME[n].id));
@@ -380,6 +389,33 @@ function mining(dt, now) {
   if (prog >= 1) { S.act({ t: 'break', x: dig.x, y: dig.y, z: dig.z }); optimistic(dig.x, dig.y, dig.z, 0); dig = null; digCooldown = 0.12; hud.setProgress(null); }
 }
 
+// ---------------------------------------------------------------- hầm ngục (HUD, biểu ngữ, gợi ý hướng, âm báo bẫy)
+function dungeonHud() {
+  const hit = dungeonAt(S.flags, local.x, local.y + 0.5, local.z);
+  if (hit) {
+    if (hit.id !== dgLast) { dgLast = hit.id; hud.showBanner(DUNGEONS[hit.id].name); }
+    const keys = {}; for (const id of ['dungeon_key', 'boss_key']) keys[id] = S.you.inv.reduce((n, s) => n + (s && s.id === id ? s.n : 0), 0);
+    hud.setDungeon({ name: DUNGEONS[hit.id].name, room: ROOM_NO[hit.room] || 1, left: dgLeft[hit.id] || 0, keys }); hud.setHint(null);
+    return;
+  }
+  dgLast = null; hud.setDungeon(null);
+  const ds = S.flags.sites && S.flags.sites.dungeon; let best = null, bd = 80.0001;           // gợi ý hướng: miệng hầm gần nhất trong 80 block mà chủ hầm chưa bị hạ
+  for (const [id, s] of Object.entries(ds || {})) { if (!DUNGEONS[id] || S.flags['boss:' + DUNGEONS[id].boss]) continue; const d = Math.hypot(s.x - local.x, s.z - local.z); if (d < bd) { bd = d; best = s; } }
+  hud.setHint(best ? `Miệng hầm: ${compass(local.x, local.z, best.x, best.z)} ${Math.round(bd)} m` : null);
+}
+// Âm báo bẫy gần người chơi: gai báo hiệu / nhô lên, ống phun báo hiệu / phun (phát khi trạng thái đổi).
+function trapSounds(list) {
+  const seen = new Set();
+  for (const o of list) {
+    if (Math.abs(o.x - local.x) > 12 || Math.abs(o.z - local.z) > 12) continue;
+    const key = o.k + ':' + o.off; if (seen.has(key)) continue; seen.add(key);
+    const last = dgSound.get(key); dgSound.set(key, o.s);
+    if (last === undefined || last === o.s) continue;
+    if (o.s === 'warn') sfx.play('warn'); else if (o.s === 'up') sfx.play('spikes'); else if (o.s === 'spray') sfx.play('vent');
+  }
+  if (!seen.size && dgSound.size) dgSound.clear();
+}
+
 // ---------------------------------------------------------------- vòng lặp
 function interpolate(now) {
   if (!buf.length) return;
@@ -437,6 +473,8 @@ function frameBody(dt) {
   ents.update(list, nowS, dt, [...interp.ps.filter(p => p.uid !== uid), { x: local.x, z: local.z }], scene.camera.position);
   const boss = interp.es.filter(e => e.kind === 'boss').sort((a, b) => Math.hypot(a.x - local.x, a.z - local.z) - Math.hypot(b.x - local.x, b.z - local.z))[0];
   hud.setBoss(boss && Math.hypot(boss.x - local.x, boss.z - local.z) < 70 ? { name: BOSSES[boss.type].name, hp: boss.hp, maxHp: boss.maxHp, phase: boss.phase } : null);
+  dgPoll -= dt; if (dgPoll <= 0) { dgPoll = 0.25; dungeonHud(); }
+  { const tv = trapView(S.flags, S.world, S.time, local, 40); fx.setTraps(tv, nowS); trapSounds(tv); }
   const r = regionById(S.world.regionAt(local.x, local.z));
   const light = lightLevel(S.time);
   scene.setEnvironment({ sky: r.sky, fog: r.fog, light }); ents.setLight(light);

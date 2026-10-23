@@ -15,7 +15,8 @@ const FAMILY = {
 };
 export const MOB_VOICE = { 'soi-xam': 'growl', 'gau-bang': 'growl', 'ca-sau': 'growl', 'than-lan-nham': 'growl', 'xac-song': 'moan', 'ran-lay': 'hiss', 'ech-doc': 'croak', 'tho-pha-le': 'squeak', 'cao-lua': 'squeak',
   'xuong-cung': 'rattle', 'nhen-pha-le': 'chitter', 'bo-cap': 'chitter', 'linh-hoa': 'crackle', 'ma-bang': 'moan', 'khoi-pha-le': 'stone', 'tuong-da': 'stone', 'nam-di': 'boing', 'nai': 'bleat', 'ga': 'cluck', 'lon': 'oink', 'cuu': 'baa' };
-const BOSS_VOICE = { 'thu-linh-soi': 'growl', 'bo-cap-chua': 'chitter', 'bang-de': 'stone', 'chua-dam-lay': 'growl', 'vua-nham-thach': 'crackle', 'ho-ve-pha-le': 'chime' };
+const BOSS_VOICE = { 'thu-linh-soi': 'growl', 'bo-cap-chua': 'chitter', 'bang-de': 'stone', 'chua-dam-lay': 'growl', 'vua-nham-thach': 'crackle', 'ho-ve-pha-le': 'chime',
+  'ham-chu-re-muc': 'growl', 'ham-chu-cat-chon': 'chitter', 'ham-chu-bang-gia': 'stone', 'ham-chu-bun-lay': 'growl', 'ham-chu-tro-tan': 'crackle', 'ham-chu-lang-kinh': 'chime' };
 export const voiceOf = type => MOB_VOICE[type] || BOSS_VOICE[type] || 'growl';
 const near = d => { const k = Math.max(0, 1 - (d || 0) / 30); return k * k; };
 
@@ -72,6 +73,13 @@ const sounds = {
   cluck: () => voice({ type: 'ga', intent: 'idle', dist: 2 }),
   oink: () => voice({ type: 'lon', intent: 'idle', dist: 2 }),
   baa: () => voice({ type: 'cuu', intent: 'idle', dist: 2 }),
+  // hầm ngục: tấm áp lực, ống tên, gai nhô, ống phun, cổng, rương
+  plate: () => { tone(160, 0.07, 'square', 0.05, -40); noise(0.05, 0.04, 900); },
+  dart: () => { noise(0.14, 0.06, 2800); tone(900, 0.1, 'triangle', 0.03, -500); },
+  spikes: () => { noise(0.09, 0.07, 4200); tone(320, 0.08, 'square', 0.03, 120); },
+  vent: () => { noise(0.42, 0.07, 1600); tone(120, 0.3, 'sawtooth', 0.025, 40); },
+  gate: () => { tone(70, 0.55, 'sawtooth', 0.08, -25); noise(0.45, 0.06, 320); setTimeout(() => noise(0.2, 0.05, 500), 380); },
+  chestopen: () => { tone(220, 0.16, 'triangle', 0.05, 90); setTimeout(() => { tone(880, 0.3, 'sine', 0.05); tone(1320, 0.4, 'sine', 0.03); }, 140); },
   die: () => { tone(260, 0.6, 'sawtooth', 0.08, -200); },
 };
 

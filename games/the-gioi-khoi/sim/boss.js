@@ -2,6 +2,8 @@
 import { BOSSES, SCALE_HP, SCALE_DMG } from '../content/bosses.js';
 import { MOBS } from '../content/mobs.js';
 import { shoot, stepBody, spawnMob } from './mobs.js';
+import { DUNGEONS } from '../content/dungeons.js';
+import { siteOk } from './dungeon.js';
 
 const alive = g => [...g.players.values()].filter(p => !p.dead);
 const hdist = (a, b) => Math.hypot(a.x - b.x, a.z - b.z);
@@ -122,13 +124,16 @@ export function stepBosses(g, dt) {
 
 // Đấu trường: có người bước vào thì boss xuất hiện; không còn ai trong ~5 giây thì boss về trạng thái đầy máu (xoá để lần sau tạo lại).
 export function stepArenas(g, dt) {
-  const arenas = g.flags.sites && g.flags.sites.arena;
-  if (!arenas) return;
-  for (const [id, site] of Object.entries(arenas)) {
+  const sites = g.flags.sites;
+  if (!sites) return;
+  // đấu trường mặt đất [boss, điểm, dọc] và phòng chủ P4 của hầm ngục (dọc hẹp để người đứng trên mặt đất không kích hoạt)
+  const arenas = Object.entries(sites.arena || {}).map(([id, s]) => [id, s, 12]);
+  for (const [did, s] of Object.entries(sites.dungeon || {})) if (DUNGEONS[did] && siteOk(s)) arenas.push([DUNGEONS[did].boss, s.p4, 5]);
+  for (const [id, site, vy] of arenas) {
     const d = BOSSES[id];
     if (g.flags[d.flag]) continue;
-    const near = alive(g).some(p => hdist(p, site) <= d.radius && Math.abs(p.y - site.y) < 12);
-    const wide = alive(g).some(p => hdist(p, site) <= d.radius * 1.6 + 4);
+    const near = alive(g).some(p => hdist(p, site) <= d.radius && Math.abs(p.y - site.y) < vy + (vy < 12 ? 2 : 0));
+    const wide = alive(g).some(p => hdist(p, site) <= d.radius * 1.6 + 4 && (vy >= 12 || Math.abs(p.y - site.y) < vy + 3));
     let boss = [...g.ents.values()].find(e => e.kind === 'boss' && e.type === id);
     if (!boss && near) { boss = spawnBoss(g, id, site.x + 0.5, site.y + 1, site.z + 0.5); boss.arena = { x: site.x + 0.5, z: site.z + 0.5, r: d.radius }; }
     if (boss) {

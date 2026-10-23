@@ -3,6 +3,8 @@ import { B, BLOCK_BY_NAME } from '../world/blocks.js';
 import { columnInfo, WATER_LEVEL } from '../world/generate.js';
 import { BOSSES } from '../content/bosses.js';
 import { NPCS, VILLAGES } from '../content/npcs.js';
+import { DUNGEONS } from '../content/dungeons.js';
+import { planSite, buildDungeon, boxEdited } from './dungeon.js';
 
 const id = n => BLOCK_BY_NAME[n].id;
 const ARENA = { 'rung-suong': ['stone', 'stone'], 'sa-mac-lua': ['sand', 'stone'], 'nui-bang': ['ice', 'ice'], 'dam-lay': ['moss', 'mud'], 'hoa-son': ['basalt', 'basalt'], 'vuc-pha-le': ['amethyst', 'amethyst'] };
@@ -15,7 +17,7 @@ function findSite(g, region, used, opts = {}) {
   return null;
 }
 
-function findSiteWith(g, region, used, { fromX = 0, fromZ = 0, minGap = 70, flat = 5 } = {}) {
+function findSiteWith(g, region, used, { fromX = 0, fromZ = 0, minGap = 70, flat = 5, accept = null } = {}) {
   const seed = g.world.seed, step = 16;
   for (let r = 0; r <= 1600; r += step) {
     const pts = r === 0 ? [[0, 0]] : [];
@@ -24,6 +26,7 @@ function findSiteWith(g, region, used, { fromX = 0, fromZ = 0, minGap = 70, flat
       const x = fromX + dx, z = fromZ + dz, c = columnInfo(seed, x, z);
       if (c.region.id !== region || c.h <= WATER_LEVEL + 2) continue;
       if (used.some(u => Math.hypot(u.x - x, u.z - z) < minGap)) continue;
+      if (accept) { const extra = accept(x, z); if (extra) return { x, z, y: c.h, ...extra }; continue; }        // hầm ngục tự kiểm địa hình trên cả hộp bao
       let lo = 999, hi = -1, ok = true;
       for (const [ox, oz] of [[-12, -12], [12, -12], [-12, 12], [12, 12], [0, 12], [0, -12], [12, 0], [-12, 0]]) {
         const ci = columnInfo(seed, x + ox, z + oz);
@@ -79,10 +82,10 @@ function buildVillage(g, vid, site) {
   if (v.huts >= 2) buildHut(g, site.x + 5, site.z - 4, y0, floor);
 }
 
-export function buildStructures(g) {
+export function buildStructures(g, { dungeons = true } = {}) {
   const fresh = !g.flags.sites;
   const sites = g.flags.sites || { arena: {}, village: {} };
-  const used = [...Object.values(sites.arena), ...Object.values(sites.village)].filter(Boolean);
+  const used = [...Object.values(sites.arena), ...Object.values(sites.village), ...Object.values(sites.dungeon || {}).map(s => s && s.c)].filter(Boolean);
   if (fresh) {
     // làng khởi đầu ngay cạnh điểm xuất hiện, để người chơi mới gặp NPC ngay
     const sp = g.spawn;
@@ -90,12 +93,22 @@ export function buildStructures(g) {
     sites.village['khoi-dau'] = v0; used.push(v0);
   }
   // thế giới cũ (đã lưu) chưa có boss/làng thêm sau này: chỉ dựng phần còn thiếu
-  const fresh2 = { arena: [], village: [] };
-  for (const [bid, d] of Object.entries(BOSSES)) if (!sites.arena[bid]) { const s = findSite(g, d.region, used, { minGap: 90 }); if (s) { sites.arena[bid] = s; used.push(s); fresh2.arena.push(bid); } }
+  const fresh2 = { arena: [], village: [], dungeon: [] };
+  for (const [bid, d] of Object.entries(BOSSES)) if (!d.dungeon && !sites.arena[bid]) { const s = findSite(g, d.region, used, { minGap: 90 }); if (s) { sites.arena[bid] = s; used.push(s); fresh2.arena.push(bid); } }
   for (const [vid, v] of Object.entries(VILLAGES)) if (!sites.village[vid]) { const s = findSite(g, v.region, used, { minGap: 90 }); if (s) { sites.village[vid] = s; used.push(s); fresh2.village.push(vid); } }
+  // hầm ngục (mỗi vùng một hầm, cách mọi công trình >= 100 block): dựng sau cùng nên không đổi vị trí các công trình cũ. Thế giới cũ bỏ điểm có chunk đã bị chỉnh sửa trong hộp bao.
+  if (dungeons) {
+    sites.dungeon = sites.dungeon || {}; const skip = sites.dungeonSkip = sites.dungeonSkip || {};
+    for (const [did, d] of Object.entries(DUNGEONS)) {
+      if (sites.dungeon[did] || skip[did]) continue;
+      const s = findSite(g, d.region, used, { minGap: 100, accept: (x, z) => { const p = planSite(g, x, z, d.region); return p && (fresh || !boxEdited(g, p, did)) ? p : null; } });
+      if (s) { sites.dungeon[did] = s; used.push(s.c); fresh2.dungeon.push(did); } else { skip[did] = true; console.warn('không tìm được chỗ đặt hầm ' + did); }
+    }
+  }
   for (const bid of fresh2.arena) buildArena(g, bid, sites.arena[bid]);
   for (const vid of fresh2.village) buildVillage(g, vid, sites.village[vid]);
-  if (!fresh && !fresh2.arena.length && !fresh2.village.length) return;
+  for (const did of fresh2.dungeon) buildDungeon(g, did, sites.dungeon[did]);
+  if (!fresh && !fresh2.arena.length && !fresh2.village.length && !fresh2.dungeon.length) return;
   g.flags.sites = sites;
   if (fresh) {
     const v0 = sites.village['khoi-dau'];

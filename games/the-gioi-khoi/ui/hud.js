@@ -16,6 +16,8 @@ export function itemTip(id) {
     if (it.risk && it.risk.poison) lines.push(`Ăn sống: ${Math.round(it.risk.poison * 100)}% bị ngộ độc (nấu ở lò nung cho an toàn)`);
   }
   if (it.plant) lines.push('Gieo lên đất đã cày (bấm phải).');
+  if (it.bound) lines.push('Chìa của hầm ngục: bấm phải lên cổng để mở. Gắn với bạn, không cất vào rương được.');
+  if (id === 'ancient_shard') lines.push('Đổi lấy cuốc và kiếm cổ vật ở đe rèn, hoặc bán cho thương nhân.');
   if (it.tool && USE_TEXT[it.tool.type]) lines.push(USE_TEXT[it.tool.type]);
   if (id === 'shears') lines.push('Bấm phải lên cừu trưởng thành để cắt len.');
   if (it.dmg > 1 && it.tool) lines.push(`Sát thương ${it.dmg}`);
@@ -77,6 +79,22 @@ export function createHud() {
         d.append(im, nm, t); bar.appendChild(d); fxLeft.set(f.id, performance.now() + f.left * 1000);
       }
     },
+    // Dòng trạng thái hầm ngục: st = { name, room (1..4), left, keys: { dungeon_key, boss_key } } hoặc null (ngoài hầm).
+    setDungeon(st) {
+      const el = $('dungeon'); if (!el) return;
+      if (!st) { if (!el.hidden) { el.hidden = true; el.dataset.sig = ''; } return; }
+      const sig = JSON.stringify(st); if (el.dataset.sig === sig && !el.hidden) return;
+      el.dataset.sig = sig; el.hidden = false; el.textContent = '';
+      const t = (txt, tag = 'span') => { const n = document.createElement(tag); n.textContent = txt; el.appendChild(n); return n; };
+      t(st.name, 'b'); t(`· Phòng ${st.room}/4`); t(`· Quái còn ${st.left || 0}`);
+      for (const [id, label] of [['dungeon_key', 'Chìa Hầm'], ['boss_key', 'Chìa Chủ']]) {
+        if (iconOf) { const im = document.createElement('img'); im.src = iconOf(id); im.alt = ''; im.draggable = false; el.appendChild(im); }
+        t(`${label} ${(st.keys && st.keys[id]) || 0}`);
+      }
+    },
+    // Biểu ngữ tên hầm (3 giây) và gợi ý hướng tới miệng hầm.
+    showBanner(text) { const el = $('dgbanner'); if (!el) return; el.hidden = true; void el.offsetWidth; el.textContent = text; el.hidden = false; clearTimeout(el._t); el._t = setTimeout(() => { el.hidden = true; }, 3000); },
+    setHint(text) { const el = $('dghint'); if (!el) return; const v = text || ''; if (el.textContent !== v) el.textContent = v; el.hidden = !v; },
     // Chú giải khi ngắm cây / ruộng / thú.
     setTip(text) { const el = $('tip'); if (!el) return; const t = text || ''; if (el.textContent !== t) el.textContent = t; el.hidden = !t; },
     setRegion(name) { $('region').textContent = name || ''; },

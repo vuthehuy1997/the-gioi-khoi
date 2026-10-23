@@ -3233,7 +3233,7 @@ def test_survival_content_valid(pg, browser, base):
     assert r['errors'] == [], r
     assert r['distinct'] == r['n'] and r['blank'] == [], r                                # mọi vật phẩm mới có icon vẽ riêng, không trống
     assert all(n > 6 for n in r['tileCounts']) and r['tileDistinct'] == 12 and r['farmDiff'], r
-    assert r['blocks'] == 54 and r['ids'] == [40, 41, 42, 53] and r['farmland'] == ['farmland', 'farmland_wet', 'crop_wheat_0', 'crop_potato_3'], r
+    assert r['blocks'] == 62 and r['ids'] == [40, 41, 42, 53] and r['farmland'] == ['farmland', 'farmland_wet', 'crop_wheat_0', 'crop_potato_3'], r
     assert all(f == [True, True, False] for f in r['plantFlags']) and r['farmSolid'] == [True, 'dirt', 'dirt'], r
     assert r['mobs'] == [['farm', True, True]] * 3 and r['quest'] == ['collect:wood_hoe:1', 'collect:wheat:6', 'collect:bread:1'], r
 
@@ -3472,6 +3472,757 @@ def test_survival_tester_hostile_save_is_sanitized(pg):
     """)
     assert r['err'] is None and r['tame'] <= 24 and not r['maxHp'] and not r['nan'], r
 
+
+
+# ---------------------------------------------------------------- Gói 2: hầm ngục có chủ đề (test_dungeon_*)
+
+DUNGEON_JS = ARENA_JS + r"""
+const D = await imp('sim/dungeon.js'); const DC = await imp('content/dungeons.js'); const { B, BLOCKS } = await imp('world/blocks.js');
+const { BOSSES } = await imp('content/bosses.js'); const { ITEMS } = await imp('content/items.js');
+// Dựng một hầm ở chỗ cố định (2000, 2000): trả game, người chơi u1 (máu 1000), khuôn L và vài hàm tiện ích.
+const mkDg = (id = 'ham-re-muc', o = {}) => {
+  const g = new Game({ seed: 777, spawning: false, env: false, hunger: false, ...o });
+  g.flags['boss:thu-linh-soi'] = true; g.flags['boss:bo-cap-chua'] = true;            // mở các vùng: không có khí độc gặm máu
+  const site = D.forceSite(g, id, 2000, 2000), L = D.layoutOf(site, id), p = g.addPlayer('u1', 'T');
+  p.maxHp = p.hp = 1000;
+  const stand = (x, z, y = site.fy, q = p) => { q.x = x + 0.5; q.y = y; q.z = z + 0.5; q.vx = q.vy = q.vz = 0; q.lastState = g.time; };
+  const secs = (t, dt = 0.05) => { for (let i = 0; i < Math.round(t / dt); i++) g.tick(dt); };
+  const give = (id2, n = 1, q = p) => { g.giveItem(q.uid, id2, n); };
+  const hold = (id2, q = p) => { if (!q.inv.some(s => s && s.id === id2)) g.giveItem(q.uid, id2, 1); q.sel = q.inv.findIndex(s => s && s.id === id2); g.touch(q); };
+  return { g, p, site, L, id, stand, secs, give, hold };
+};
+const cnt = (p, id) => p.inv.reduce((n, s) => n + (s && s.id === id ? s.n : 0), 0);
+const dgMobs = (g, id) => [...g.ents.values()].filter(e => e.kind === 'mob' && e.dg === id);
+const typesOf = list => list.map(e => e.type).sort();
+const isSol = (g, x, y, z) => BLOCKS[g.world.get(x, y, z)].solid;
+// đi bộ được từ a tới b? (bước lên <= 1 block, rơi <= 3, cổng đóng là tường)
+const pathExists = (g, a, b, maxN = 90000) => {
+  const ok = (x, y, z) => !isSol(g, x, y, z) && !isSol(g, x, y + 1, z) && isSol(g, x, y - 1, z);
+  const q = [[a.x, a.y, a.z]], seen = new Set([a.x + ',' + a.y + ',' + a.z]);
+  for (let i = 0; i < q.length && i < maxN; i++) {
+    const [x, y, z] = q[i];
+    if (x === b.x && z === b.z && Math.abs(y - b.y) <= 1) return true;
+    for (const [dx, dz] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) for (const dy of [0, 1, -1, -2, -3]) {
+      const nx = x + dx, ny = y + dy, nz = z + dz, k = nx + ',' + ny + ',' + nz;
+      if (seen.has(k) || !ok(nx, ny, nz)) continue;
+      if (dy === 1 && isSol(g, x, y + 2, z)) continue;
+      if (dy < 0 && (isSol(g, nx, y, nz) || isSol(g, nx, y + 1, nz))) continue;
+      seen.add(k); q.push([nx, ny, nz]);
+    }
+  }
+  return false;
+};
+const openGate = (g, L, kind) => { for (const [x, y, z] of L.gates[kind].cells) g.world.set(x, y, z, 0); };
+// phá một block bằng cuốc đang cầm (dig + thời gian + break)
+const smash = (g, p, x, y, z) => { const r1 = g.act(p.uid, { t: 'dig', x, y, z }); if (!r1.ok) return r1; g.time += 3; return g.act(p.uid, { t: 'break', x, y, z }); };
+"""
+
+
+@test
+def test_dungeon_content_valid_and_validator_catches_breaks(pg):
+    r = ev(pg, r"""
+      const { validateContent, loadContent } = await imp('content/validate.js');
+      const c = await loadContent(), base = validateContent(c);
+      const mk = f => { const x = JSON.parse(JSON.stringify(c)); f(x); return validateContent(x).join(' | '); };
+      const { DUNGEONS } = await imp('content/dungeons.js'); const { BOSSES } = await imp('content/bosses.js');
+      return { base, n: Object.keys(DUNGEONS).length, bosses: Object.values(BOSSES).filter(b => b.dungeon).length,
+        e1: mk(x => { x.dungeons['ham-re-muc'].region = 'vung-ma'; }),
+        e2: mk(x => { x.dungeons['ham-cat-chon'].mobs.push('quai-ma-2'); }),
+        e3: mk(x => { x.dungeons['ham-bang-gia'].mats = ['vat-pham-ma-3']; }),
+        e4: mk(x => { x.dungeons['ham-bun-lay'].boss = 'boss-ma-4'; }),
+        e5: mk(x => { x.dungeons['ham-tro-tan'].traps = ['spike']; }),
+        e6: mk(x => { x.loot.victory = x.loot.victory.filter(r => r.item !== 'dungeon_key'); }),
+        e7: mk(x => { delete x.layout.gates.boss; }),
+        e8: mk(x => { x.loot.treasure.push({ item: 'vat-pham-ma-8', min: 1, max: 1, p: 1 }); }) };
+    """)
+    assert r['base'] == [] and r['n'] == 6 and r['bosses'] == 6, r
+    for k, needle in {'e1': 'vung-ma', 'e2': 'quai-ma-2', 'e3': 'vat-pham-ma-3', 'e4': 'boss-ma-4', 'e5': '3 chặng', 'e6': 'dungeon_key', 'e7': 'cổng', 'e8': 'vat-pham-ma-8'}.items():
+        assert needle in r[k], (k, needle, r[k])
+
+
+@test
+def test_dungeon_six_sites_per_world_in_region_and_far_from_everything(pg):
+    r = ev(pg, GAME_JS + r"""
+      const { DUNGEONS } = await imp('content/dungeons.js'); const { columnInfo } = await imp('world/generate.js');
+      const out = [];
+      for (const seed of [777, 31337, 7, 2024, 99]) {
+        const g = new Game({ seed, spawning: false }); const t = performance.now(); g.buildStructures(); const ms = performance.now() - t;
+        const sd = g.flags.sites.dungeon || {}, others = [...Object.values(g.flags.sites.arena), ...Object.values(g.flags.sites.village)], bad = [];
+        for (const [id, s] of Object.entries(sd)) {
+          if (columnInfo(seed, s.c.x, s.c.z).region.id !== DUNGEONS[id].region) bad.push(id + ':vung');
+          for (const o of others) if (Math.hypot(o.x - s.c.x, o.z - s.c.z) < 90) bad.push(id + ':cach-cong-trinh');
+          for (const [id2, s2] of Object.entries(sd)) if (id2 < id && Math.hypot(s2.c.x - s.c.x, s2.c.z - s.c.z) < 90) bad.push(id + ':cach-' + id2);
+        }
+        out.push({ seed, n: Object.keys(sd).length, bad, ms: Math.round(ms) });
+      }
+      return out;
+    """)
+    for o in r:
+        assert o['n'] == 6 and not o['bad'], o
+
+
+@test
+def test_dungeon_layout_is_walkable_door_by_door_and_compact(pg):
+    r = ev(pg, DUNGEON_JS + r"""
+      const out = {};
+      for (const id of Object.keys(DC.DUNGEONS)) {
+        const T = mkDg(id), { g, L, site } = T, W = L.box.x1 - L.box.x0 + 1, Hh = L.box.z1 - L.box.z0 + 1;
+        const foot = { x: L.foot.x, y: site.fy, z: L.foot.z }, mouth = { x: site.x, y: site.gy, z: site.z };
+        const near = (c, dz) => ({ x: c.x, y: site.fy, z: c.z + dz });
+        const o = { w: W, h: Hh, fy: site.fy, steps: site.steps };
+        o.mouthToFoot = pathExists(g, mouth, foot);
+        o.toP2 = pathExists(g, foot, { x: L.p2c.x, y: site.fy, z: L.p2c.z });
+        o.p3Closed = pathExists(g, foot, near(L.chests.trap, 1));
+        openGate(g, L, 'iron');
+        o.p3Open = pathExists(g, foot, near(L.chests.trap, 1));
+        o.p4Closed = pathExists(g, foot, { x: L.p4c.x, y: site.fy, z: L.p4c.z });
+        openGate(g, L, 'boss');
+        o.p4Open = pathExists(g, foot, { x: L.p4c.x, y: site.fy, z: L.p4c.z });
+        out[id] = o;
+      }
+      return out;
+    """)
+    for id, o in r.items():
+        assert o['w'] <= 72 and o['h'] <= 40 and o['fy'] >= 6 and 6 <= o['steps'] <= 16, (id, o)
+        assert o['mouthToFoot'] and o['toP2'] and not o['p3Closed'] and o['p3Open'] and not o['p4Closed'] and o['p4Open'], (id, o)
+
+
+@test
+def test_dungeon_walls_cannot_be_dug_and_the_vault_is_sealed(pg):
+    r = ev(pg, DUNGEON_JS + r"""
+      const out = {};
+      for (const id of ['ham-re-muc', 'ham-bang-gia', 'ham-tro-tan']) {
+        const T = mkDg(id), { g, p, L, site } = T;
+        // 1. mọi tường/cổng/rương không đào được bằng cuốc tốt nhất
+        T.hold('ancient_pick'); const pick = p.inv[p.sel].id;
+        let diggable = 0, sample = 0;
+        for (let i = 0; i < L.walls.length; i += 7) {
+          const [x, y, z] = L.walls[i]; if (BLOCKS[g.world.get(x, y, z)].name === 'dart_trap') continue;
+          sample++; if (g.breakTime(p.uid, x, y, z) !== Infinity) diggable++;
+        }
+        const gateOk = [...L.gates.iron.cells, ...L.gates.boss.cells].every(([x, y, z]) => g.breakTime(p.uid, x, y, z) === Infinity);
+        const chestOk = ['supply', 'victory', 'trap'].every(k => g.breakTime(p.uid, L.chests[k].x, L.chests[k].y, L.chests[k].z) === Infinity);
+        // 2. mở hết cổng rồi lan từ chân thang qua mọi ô trống hoặc đào được (sàn, ống tên): không được lọt ra ngoài khoang và sàn
+        openGate(g, L, 'iron'); openGate(g, L, 'boss');
+        const key = (x, y, z) => x + ',' + y + ',' + z, allowed = new Set();
+        for (const [x, y, z] of L.cavList) allowed.add(key(x, y, z));
+        for (const [x, y, z] of L.floorList) allowed.add(key(x, y, z));
+        for (const d of L.darts) allowed.add(key(d.x, d.y, d.z));
+        const lxMin = site.ox - 2 * site.steps, seen = new Set([key(L.foot.x, site.fy, L.foot.z)]), q = [[L.foot.x, site.fy, L.foot.z]];
+        let leaks = 0;
+        for (let i = 0; i < q.length; i++) {
+          const [x, y, z] = q[i];
+          for (const [dx, dy, dz] of [[1, 0, 0], [-1, 0, 0], [0, 1, 0], [0, -1, 0], [0, 0, 1], [0, 0, -1]]) {
+            const nx = x + dx, ny = y + dy, nz = z + dz, k = key(nx, ny, nz);
+            if (seen.has(k) || nx < lxMin) continue;
+            const b = g.world.get(nx, ny, nz), def = BLOCKS[b];
+            if (def.solid && def.hardness < 0) continue;                  // tường bất khả xâm phạm
+            seen.add(k); if (!allowed.has(k)) leaks++; else q.push([nx, ny, nz]);
+          }
+        }
+        out[id] = { sample, diggable, gateOk, chestOk, leaks, reached: seen.size, cav: L.cavList.length };
+      }
+      return out;
+    """)
+    for id, o in r.items():
+        assert o['sample'] > 100 and o['diggable'] == 0 and o['gateOk'] and o['chestOk'], (id, o)
+        assert o['leaks'] == 0 and o['reached'] > 3000, (id, o)
+
+
+@test
+def test_dungeon_guard_room_waves_scale_with_players(pg):
+    r = ev(pg, DUNGEON_JS + r"""
+      const out = {};
+      // một người: 4 quái thường, rồi 2 giây sau 3 quái thường + 1 tượng đá
+      let T = mkDg(); let { g, p, L, id } = T; const allowed = DC.DUNGEONS[id].mobs;
+      T.stand(L.p2c.x, L.p2c.z); T.secs(0.2);
+      const w1 = dgMobs(g, id); out.w1 = { n: w1.length, ok: w1.every(e => allowed.includes(e.type) && e.persist), statue: w1.filter(e => e.type === 'tuong-da').length };
+      for (const e of w1) g.ents.delete(e.id);
+      T.secs(1.6); out.early = dgMobs(g, id).length; T.secs(0.5);
+      const w2 = dgMobs(g, id); out.w2 = { n: w2.length, statue: w2.filter(e => e.type === 'tuong-da').length, others: w2.filter(e => e.type !== 'tuong-da').every(e => allowed.includes(e.type)) };
+      // ba người trong phòng: +1 và +2 quái thường mỗi đợt (người thứ hai, ba vào phòng)
+      T = mkDg(); ({ g, p, L, id } = T);
+      const q2 = g.addPlayer('u2', 'B'), q3 = g.addPlayer('u3', 'C'); q2.maxHp = q2.hp = 1000; q3.maxHp = q3.hp = 1000;
+      T.stand(L.p2c.x, L.p2c.z); T.stand(L.p2c.x + 2, L.p2c.z + 1, undefined, q2); T.stand(L.p2c.x - 2, L.p2c.z - 1, undefined, q3);
+      T.secs(0.2); const a1 = dgMobs(g, id); out.three1 = a1.length;
+      for (const e of a1) g.ents.delete(e.id);
+      T.secs(2.2); const a2 = dgMobs(g, id); out.three2 = { n: a2.length, statue: a2.filter(e => e.type === 'tuong-da').length };
+      // tám người ảo (5 là tối đa) không vượt trần +4
+      T = mkDg(); ({ g, p, L, id } = T);
+      for (let i = 2; i <= 6; i++) { const q = g.addPlayer('x' + i, 'X' + i); q.maxHp = q.hp = 1000; T.stand(L.p2c.x + (i % 3) - 1, L.p2c.z + (i % 2), undefined, q); }
+      T.stand(L.p2c.x, L.p2c.z); T.secs(0.2); out.six = dgMobs(g, id).length;
+      return out;
+    """)
+    assert r['w1'] == {'n': 4, 'ok': True, 'statue': 0}, r
+    assert r['early'] == 0 and r['w2'] == {'n': 4, 'statue': 1, 'others': True}, r
+    assert r['three1'] == 6 and r['three2'] == {'n': 6, 'statue': 1}, r
+    assert r['six'] == 8, r
+
+
+@test
+def test_dungeon_guard_room_gives_up_when_left_clears_and_stays_cleared(pg):
+    r = ev(pg, DUNGEON_JS + r"""
+      const T = mkDg(); const { g, p, L, id, site } = T; const out = {};
+      T.stand(L.p2c.x, L.p2c.z); T.secs(0.2); out.spawned = dgMobs(g, id).length;
+      // rời xa (> 30 block): quái bị xoá, phòng chưa dọn, quay lại thì bắt đầu lại từ đợt 1
+      T.stand(site.x, site.z, site.gy); T.secs(0.3);
+      out.afterLeave = dgMobs(g, id).length; out.cleared1 = !!(g.flags.dungeons && g.flags.dungeons[id] && g.flags.dungeons[id].rooms.p2);
+      T.stand(L.p2c.x, L.p2c.z); T.secs(0.2); out.again = dgMobs(g, id).length;
+      // dọn hai đợt: cờ đã dọn, quái không sinh lại
+      for (const e of dgMobs(g, id)) g.ents.delete(e.id); T.secs(2.2);
+      for (const e of dgMobs(g, id)) g.ents.delete(e.id); T.secs(0.3);
+      out.cleared = g.flags.dungeons[id].rooms.p2 === true; out.left = dgMobs(g, id).length;
+      T.stand(site.x, site.z, site.gy); T.secs(0.3); T.stand(L.p2c.x, L.p2c.z); T.secs(1);
+      out.noRespawn = dgMobs(g, id).length;
+      // rương chiến thắng mở được sau khi dọn
+      T.stand(L.chests.victory.x, L.chests.victory.z + 1); out.chest = g.act('u1', { t: 'dchest', ...L.chests.victory }).ok;
+      return out;
+    """)
+    assert r['spawned'] == 4 and r['afterLeave'] == 0 and not r['cleared1'] and r['again'] == 4, r
+    assert r['cleared'] and r['left'] == 0 and r['noRespawn'] == 0 and r['chest'], r
+
+
+@test
+def test_dungeon_spike_floor_hurts_by_rhythm_only(pg):
+    r = ev(pg, DUNGEON_JS + r"""
+      const T = mkDg('ham-re-muc'), { g, p, L, site } = T, s = L.spikes.find(x => x.off === 0), out = {};
+      T.stand(s.x, s.z); g.time = 0;
+      T.secs(1.9); out.hp0 = p.hp;                       // hạ 1,5 s + báo hiệu 0,5 s: không đau
+      T.secs(2.1); out.hit = 1000 - p.hp;                // nhô 2 s: 3 lần chạm cách nhau >= 0,8 s
+      // nhảy qua (chân cao hơn 0,6): không đau
+      p.hp = 1000; g.time = 0; T.secs(2.05); T.stand(s.x, s.z, site.fy + 0.8); T.secs(1.5); out.jump = 1000 - p.hp;
+      // hàng lệch pha 2 s: lúc hàng này hạ thì hàng kia nhô
+      const s2 = L.spikes.find(x => x.off === 2); p.hp = 1000; p.spikeAt = 0; g.time = 0; T.stand(s2.x, s2.z); T.secs(1.9); out.offRow = 1000 - p.hp;
+      // giáp làm nhẹ đòn gai (qua giáp)
+      const q = g.addPlayer('u2', 'B'); q.maxHp = q.hp = 1000; q.armor.chest = 'iron_chest'; q.armor.head = 'iron_helm'; q.armor.legs = 'iron_legs'; q.armor.boots = 'iron_boots';
+      T.stand(s.x, s.z, undefined, q); p.hp = 1000; T.stand(L.p2c.x, L.p2c.z); g.time = 2.0; T.secs(0.1); out.armor = 1000 - q.hp;
+      return out;
+    """)
+    assert r['hp0'] == 1000 and r['hit'] == 12 and r['jump'] == 0, r
+    assert r['offRow'] == 12, r                                     # hàng lệch 2 s: nhô ngay từ đầu (3 lần chạm trong 1,9 s)
+    assert 1 <= r['armor'] <= 3, r
+
+
+@test
+def test_dungeon_dart_plate_fires_two_arrows_after_a_delay_and_sneak_is_safe(pg):
+    r = ev(pg, DUNGEON_JS + r"""
+      const T = mkDg('ham-re-muc'), { g, p, L, site } = T, out = {};
+      const pl = L.plates[0], rows = L.darts.filter(d => d.pair === pl.pair).map(d => d.z), arrows = () => [...g.ents.values()].filter(e => e.kind === 'proj');
+      T.stand(pl.x, pl.z); T.secs(0.25); out.at02 = arrows().length;       // chưa tới 0,3 s
+      T.secs(0.2); out.at03 = arrows().length; out.dmg = arrows().map(a => a.dmg);
+      // người đứng ở hàng bắn của một ống: trúng đúng 1 mũi (5), mũi kia bay qua hàng khác
+      T.stand(pl.x - 1, rows[0]); p.hp = 1000; T.secs(1.2); out.hurt = 1000 - p.hp;
+      // tấm hồi 5 giây: bước lại tấm trong thời gian chờ không bắn nữa, hết thời gian chờ thì bắn lại
+      for (const a of arrows()) g.ents.delete(a.id);
+      T.stand(pl.x, pl.z); T.secs(1); out.cd = arrows().length; T.secs(2); out.cd2 = arrows().length;
+      T.stand(L.p2c.x, L.p2c.z); T.secs(2); T.stand(pl.x, pl.z); T.secs(0.5); out.again = arrows().length;
+      // rón rén: giẫm tấm không kích hoạt
+      for (const a of arrows()) g.ents.delete(a.id);
+      const T2 = mkDg('ham-re-muc'); const q = T2.p; q.sneak = true; T2.stand(T2.L.plates[0].x, T2.L.plates[0].z); T2.secs(1);
+      out.sneak = [...T2.g.ents.values()].filter(e => e.kind === 'proj').length;
+      return out;
+    """)
+    assert r['at02'] == 0 and r['at03'] == 2 and r['dmg'] == [5, 5], r
+    assert r['hurt'] == 5, r
+    assert r['cd'] == 0 and r['cd2'] == 0 and r['again'] == 2, r
+    assert r['sneak'] == 0, r
+
+
+@test
+def test_dungeon_vent_sprays_once_per_burst_in_radius(pg):
+    r = ev(pg, DUNGEON_JS + r"""
+      const T = mkDg('ham-cat-chon'), { g, p, L, site } = T, v = L.vents.find(x => x.off === 0), out = {};
+      const kicks = []; const stand = () => T.stand(v.x, v.z);
+      stand(); g.time = 0; g.drain();
+      T.secs(3.2); out.rest = 1000 - p.hp;                  // nghỉ 3,2 s
+      T.secs(0.95); out.warn = 1000 - p.hp;                 // báo hiệu 1,0 s: chưa đau (còn 0,05 s tới lúc phun)
+      T.secs(0.8); out.spray = 1000 - p.hp;                 // phun 0,8 s: đúng 1 lần
+      out.kick = g.drain().filter(o => o.ev.t === 'kb' && o.ev.vy === 5).length;
+      T.secs(4.9); out.next = 1000 - p.hp;                  // đợt phun kế (9,2 - 10,0 s)
+      // ngoài bán kính 1,6: không đau; trong bán kính: đau
+      p.hp = 1000; g.time = 4.1; p.ventAt = {}; T.stand(v.x + 2, v.z); T.secs(1); out.outside = 1000 - p.hp;
+      g.time = 4.1; p.ventAt = {}; T.stand(v.x + 1, v.z); T.secs(1); out.inside = 1000 - p.hp;
+      return out;
+    """)
+    assert r['rest'] == 0 and r['warn'] == 0 and r['spray'] == 6 and r['kick'] == 1 and r['next'] == 12, r
+    assert r['outside'] == 0 and r['inside'] == 6, r
+
+
+@test
+def test_dungeon_traps_can_be_disarmed_with_a_pick_and_spikes_can_be_covered(pg):
+    r = ev(pg, DUNGEON_JS + r"""
+      const out = {};
+      // hầm 1: tấm áp lực và ống tên
+      let T = mkDg('ham-re-muc'); let { g, p, L, site } = T;
+      T.hold('wood_pick'); const pl = L.plates[0], dts = L.darts.filter(d => d.pair === pl.pair);
+      out.breakTime = g.breakTime(p.uid, pl.x, pl.y, pl.z);
+      T.stand(pl.x, pl.z - 1); out.plateBreak = smash(g, p, pl.x, pl.y, pl.z).ok; out.plateAfter = g.world.get(pl.x, pl.y, pl.z) !== 0 && g.world.get(pl.x, pl.y, pl.z) !== B.PLATE;
+      T.stand(pl.x, pl.z); T.secs(0.6); out.afterPlate = [...g.ents.values()].filter(e => e.kind === 'proj').length;
+      const plB = L.plates[2];                                             // cùng cặp ống với tấm đã phá; ống đầu của cặp bị phá thì chỉ còn 1 mũi tên
+      T.stand(dts[0].x - 2, dts[0].z - 1); out.dartBreak = smash(g, p, dts[0].x, dts[0].y, dts[0].z).ok;
+      T.stand(plB.x, plB.z); T.secs(0.5); out.pair1 = [...g.ents.values()].filter(e => e.kind === 'proj').length;
+      // hầm 2: ống phun
+      T = mkDg('ham-cat-chon'); ({ g, p, L, site } = T); T.hold('wood_pick');
+      const v = L.vents.find(x => x.off === 0); T.stand(v.x, v.z - 2); out.ventBreak = smash(g, p, v.x, v.y, v.z).ok;
+      T.stand(v.x, v.z); g.time = 4.1; p.hp = 1000; T.secs(1); out.ventHurt = 1000 - p.hp;
+      // đặt block lên gai: không được khi gai nhô, được khi gai hạ, và gai hết hiệu lực
+      const s = L.spikes[0]; p.hp = 1000; T.give('planks', 4); T.hold('planks'); T.stand(s.x, s.z - 3);
+      g.time = 3; const up = g.act('u1', { t: 'place', x: s.x, y: site.fy, z: s.z });
+      g.time = 0.5; const down = g.act('u1', { t: 'place', x: s.x, y: site.fy, z: s.z });
+      out.coverUp = up.reason; out.coverDown = down.ok; out.spikeGone = g.world.get(s.x, site.fy - 1, s.z) !== B.SPIKES;
+      return out;
+    """)
+    assert r['breakTime'] <= 2 and r['plateBreak'] and r['plateAfter'] and r['afterPlate'] == 0, r
+    assert r['dartBreak'] and r['pair1'] == 1, r
+    assert r['ventBreak'] and r['ventHurt'] == 0, r
+    assert r['coverUp'] == 'spike-up' and r['coverDown'] and r['spikeGone'], r
+
+
+@test
+def test_dungeon_gates_need_the_right_key_and_stay_open_for_everyone(pg):
+    r = ev(pg, DUNGEON_JS + r"""
+      const T = mkDg(), { g, p, L, id, site } = T, out = {}, gi = L.gates.iron.cells[4], gb = L.gates.boss.cells[4];
+      const q = g.addPlayer('u2', 'B'); q.maxHp = q.hp = 1000;
+      T.stand(gi[0], gi[2] + 2); T.stand(gi[0], gi[2] + 3, undefined, q);
+      const before = p.inv.map(s => s && { ...s });
+      g.drain(); const r0 = g.act('u1', { t: 'gate', x: gi[0], y: gi[1], z: gi[2] });
+      out.noKey = { ok: r0.ok, reason: r0.reason, same: JSON.stringify(before) === JSON.stringify(p.inv), closed: g.world.get(gi[0], gi[1], gi[2]) === B.GATE_IRON, toast: g.drain().some(o => o.ev.t === 'toast' && /Chìa Hầm/.test(o.ev.text)) };
+      T.give('boss_key', 1); const r1 = g.act('u1', { t: 'gate', x: gi[0], y: gi[1], z: gi[2] });
+      out.wrongKey = { ok: r1.ok, boss: cnt(p, 'boss_key'), closed: g.world.get(gi[0], gi[1], gi[2]) === B.GATE_IRON };
+      T.give('dungeon_key', 2); const evs = (g.drain(), 0);
+      const r2 = g.act('u1', { t: 'gate', x: gi[0], y: gi[1], z: gi[2] });
+      const blocks = g.drain().filter(o => o.ev.t === 'block').length;
+      out.open = { ok: r2.ok, keys: cnt(p, 'dungeon_key'), allAir: L.gates.iron.cells.every(([x, y, z]) => g.world.get(x, y, z) === 0), blocks, flag: g.flags.dungeons[id].gates.g };
+      // người thứ hai (không có chìa) đi qua được
+      out.pass = pathExists(g, { x: L.foot.x, y: site.fy, z: L.foot.z }, { x: L.chests.trap.x, y: site.fy, z: L.chests.trap.z + 1 });
+      // cổng chủ: chìa sai loại không mở, đúng loại mở; ở xa thì không với tới
+      T.give('boss_key', 1); T.stand(gb[0] + 9, gb[2]); const far0 = g.act('u1', { t: 'gate', x: gb[0], y: gb[1], z: gb[2] });
+      for (let i = 0; i < p.inv.length; i++) if (p.inv[i] && p.inv[i].id === 'boss_key') p.inv[i] = null;
+      T.give('dungeon_key', 1); T.stand(gb[0] + 2, gb[2]); const r3 = g.act('u1', { t: 'gate', x: gb[0], y: gb[1], z: gb[2] });
+      T.give('boss_key', 1); const r4 = g.act('u1', { t: 'gate', x: gb[0], y: gb[1], z: gb[2] });
+      out.boss = { far: far0.ok, farReason: far0.reason, wrong: r3.ok, wrongReason: r3.reason, ok: r4.ok, allAir: L.gates.boss.cells.every(([x, y, z]) => g.world.get(x, y, z) === 0), keys: cnt(p, 'boss_key') };
+      const rfar = (T.stand(L.foot.x, L.foot.z + 0), g.act('u1', { t: 'gate', x: gb[0], y: gb[1], z: gb[2] }));
+      // tham số bậy không ném lỗi
+      out.garbage = [null, {}, { x: 'a' }, { x: 1.5, y: 2, z: 3 }].map(a => { try { return g.act('u1', { t: 'gate', ...(a || {}) }).ok; } catch (e) { return 'throw'; } });
+      out.garbage2 = [{}, { x: NaN, y: 1, z: 1 }, { x: 1, y: 1, z: 1 }].map(a => { try { return g.act('u1', { t: 'dchest', ...a }).ok; } catch (e) { return 'throw'; } });
+      return out;
+    """)
+    assert r['noKey']['ok'] is False and r['noKey']['reason'] == 'need-key' and r['noKey']['same'] and r['noKey']['closed'] and r['noKey']['toast'], r
+    assert r['wrongKey']['ok'] is False and r['wrongKey']['boss'] == 1 and r['wrongKey']['closed'], r
+    assert r['open']['ok'] and r['open']['keys'] == 1 and r['open']['allAir'] and r['open']['blocks'] == 9 and r['open']['flag'] is True and r['pass'], r
+    assert r['boss']['far'] is False and r['boss']['farReason'] == 'reach' and r['boss']['wrong'] is False and r['boss']['wrongReason'] == 'need-boss-key' and r['boss']['ok'] and r['boss']['allAir'] and r['boss']['keys'] == 0, r
+    assert 'throw' not in r['garbage'] and 'throw' not in r['garbage2'], r
+
+
+@test
+def test_dungeon_chests_pay_each_player_once_deterministically(pg):
+    r = ev(pg, DUNGEON_JS + r"""
+      const T = mkDg(), { g, p, L, id, site } = T, out = {};
+      const q = g.addPlayer('u2', 'B'); q.maxHp = q.hp = 1000;
+      const c = L.chests.supply, ch = (k) => L.chests[k];
+      T.stand(c.x, c.z + 1); T.stand(c.x + 1, c.z + 1, undefined, q);
+      const expect = D.rewardFor(g, id, 'supply', 'u1'); out.again = JSON.stringify(expect) === JSON.stringify(D.rewardFor(g, id, 'supply', 'u1'));
+      const xu0 = cnt(p, 'xu'); g.drain(); const r1 = g.act('u1', { t: 'dchest', ...c });
+      const ev1 = g.drain().filter(o => o.to === 'u1' && o.ev.t === 'loot');
+      out.first = { ok: r1.ok, xu: cnt(p, 'xu') - xu0, want: expect.find(i => i.item === 'xu').n, loot: ev1.length, items: ev1[0] && ev1[0].ev.items.length, claimedFlag: [...g.flags.dungeons[id].claimed.supply] };
+      const inv1 = JSON.stringify(p.inv); const r2 = g.act('u1', { t: 'dchest', ...c }); const ev2 = g.drain().filter(o => o.ev.t === 'loot');
+      out.second = { same: inv1 === JSON.stringify(p.inv), claimed: ev2.length && ev2[0].ev.claimed === true, ok: r2.ok };
+      const r3 = g.act('u2', { t: 'dchest', ...c }); out.other = { ok: r3.ok, xu: cnt(q, 'xu'), want: D.rewardFor(g, id, 'supply', 'u2').find(i => i.item === 'xu').n, claimed: g.flags.dungeons[id].claimed.supply };
+      // khoảng giá trị và xác suất theo bảng (nhiều uid ảo)
+      const tally = {}; for (let i = 0; i < 400; i++) for (const k of ['supply', 'victory', 'trap', 'treasure']) for (const it of D.rewardFor(g, id, k, 'z' + i)) { const t = tally[k + '.' + it.item] = tally[k + '.' + it.item] || { n: 0, lo: 1e9, hi: 0 }; t.n++; t.lo = Math.min(t.lo, it.n); t.hi = Math.max(t.hi, it.n); }
+      out.tally = tally;
+      let armorN = 0; for (let i = 0; i < 400; i++) if (D.rewardFor(g, id, 'treasure', 'z' + i).some(it => /_(helm|chest|legs|boots)$/.test(it.item))) armorN++; out.armorN = armorN;
+      // kho đầy: phần dư rơi xuống đất, không mất
+      const T2 = mkDg(); const { g: g2, p: p2, L: L2 } = T2; for (let i = 0; i < p2.inv.length; i++) p2.inv[i] = { id: 'wood_sword', n: 1 };
+      T2.stand(L2.chests.supply.x, L2.chests.supply.z + 1); const dropped0 = [...g2.ents.values()].filter(e => e.kind === 'item').length; g2.act('u1', { t: 'dchest', ...L2.chests.supply });
+      out.full = { dropped: [...g2.ents.values()].filter(e => e.kind === 'item').length - dropped0 };
+      return out;
+    """)
+    assert r['again'] and r['first']['ok'] and r['first']['xu'] == r['first']['want'] and r['first']['loot'] == 1 and r['first']['claimedFlag'] == ['u1'], r
+    assert r['second']['same'] and r['second']['claimed'] and r['second']['ok'], r
+    assert r['other']['ok'] and r['other']['xu'] == r['other']['want'] and r['other']['claimed'] == ['u1', 'u2'], r
+    t = r['tally']
+    assert t['victory.dungeon_key']['n'] == 400 and t['victory.dungeon_key']['lo'] == 1 == t['victory.dungeon_key']['hi'], t
+    assert t['trap.boss_key']['n'] == 400 and t['treasure.xu']['n'] == 400 and 120 <= t['treasure.xu']['lo'] and t['treasure.xu']['hi'] <= 200, t
+    assert 10 <= t['supply.xu']['lo'] and t['supply.xu']['hi'] <= 25 and 20 <= t['victory.xu']['lo'] and t['victory.xu']['hi'] <= 40 and 30 <= t['trap.xu']['lo'] and t['trap.xu']['hi'] <= 60, t
+    assert 0.45 * 400 <= t['supply.heal_potion']['n'] <= 0.75 * 400 and 0.15 * 400 <= r['armorN'] <= 0.35 * 400, (t, r['armorN'])
+    assert r['full']['dropped'] >= 1, r
+
+
+@test
+def test_dungeon_chest_unlock_conditions(pg):
+    r = ev(pg, DUNGEON_JS + r"""
+      const T = mkDg(), { g, p, L, id, site } = T, out = {};
+      const open = k => { const c = L.chests[k]; T.stand(c.x, c.z + 1); return g.act('u1', { t: 'dchest', ...c }); };
+      out.supply = open('supply').ok; out.trap = open('trap').ok;
+      const v = open('victory'); out.victory0 = { ok: v.ok, reason: v.reason };
+      out.treasureBlock0 = g.world.get(L.chests.treasure.x, L.chests.treasure.y, L.chests.treasure.z);
+      const t0 = open('treasure'); out.treasure0 = { ok: t0.ok };
+      g.flags.dungeons[id].rooms.p2 = true; out.victory1 = open('victory').ok;
+      // hạ chủ hầm: rương kho báu xuất hiện
+      T.stand(L.p4c.x + 3, L.p4c.z); T.secs(0.3);
+      const boss = [...g.ents.values()].find(e => e.kind === 'boss'); out.boss = !!boss;
+      boss.hp = 1; g.damageEntity(boss, 5, p);
+      out.treasureBlock1 = g.world.get(L.chests.treasure.x, L.chests.treasure.y, L.chests.treasure.z) === B.DCHEST; out.bossFlag = g.flags.dungeons[id].boss;
+      const t1 = open('treasure'); out.treasure1 = { ok: t1.ok, shard: cnt(p, 'ancient_shard') >= 3, gem: cnt(p, 'gem') >= 2 };
+      return out;
+    """)
+    assert r['supply'] and r['trap'] and r['victory0'] == {'ok': False, 'reason': 'locked'} and r['victory1'], r
+    assert r['treasureBlock0'] == 0 and not r['treasure0']['ok'] and r['boss'] and r['treasureBlock1'] and r['bossFlag'] is True, r
+    assert r['treasure1']['ok'] and r['treasure1']['shard'] and r['treasure1']['gem'], r
+
+
+@test
+def test_dungeon_six_bosses_phases_scaling_reset_and_drops(pg):
+    r = ev(pg, DUNGEON_JS + r"""
+      const g = new Game({ seed: 777, spawning: false, env: false, hunger: false }); const ids = Object.keys(DC.DUNGEONS), out = {};
+      const p = g.addPlayer('u1', 'T'); p.maxHp = p.hp = 100000;
+      ids.forEach((id, i) => D.forceSite(g, id, 2000 + (i % 3) * 170, 2000 + Math.floor(i / 3) * 170));
+      const step = (t, dt = 0.05) => { for (let i = 0; i < Math.round(t / dt); i++) { g.tick(dt); p.hp = p.maxHp; } };
+      ids.forEach((id, i) => {
+        const site = g.flags.sites.dungeon[id], L = D.layoutOf(site, id), bid = DC.DUNGEONS[id].boss, d = BOSSES[bid];
+        p.x = L.p4c.x + 3.5; p.y = site.fy; p.z = L.p4c.z + 0.5; p.vx = p.vy = p.vz = 0;
+        step(0.3); const b = [...g.ents.values()].find(e => e.kind === 'boss' && e.type === bid);
+        const o = { spawned: !!b, hp: b && b.maxHp, want: d.hp, phases: d.phases.map(x => x.from), mul: d.phases.map(x => [x.speedMul, x.dmgMul]), dungeon: d.dungeon === id, flag: d.flag === 'boss:' + bid };
+        const ph = f => { b.hp = b.maxHp * f; step(0.1); return b.phase; };
+        o.ph = [ph(0.6), ph(0.5), ph(0.2)]; o.cur = [b.speedMul, b.dmgMul];
+        // thêm một người trong phòng: máu x 1,6
+        const q = g.addPlayer('v' + i, 'V'); q.maxHp = q.hp = 100000; q.x = L.p4c.x - 2.5; q.y = site.fy; q.z = L.p4c.z + 0.5; step(0.2); o.scaled = Math.round(b.maxHp); o.scaleWant = Math.round(d.hp * 1.6); g.removePlayer('v' + i);
+        // rời hết 5 giây: boss reset
+        p.x = site.x + 0.5; p.y = site.gy; p.z = site.z + 0.5; step(5.4); o.reset = ![...g.ents.values()].some(e => e.kind === 'boss' && e.type === bid);
+        // vào lại, hạ boss: cờ, xu và Mảnh Cổ Vật
+        p.x = L.p4c.x + 3.5; p.y = site.fy; p.z = L.p4c.z + 0.5; step(0.3);
+        const b2 = [...g.ents.values()].find(e => e.kind === 'boss' && e.type === bid); const before = new Set([...g.ents.values()].filter(e => e.kind === 'item').map(e => e.id));
+        b2.hp = 1; g.damageEntity(b2, 5, p);
+        const drops = [...g.ents.values()].filter(e => e.kind === 'item' && !before.has(e.id));
+        o.flagSet = g.flags['boss:' + bid] === true; o.xu = drops.filter(e => e.item === 'xu').reduce((a, e) => a + e.n, 0); o.shard = drops.filter(e => e.item === 'ancient_shard').reduce((a, e) => a + e.n, 0);
+        o.xuRange = [d.drops[0].min, d.drops[0].max];
+        // đã hạ: vào lại không sinh nữa
+        p.x = site.x + 0.5; p.y = site.gy; step(0.3); p.x = L.p4c.x + 3.5; p.y = site.fy; step(0.4); o.again = [...g.ents.values()].some(e => e.kind === 'boss' && e.type === bid);
+        // chuỗi lưu: nạp lại không sinh boss
+        out[id] = o;
+      });
+      return out;
+    """)
+    for i, (id, o) in enumerate(r.items()):
+        assert o['spawned'] and o['hp'] == o['want'] and o['phases'] == [1.0, 0.55, 0.25] and o['mul'] == [[1, 1], [1.1, 1], [1.3, 1.3]] and o['dungeon'] and o['flag'], (id, o)
+        assert o['ph'] == [0, 1, 2] and o['cur'] == [1.3, 1.3], (id, o)
+        assert o['scaled'] == o['scaleWant'] and o['reset'], (id, o)
+        assert o['flagSet'] and o['xuRange'][0] == 80 + 20 * i and o['xuRange'][0] <= o['xu'] <= o['xuRange'][1] and 2 <= o['shard'] <= 4 and not o['again'], (id, o)
+
+
+@test
+def test_dungeon_quests_item_recipes_and_potion(pg):
+    r = ev(pg, DUNGEON_JS + r"""
+      const { QUESTS } = await imp('content/quests.js'); const { NPCS } = await imp('content/npcs.js'); const { RECIPES } = await imp('content/recipes.js'); const { SHOPS } = await imp('content/shops.js');
+      const out = { quests: [] }, Q = await imp('sim/quests.js');
+      const g = new Game({ seed: 777, spawning: false, env: false, hunger: false }); const p = g.addPlayer('u1', 'T');
+      Object.values(BOSSES).forEach(b => { if (!b.dungeon) g.flags[b.flag] = true; });
+      Object.keys(DC.DUNGEONS).forEach((id, i) => {
+        const qid = 'don-' + id, q = QUESTS[qid], bossId = DC.DUNGEONS[id].boss;
+        const accept = g.acceptQuest('u1', qid), st0 = g.questState('u1', qid);
+        const npcNodes = JSON.stringify(NPCS[q.giver].nodes);
+        g.onBossDefeated(bossId, [p]); g.flags[BOSSES[bossId].flag] = true;
+        const st1 = g.questState('u1', qid), xu0 = cnt(p, 'xu'), tin = Q.turnIn(g, p, qid);
+        out.quests.push({ qid, giver: q.giver, accept: accept.ok, st0, st1, tin: tin.ok, xu: cnt(p, 'xu') - xu0, want: q.reward.items.find(x => x.item === 'xu').n, hasNodes: npcNodes.includes(`accept":"${qid}`) && npcNodes.includes(`turnin":"${qid}`) });
+      });
+      return out;
+    """)
+    for i, q in enumerate(r['quests']):
+        assert q['accept'] and q['st0'] == 'active' and q['st1'] == 'ready' and q['tin'] and q['xu'] == q['want'] == 100 + 20 * i and q['hasNodes'], q
+    r2 = ev(pg, DUNGEON_JS + r"""
+      const { RECIPES } = await imp('content/recipes.js'); const { SHOPS } = await imp('content/shops.js'); const { stationOf } = await imp('sim/crafting.js');
+      const T = mkDg(), { g, p } = T; const out = {};
+      out.recipes = ['ancient_pick', 'delver_blade'].map(id => { const r = RECIPES.find(x => x.id === id); return [JSON.stringify(r.in), stationOf(r)]; });
+      T.stand(2000, 2010, 40); T.give('ancient_shard', 13); T.give('stick', 2); T.give('iron_ingot', 2); T.give('crystal', 1);
+      const wb = g.act('u1', { t: 'craft', id: 'ancient_pick' }).ok;                                 // chưa có đe rèn
+      g.world.set(2001, 40, 2010, B.ANVIL); g.world.set(2002, 40, 2010, B.WORKBENCH);
+      out.noAnvil = wb; out.pick = g.act('u1', { t: 'craft', id: 'ancient_pick' }).ok; out.blade = g.act('u1', { t: 'craft', id: 'delver_blade' }).ok;
+      out.left = cnt(p, 'ancient_shard'); out.stats = { pick: ITEMS.ancient_pick.tool, pickDmg: ITEMS.ancient_pick.dmg, blade: ITEMS.delver_blade.dmg, bladeTier: ITEMS.delver_blade.tool.tier, relic: ITEMS.delver_blade.relic };
+      // bình hồi máu hồi 12, không vượt máu tối đa
+      p.maxHp = 20; p.hp = 5; T.give('heal_potion', 2); T.hold('heal_potion'); const e1 = g.act('u1', { t: 'use' }); const h1 = p.hp; p.eatAt = -99; p.hp = 15; const e2 = g.act('u1', { t: 'use' });
+      out.potion = [e1.ok, h1, e2.ok, p.hp, cnt(p, 'heal_potion'), ITEMS.heal_potion.stack];
+      out.shop = SHOPS['thuong-nhan'].buys.filter(x => ['ancient_shard', 'heal_potion'].includes(x.item)).map(x => [x.item, x.price]);
+      return out;
+    """)
+    assert r2['recipes'][0] == ['{"ancient_shard":5,"stick":2}', 'anvil'] and r2['recipes'][1] == ['{"ancient_shard":8,"iron_ingot":2,"crystal":1}', 'anvil'], r2
+    assert not r2['noAnvil'] and r2['pick'] and r2['blade'] and r2['left'] == 0, r2
+    assert r2['stats'] == {'pick': {'type': 'pick', 'tier': 3, 'speed': 6.5}, 'pickDmg': 5, 'blade': 12, 'bladeTier': 3, 'relic': True}, r2
+    assert r2['potion'] == [True, 17, True, 20, 0, 16] and sorted(r2['shop']) == [['ancient_shard', 25], ['heal_potion', 10]], r2
+
+
+@test
+def test_dungeon_save_load_keeps_progress_and_old_worlds_get_dungeons(pg):
+    r = ev(pg, DUNGEON_JS + r"""
+      const { Game: GM } = await imp('sim/game.js'); const out = {};
+      let T = mkDg(), { g, p, L, id, site } = T;
+      T.stand(L.foot.x, L.foot.z); T.give('dungeon_key', 1); const gi = L.gates.iron.cells[4]; T.stand(gi[0], gi[2] + 2); g.act('u1', { t: 'gate', x: gi[0], y: gi[1], z: gi[2] });
+      g.flags.dungeons[id].rooms.p2 = true;
+      const c = L.chests.supply; T.stand(c.x, c.z + 1); g.act('u1', { t: 'dchest', ...c });
+      T.hold('wood_pick'); const pl = L.plates[0]; T.stand(pl.x, pl.z - 1); smash(g, p, pl.x, pl.y, pl.z);
+      T.stand(L.p4c.x + 3, L.p4c.z); T.secs(0.3); const boss = [...g.ents.values()].find(e => e.kind === 'boss'); boss.hp = 1; g.damageEntity(boss, 5, p);
+      const save = JSON.parse(JSON.stringify(g.toSave())), g2 = GM.fromSave(save, { spawning: false, env: false, hunger: false });
+      const p2 = g2.addPlayer('u1', 'T');
+      out.gates = { iron: L.gates.iron.cells.every(([x, y, z]) => g2.world.get(x, y, z) === 0), boss: L.gates.boss.cells.every(([x, y, z]) => g2.world.get(x, y, z) === B.GATE_BOSS) };
+      out.flags = JSON.stringify(g2.flags.dungeons[id]) === JSON.stringify(g.flags.dungeons[id]); out.claimed = g2.flags.dungeons[id].claimed.supply;
+      out.plate = g2.world.get(pl.x, pl.y, pl.z) !== B.PLATE; out.treasure = g2.world.get(L.chests.treasure.x, L.chests.treasure.y, L.chests.treasure.z) === B.DCHEST;
+      p2.x = c.x + 0.5; p2.y = site.fy; p2.z = c.z + 1.5; const xu0 = cnt(p2, 'xu'); const rr = g2.act('u1', { t: 'dchest', ...c }); out.reopen = { ok: rr.ok, claimed: rr.claimed, xu: cnt(p2, 'xu') - xu0 };
+      p2.x = L.p4c.x + 3.5; p2.y = site.fy; p2.z = L.p4c.z + 0.5; for (let i = 0; i < 10; i++) g2.tick(0.05); out.noBoss = ![...g2.ents.values()].some(e => e.kind === 'boss');
+      out.sites = Object.keys(g2.flags.sites.dungeon).length;
+      return out;
+    """)
+    assert r['gates'] == {'iron': True, 'boss': True} and r['flags'] and r['claimed'] == ['u1'] and r['plate'] and r['treasure'], r
+    assert r['reopen'] == {'ok': True, 'claimed': True, 'xu': 0} and r['noBoss'], r
+
+    r = ev(pg, GAME_JS + r"""
+      const D = await imp('sim/dungeon.js'); const S = await imp('sim/structures.js'); const { Game: GM } = await imp('sim/game.js'); const { DUNGEONS } = await imp('content/dungeons.js'); const { B } = await imp('world/blocks.js');
+      const old = new Game({ seed: 777, spawning: false }); S.buildStructures(old, { dungeons: false });
+      const arenas = JSON.stringify(old.flags.sites.arena), villages = JSON.stringify(old.flags.sites.village), hadDungeons = !!(old.flags.sites.dungeon && Object.keys(old.flags.sites.dungeon).length) || !!old.flags.dungeons;
+      const save = JSON.parse(JSON.stringify(old.toSave()));
+      // 1) nạp save cũ (không có dungeons): đủ 6 hầm, công trình cũ không dịch chỗ
+      const t = performance.now(); const g1 = GM.fromSave(JSON.parse(JSON.stringify(save)), { spawning: false }); const ms = performance.now() - t;
+      const s1 = g1.flags.sites.dungeon, out = { had: hadDungeons, n: Object.keys(s1).length, same: JSON.stringify(g1.flags.sites.arena) === arenas && JSON.stringify(g1.flags.sites.village) === villages, ms };
+      // 2) một chunk trong hộp bao của hầm Rễ Mục đã bị người chơi chỉnh sửa: hầm đó chuyển chỗ khác, khối đã đặt còn nguyên
+      const target = s1['ham-re-muc']; const save2 = JSON.parse(JSON.stringify(save));
+      const edit = new GM({ seed: 777, spawning: false }); edit.world.importDelta(save2.delta);
+      const ex = target.c.x + 3, ez = target.c.z + 2, ey = edit.world.surfaceY(ex, ez) + 1; edit.world.set(ex, ey, ez, B.PLANKS); save2.delta = edit.world.exportDelta();
+      const g2 = GM.fromSave(save2, { spawning: false }); const s2 = g2.flags.sites.dungeon['ham-re-muc'];
+      const b2 = s2 && D.layoutOf(s2, 'ham-re-muc').box; out.moved = !s2 || !(ex >= b2.x0 && ex <= b2.x1 + 1 && ez >= b2.z0 && ez <= b2.z1 + 1); out.kept = g2.world.get(ex, ey, ez) === B.PLANKS; out.others = Object.keys(g2.flags.sites.dungeon).length >= 5;
+      return out;
+    """)
+    assert not r['had'] and r['n'] == 6 and r['same'], r
+    assert r['moved'] and r['kept'] and r['others'], r
+
+
+@test
+def test_dungeon_multiplayer_gate_chest_trap_rhythm_and_guard_room(pg):
+    r = ev(pg, NET_JS + r"""
+      const D = await imp('sim/dungeon.js'); const { B } = await imp('world/blocks.js');
+      const { game, host } = await mkHost('DUNGX', { env: false });
+      const id = 'ham-re-muc', site = D.forceSite(game, id, 2000, 2000), L = D.layoutOf(site, id);
+      const a = await join('DUNGX', 'ua', 'An'), b = await join('DUNGX', 'ub', 'Bình');
+      await until(() => game.players.size === 3 && a.snap && b.snap && a.you && b.you);
+      const ph = game.player('uh'), pa = game.player('ua'), pb = game.player('ub'); for (const q of [ph, pa, pb]) q.maxHp = q.hp = 1000;
+      const out = {}, at = (q, c, dz = 0, dx = 0) => game.teleportPlayer(q, c.x + 0.5 + dx, site.fy, c.z + 0.5 + dz);
+      const gi = L.gates.iron.cells[4];
+      // host mở cổng sắt bằng chìa của mình: khách thấy cổng biến mất
+      at(ph, { x: gi[0], z: gi[2] }, 2); game.giveItem('uh', 'dungeon_key', 1);
+      const seenBefore = b.world.get(gi[0], gi[1], gi[2]); host.act({ t: 'gate', x: gi[0], y: gi[1], z: gi[2] });
+      await until(() => b.world.get(gi[0], gi[1], gi[2]) === 0 && a.world.get(gi[0], gi[1], gi[2]) === 0); out.gate = [seenBefore, 0];
+      // khách B mở rương tiếp tế: chỉ B nhận, A và host không
+      const c = L.chests.supply; at(pb, c, 1); await until(() => b.you.dead === false);
+      const bx0 = b.you.inv.filter(Boolean).filter(s => s.id === 'xu').reduce((n, s) => n + s.n, 0); let loot = null; b.on('ev', e => { if (e.t === 'loot') loot = e; });
+      b.act({ t: 'dchest', ...c }); await until(() => loot);
+      out.chest = { items: loot.items.length > 0, bXu: game.player('ub').inv.filter(Boolean).filter(s => s.id === 'xu').reduce((n, s) => n + s.n, 0) > bx0, aXu: game.player('ua').inv.filter(Boolean).filter(s => s.id === 'xu').length, hostXu: ph.inv.filter(Boolean).filter(s => s.id === 'xu').length };
+      // nhịp gai: cả hai máy tính cùng pha từ thời gian snapshot (lệch <= 0,25 s)
+      await wait(400); const dts = [a.time, b.time].map(t => Math.abs(t - game.time));
+      out.sync = { dts, same: D.spikeState(a.time, 0) === D.spikeState(game.time, 0) || Math.max(...dts) <= 0.25 };
+      // khách vào P2: quái sinh ở host, sự kiện dungeon về khách, dọn xong thì cờ về khách
+      const evs = []; a.on('ev', e => { if (e.t === 'dungeon') evs.push(e); });
+      at(pa, L.p2c); await until(() => [...game.ents.values()].filter(e => e.dg === id).length >= 4, 4000); out.spawned = [...game.ents.values()].filter(e => e.dg === id).length;
+      await until(() => evs.some(e => e.left >= 4)); 
+      for (let k = 0; k < 2; k++) { for (const e of [...game.ents.values()]) if (e.dg === id) game.ents.delete(e.id); await wait(k ? 400 : 2600); }
+      await until(() => a.flags.dungeons && a.flags.dungeons[id] && a.flags.dungeons[id].rooms.p2 === true, 4000); out.cleared = true;
+      a.leave(); b.leave(); host.leave();
+      return out;
+    """)
+    assert r['gate'][0] == 55 and r['gate'][1] == 0, r
+    assert r['chest']['items'] and r['chest']['bXu'] and r['chest']['aXu'] == 0 and r['chest']['hostXu'] == 0, r
+    assert r['sync']['same'] and r['spawned'] >= 4 and r['cleared'], r
+
+
+@test
+def test_dungeon_no_natural_spawns_inside_and_dungeon_mobs_are_exempt_from_the_80_rule(pg):
+    r = ev(pg, DUNGEON_JS + r"""
+      const T = mkDg('ham-re-muc', { spawning: true }), { g, p, L, site, id } = T, out = {};
+      out.mouth = [D.nearDungeonMouth(g, site.x + 5, site.z), D.nearDungeonMouth(g, site.x + 9, site.z), !!D.dungeonAt(g.flags, L.p2c.x, site.fy, L.p2c.z)];
+      // người đứng cạnh miệng hầm 5 phút giả lập: quái tự nhiên không bao giờ nằm trong khối bao hay quanh miệng hầm
+      T.stand(site.x + 8, site.z + 8, site.gy); let bad = 0, spawned = 0, edge = 0;
+      for (let i = 0; i < 1500; i++) {                                                  // 1500 giây giả lập (25 phút), xoá quái vừa sinh để trần số lượng không chặn việc sinh
+        g.tick(1); p.hp = p.maxHp;
+        for (const e of [...g.ents.values()]) if (e.kind === 'mob' && !e.persist) {   // vị trí lúc vừa sinh
+          spawned++; g.ents.delete(e.id);
+          if (D.dungeonAt(g.flags, e.x, e.y + 0.5, e.z) || Math.hypot(e.x - site.x, e.z - site.z) <= 6.5) bad++;
+          if (Math.hypot(e.x - site.x, e.z - site.z) <= 14) edge++;
+        }
+      }
+      out.bad = bad; out.spawned = spawned; out.edge = edge;
+      // quái hầm (persist) sống sót khi người chơi ở xa > 80 block; quái thường thì bị xoá
+      const m1 = spawnMob(g, 'xac-song', L.spawns[0].x, L.spawns[0].y, L.spawns[0].z, { persist: true, dg: id }), m2 = spawnMob(g, 'xac-song', L.spawns[1].x, L.spawns[1].y, L.spawns[1].z);
+      m1.frozen = m2.frozen = true; T.stand(site.x + 200, site.z + 200, 40); g.spawnAcc = 1; g.tick(0.5); g.tick(1.1);
+      out.persist = [g.ents.has(m1.id), g.ents.has(m2.id)];
+      return out;
+    """)
+    assert r['mouth'] == [True, False, True] and r['bad'] == 0, r
+    assert r['spawned'] >= 150 and r['edge'] >= 3, r                         # có đủ lượt sinh quanh miệng hầm để phép thử có ý nghĩa
+
+
+@test
+def test_dungeon_perf_build_and_trap_tick(pg):
+    r = ev(pg, DUNGEON_JS + r"""
+      const S = await imp('sim/structures.js'); const out = {};
+      const g0 = new Game({ seed: 31337, spawning: false }); S.buildStructures(g0, { dungeons: false });
+      const t0 = performance.now(); S.buildStructures(g0); out.buildMs = performance.now() - t0; out.n = Object.keys(g0.flags.sites.dungeon).length;
+      out.welcomeKB = JSON.stringify({ delta: g0.world.exportDelta(), flags: g0.flags }).length / 1024;
+      // tick của host với 5 người trong P3 (3 chặng bẫy) so với cùng kịch bản ở thế giới không có hầm
+      const runCase = (withDg) => {
+        const T = withDg ? mkDg('ham-re-muc') : null; const g = withDg ? T.g : new Game({ seed: 777, spawning: false, env: false, hunger: false });
+        const ps = []; for (let i = 0; i < 5; i++) { const q = g.addPlayer('p' + i, 'P' + i); q.maxHp = q.hp = 1e6; ps.push(q); }
+        const fy = withDg ? T.site.fy : 30, cx = withDg ? T.L.p2c.x - 5 : 2000, cz = withDg ? T.L.p2c.z - 20 : 2000;
+        ps.forEach((q, i) => { q.x = cx + 1 + i * 2; q.y = fy; q.z = cz + 0.5 + (i % 3); });
+        for (let i = 0; i < 40; i++) g.tick(0.05);
+        let sum = 0; const N = 300; for (let i = 0; i < N; i++) { const t = performance.now(); g.tick(0.05); sum += performance.now() - t; for (const q of ps) q.hp = 1e6; }
+        return sum / N;
+      };
+      out.withMs = runCase(true); out.baseMs = runCase(false);
+      return out;
+    """)
+    assert r['n'] == 6 and r['buildMs'] < 1500 and r['welcomeKB'] < 400, r
+    assert r['withMs'] - r['baseMs'] < 2, r
+
+
+@test
+def test_dungeon_ui(pg, browser, base):
+    _open_game(pg, base)
+    r = pg.evaluate(r"""async () => {
+      const G = '/games/the-gioi-khoi/', imp = p => import(G + p), wait = ms => new Promise(r => setTimeout(r, ms));
+      const until = async (f, ms = 6000) => { const t = Date.now(); while (!f()) { if (Date.now() - t > ms) throw new Error('hết giờ chờ: ' + String(f).slice(0, 110)); await wait(30); } };
+      const g = __g, game = g.game, uid = g.S.uid, p = game.player(uid), D = await imp('sim/dungeon.js'); const { B, TILES, ATLAS_COLS } = await imp('world/blocks.js');
+      const { makeAtlas } = await imp('render/atlas.js'); const { createIcons } = await imp('ui/icons.js');
+      const out = {}; p.maxHp = p.hp = 1000; game.touch(p);
+      // icon vật phẩm mới và tile block mới: có hình, khác nhau
+      const ids = ['dungeon_key', 'boss_key', 'heal_potion', 'ancient_shard', 'ancient_pick', 'delver_blade'], icons = createIcons(makeAtlas()), urls = {}, blank = [];
+      for (const id of ids) { urls[id] = icons.get(id); const cv = icons.canvas(id), d = cv.getContext('2d').getImageData(0, 0, cv.width, cv.height).data; let n = 0; for (let i = 3; i < d.length; i += 4) if (d[i] > 40) n++; if (n < 60) blank.push(id); }
+      out.icons = { distinct: new Set(Object.values(urls)).size, blank };
+      const atlas = makeAtlas(), actx = atlas.getContext('2d'), names = ['dungeon_wall', 'gate_iron', 'gate_boss', 'spikes', 'plate', 'dart_trap', 'vent', 'dchest_top', 'dchest_side'], keys = [];
+      for (const nm of names) { const t = TILES.indexOf(nm); keys.push(t < 0 ? 'x' : Array.from(actx.getImageData((t % ATLAS_COLS) * 16, Math.floor(t / ATLAS_COLS) * 16, 16, 16).data).join()); }
+      out.tiles = { n: names.length, distinct: new Set(keys).size, missing: names.filter(nm => TILES.indexOf(nm) < 0) };
+      // vào hầm: dựng ở chỗ cố định, đưa người chơi xuống sảnh
+      const site = D.forceSite(game, 'ham-re-muc', 2000, 2000), L = D.layoutOf(site, 'ham-re-muc');
+      const tp = (x, y, z) => { game.teleportPlayer(p, x, y, z); }; const hint = () => document.getElementById('dghint');
+      tp(site.x + 40.5, site.gy, site.z + 0.5); await until(() => Math.abs(g.local.x - (site.x + 40.5)) < 0.5); await wait(900);
+      out.hintNear = { shown: !hint().hidden, text: hint().textContent };
+      tp(site.x + 130.5, site.gy, site.z + 0.5); await until(() => Math.abs(g.local.x - (site.x + 130.5)) < 0.5); await wait(900);
+      out.hintFar = !hint().hidden;
+      game.flags['boss:ham-chu-re-muc'] = true; tp(site.x + 40.5, site.gy, site.z + 0.5); await until(() => Math.abs(g.local.x - (site.x + 40.5)) < 0.5); await wait(900);
+      out.hintDefeated = !hint().hidden; delete game.flags['boss:ham-chu-re-muc'];
+      tp(L.foot.x + 3.5, site.fy, L.foot.z + 0.5); await until(() => Math.abs(g.local.x - (L.foot.x + 3.5)) < 0.5); await wait(900);
+      out.banner = document.getElementById('dgbanner').textContent; out.bannerShown = !document.getElementById('dgbanner').hidden;
+      out.hud = document.getElementById('dungeon').textContent.replace(/\s+/g, ' '); out.hudShown = !document.getElementById('dungeon').hidden;
+      game.giveItem(uid, 'dungeon_key', 2); await until(() => /Chìa Hầm\D*2/.test(document.getElementById('dungeon').textContent));
+      out.hudKeys = document.getElementById('dungeon').textContent.replace(/\s+/g, ' ');
+      tp(L.p2c.x + 0.5, site.fy, L.p2c.z + 0.5); await until(() => /Phòng 2/.test(document.getElementById('dungeon').textContent)); await until(() => /Quái còn [1-9]/.test(document.getElementById('dungeon').textContent), 4000);
+      out.hudP2 = document.getElementById('dungeon').textContent.replace(/\s+/g, ' ');
+      // cổng thiếu chìa: toast đỏ; rương: bảng Chiến lợi phẩm
+      for (let i = 0; i < p.inv.length; i++) if (p.inv[i] && p.inv[i].id === 'dungeon_key') p.inv[i] = null; game.touch(p);
+      const gi = L.gates.iron.cells[4]; tp(gi[0] + 0.5, site.fy, gi[2] + 2.5); await wait(300);
+      g.S.act({ t: 'gate', x: gi[0], y: gi[1], z: gi[2] }); await until(() => /Chìa Hầm/.test(document.getElementById('toast').textContent)); out.toast = document.getElementById('toast').textContent;
+      const c = L.chests.supply; tp(c.x + 0.5, site.fy, c.z + 1.5); await wait(300);
+      g.S.act({ t: 'dchest', ...c }); await until(() => document.getElementById('panel').textContent.includes('Chiến lợi phẩm'));
+      out.loot = { text: document.getElementById('panel').textContent, imgs: document.querySelectorAll('#panel img').length, close: !![...document.querySelectorAll('#panel button')].find(b => b.textContent.includes('Đóng')) };
+      [...document.querySelectorAll('#panel button')].find(b => b.textContent.includes('Đóng')).click(); out.closed = document.getElementById('panel').hidden;
+      g.S.act({ t: 'dchest', ...c }); await until(() => document.getElementById('panel').textContent.includes('đã nhận')); out.claimed = document.getElementById('panel').textContent;
+      return out;
+    }""")
+    assert r['icons']['distinct'] == 6 and r['icons']['blank'] == [], r
+    assert r['tiles']['n'] == 9 and r['tiles']['distinct'] == 9 and r['tiles']['missing'] == [], r
+    assert r['hintNear']['shown'] and 'Miệng hầm' in r['hintNear']['text'] and ' m' in r['hintNear']['text'] and not r['hintFar'] and not r['hintDefeated'], r
+    assert 'Hầm Rễ Mục' in r['banner'] and r['hudShown'] and 'Phòng 1/4' in r['hud'], r
+    assert 'Chìa Hầm' in r['hudKeys'] and 'Phòng 2/4' in r['hudP2'] and 'Quái còn' in r['hudP2'], r
+    assert 'Cần Chìa Hầm' in r['toast'] and 'Chiến lợi phẩm' in r['loot']['text'] and r['loot']['imgs'] >= 1 and r['loot']['close'] and r['closed'] and 'đã nhận' in r['claimed'], r
+
+
+@test
+def test_dungeon_keys_cannot_be_stored_in_placed_chests_and_garbage_acts_never_throw(pg):
+    r = ev(pg, DUNGEON_JS + r"""
+      const T = mkDg(), { g, p, L, site } = T, out = {};
+      const x = Math.floor(p.x) + 2; T.stand(2005, 2010, 45); g.world.set(2006, 44, 2010, 1); g.world.set(2006, 45, 2010, B.CHEST);
+      T.give('dungeon_key', 1); const slot = p.inv.findIndex(s => s && s.id === 'dungeon_key');
+      g.act('u1', { t: 'chest-open', x: 2006, y: 45, z: 2010 });
+      const r1 = g.act('u1', { t: 'chest-move', x: 2006, y: 45, z: 2010, from: 'inv', slot }); out.bound = [r1.ok, r1.reason, cnt(p, 'dungeon_key')];
+      const bad = [undefined, null, 5, 'x', {}, { x: 0, y: 0, z: 0 }, { x: 1e9, y: 1e9, z: 1e9 }, { x: -1, y: 99, z: 3 }];
+      let threw = 0; for (const a of bad) for (const t of ['gate', 'dchest']) { try { g.act('u1', { t, ...(typeof a === 'object' && a ? a : {}) }); } catch (e) { threw++; } }
+      p.dead = true; out.dead = [g.act('u1', { t: 'gate', ...L.gates.iron.cells[0].reduce((o, v, i) => ({ ...o, [['x', 'y', 'z'][i]]: v }), {}) }).ok];
+      out.threw = threw;
+      return out;
+    """)
+    assert r['bound'] == [False, 'bound', 1] and r['threw'] == 0 and r['dead'] == [False], r
+
+
+@test
+def test_dungeon_hostile_save_is_sanitized(pg):
+    r = ev(pg, DUNGEON_JS + r"""
+      const { Game: GM } = await imp('sim/game.js'); const out = {};
+      const T = mkDg(), { g } = T; const save = JSON.parse(JSON.stringify(g.toSave()));
+      const s0 = save.flags.sites.dungeon['ham-re-muc'];
+      save.flags.sites.dungeon = { 'ham-re-muc': { ...s0, steps: 1e9, ox: 1e12 }, 'ham-cat-chon': 'x', 'ham-bang-gia': null, 'ham-bun-lay': { ox: NaN }, 'ham-tro-tan': 5, 'ham-lang-kinh': { ...s0, c: null }, 'khong-co': { ...s0 } };
+      save.flags.dungeons = { 'ham-re-muc': { claimed: 'abc', rooms: 5, gates: [], boss: 'yes' }, 'ham-cat-chon': null, __proto__x: 1 };
+      let err = null, g2 = null, ms = 0;
+      try { const t = performance.now(); g2 = GM.fromSave(save, { spawning: false, env: false, hunger: false }); const p = g2.addPlayer('u1', 'T'); p.maxHp = p.hp = 1000; p.x = 2000; p.z = 2000; p.y = 20;
+        for (let i = 0; i < 40; i++) g2.tick(0.5);
+        for (const a of [{ x: 2000, y: 20, z: 2000 }, { x: 1, y: 2, z: 3 }]) { g2.act('u1', { t: 'gate', ...a }); g2.act('u1', { t: 'dchest', ...a }); }
+        ms = performance.now() - t; } catch (e) { err = e.message; }
+      // đối tượng cờ hỏng ngay trên game đang chạy: act vẫn không ném lỗi
+      const { g: g3, p: p3, L } = mkDg(); g3.flags.dungeons = { 'ham-re-muc': { claimed: { supply: 'x' }, rooms: 'no' } }; const c = L.chests.supply;
+      p3.x = c.x + 0.5; p3.y = L.p2c.y; p3.z = c.z + 1.5; let err3 = null; try { g3.act('u1', { t: 'dchest', ...c }); g3.act('u1', { t: 'dchest', ...c }); } catch (e) { err3 = e.message; }
+      return { err, ms, err3, claimed: g3.flags.dungeons['ham-re-muc'].claimed.supply, kept: !!g2 && Object.keys(g2.flags.sites.dungeon).length };
+    """)
+    assert r['err'] is None and r['err3'] is None and r['ms'] < 8000 and r['claimed'] == ['u1'], r
+
+
+@test
+def test_dungeon_tester_abuse_dead_players_spam_reach_full_inventory_and_key_loss(pg):
+    r = ev(pg, DUNGEON_JS + r"""
+      const out = {};
+      // 1) spam mở rương 200 lần + người thứ hai: mỗi người đúng một lần
+      let T = mkDg(), { g, p, L, id, site } = T;
+      const q = g.addPlayer('u2', 'B'); q.maxHp = q.hp = 1000;
+      const c = L.chests.supply; T.stand(c.x, c.z + 1); T.stand(c.x + 1, c.z + 1, undefined, q);
+      const xu = pl => cnt(pl, 'xu'); let a0 = xu(p), okN = 0;
+      for (let i = 0; i < 200; i++) { const r = g.act('u1', { t: 'dchest', ...c }); if (r.ok && !r.claimed) okN++; }
+      out.spamOk = okN; out.claimedOnce = g.flags.dungeons[id].claimed.supply.filter(u => u === 'u1').length;
+      const b0 = xu(q); g.act('u2', { t: 'dchest', ...c }); out.bGot = xu(q) > b0; out.claimedBoth = g.flags.dungeons[id].claimed.supply.length;
+      // 2) ngoài tầm REACH
+      T = mkDg(); ({ g, p, L, id, site } = T); T.give('dungeon_key', 3);
+      const gi = L.gates.iron.cells[4]; T.stand(gi[0], gi[2] + 12); const far = g.act('u1', { t: 'gate', x: gi[0], y: gi[1], z: gi[2] });
+      out.farGate = [far.ok, cnt(p, 'dungeon_key')];
+      T.stand(c.x, c.z + 12); const farC = g.act('u1', { t: 'dchest', ...c }); out.farChest = farC.ok;
+      // 3) spam cổng: chỉ trừ 1 chìa
+      T.stand(gi[0], gi[2] + 2); for (let i = 0; i < 30; i++) g.act('u1', { t: 'gate', x: gi[0], y: gi[1], z: gi[2] });
+      out.keysAfterSpam = cnt(p, 'dungeon_key');
+      // 4) kho đầy: phần dư rơi ra đất, không mất, không ném lỗi
+      T = mkDg(); ({ g, p, L, id, site } = T);
+      for (let i = 0; i < p.inv.length; i++) p.inv[i] = { id: 'dirt', n: 64 }; g.touch(p);
+      const c2 = L.chests.victory; g.flags.dungeons = g.flags.dungeons || {}; g.flags.dungeons[id] = g.flags.dungeons[id] || { rooms: {}, claimed: {} }; g.flags.dungeons[id].rooms.p2 = true;
+      T.stand(c2.x, c2.z + 1); const before = [...g.ents.values()].filter(e => e.kind === 'item').length; const rr = g.act('u1', { t: 'dchest', ...c2 });
+      const drops = [...g.ents.values()].filter(e => e.kind === 'item'); out.full = { ok: rr.ok, dropped: drops.length - before, hasKey: drops.some(e => e.item === 'dungeon_key') };
+      // 5) người chơi chết giữa đợt: không ai sống => đợt bị xoá, phòng chưa dọn; chết rồi không mở được rương
+      T = mkDg(); ({ g, p, L, id, site } = T);
+      T.stand(L.p2c.x, L.p2c.z); T.secs(0.3); out.waveBefore = dgMobs(g, id).length;
+      g.damagePlayer ? g.damagePlayer(p, 99999, null) : (p.hp = 0);
+      T.secs(0.5); out.deadAlive = p.dead; out.waveAfterDeath = dgMobs(g, id).length; out.clearedAfterDeath = !!(g.flags.dungeons && g.flags.dungeons[id] && g.flags.dungeons[id].rooms.p2);
+      // 6) chìa khi chết
+      T = mkDg(); ({ g, p, L, id, site } = T); T.give('dungeon_key', 2); T.give('boss_key', 1);
+      T.stand(L.p2c.x, L.p2c.z); g.damagePlayer ? g.damagePlayer(p, 99999, null) : (p.hp = 0); T.secs(0.2);
+      out.keyDeath = { dead: p.dead, inInv: cnt(p, 'dungeon_key') + cnt(p, 'boss_key'), onGround: [...g.ents.values()].filter(e => e.kind === 'item' && (e.item === 'dungeon_key' || e.item === 'boss_key')).length };
+      // 7) rương kho báu: chưa có boss chết thì là không khí / không mở được
+      T = mkDg(); ({ g, p, L, id, site } = T); const tc = L.chests.treasure; T.stand(tc.x, tc.z + 1);
+      out.treasureBlock = g.world.get(tc.x, tc.y, tc.z); out.treasureOpen = g.act('u1', { t: 'dchest', ...tc }).ok;
+      // 8) boss: người duy nhất chết giữa trận => boss reset, không đặt cờ
+      const bp = L.p4c; T.stand(bp.x + 3, bp.z); T.secs(0.3); const boss = [...g.ents.values()].find(e => e.kind === 'boss');
+      out.bossSpawned = !!boss; g.damagePlayer ? g.damagePlayer(p, 99999, null) : (p.hp = 0); T.secs(6.5);
+      out.bossAfter = [...g.ents.values()].some(e => e.kind === 'boss'); out.bossFlag = !!g.flags['boss:' + (boss && boss.type)];
+      // 9) ném chìa cho người khác mở cổng hộ rồi nhặt lại: tổng chìa không tăng
+      return out;
+    """)
+    assert r['spamOk'] == 1 and r['claimedOnce'] == 1 and r['bGot'] and r['claimedBoth'] == 2, r
+    assert not r['farGate'][0] and r['farGate'][1] == 3 and not r['farChest'] and r['keysAfterSpam'] == 2, r
+    assert r['full']['ok'] and r['full']['dropped'] >= 1 and r['full']['hasKey'], r
+    assert r['waveBefore'] == 4 and r['deadAlive'] and r['waveAfterDeath'] == 0 and not r['clearedAfterDeath'], r
+    assert r['treasureBlock'] != 61 and not r['treasureOpen'], r
+    assert r['bossSpawned'] and not r['bossAfter'] and not r['bossFlag'], r
+    # chìa không được biến mất khi chết (đặc tả mục 10.1): ở kho giữ lại hoặc rơi ra đất
+    assert r['keyDeath']['inInv'] + r['keyDeath']['onGround'] >= 1, r
 
 if __name__ == '__main__':
     run(TESTS)

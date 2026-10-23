@@ -56,6 +56,10 @@ export const ITEMS = Object.fromEntries([
   ['veg_soup', { name: 'Súp rau', heal: 3, food: 9, fx: { id: 'regen', secs: 45 } }],
   ['hearty_stew', { name: 'Thịt hầm', heal: 4, food: 12, fx: { id: 'power', secs: 120 } }],
   ['egg_cake', { name: 'Bánh trứng', heal: 2, food: 8, fx: { id: 'tough', secs: 120 } }],
+  // hầm ngục: chìa gắn với người chơi (bound: không cất vào rương đặt), bình hồi máu, Mảnh Cổ Vật và đồ rèn từ nó
+  ['dungeon_key', { name: 'Chìa Hầm', stack: 8, bound: true }], ['boss_key', { name: 'Chìa Chủ Hầm', stack: 8, bound: true }],
+  ['heal_potion', { name: 'Bình Hồi Máu', heal: 12, food: 0, stack: 16 }], ['ancient_shard', { name: 'Mảnh Cổ Vật' }],
+  named('ancient_pick', 'Cuốc Cổ Vật', 'pick', 3, 6.5, 5, { color: '#e0b04a' }), named('delver_blade', 'Kiếm Người Khai Hầm', 'sword', 3, 1, 12, { relic: true, color: '#f0cf6a' }),
   tool('wood_sword', 'sword', 1, 1, 4), tool('stone_sword', 'sword', 2, 1, 5), tool('crystal_sword', 'sword', 3, 1, 7), tool('gem_sword', 'sword', 4, 1, 10),
 ].map(([id, d]) => [id, { id, stack: 64, ...d }]));
 

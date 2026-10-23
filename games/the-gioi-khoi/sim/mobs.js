@@ -6,6 +6,7 @@ import { B, isPlant } from '../world/blocks.js';
 import { perceive, turnToward, angDiff, yawTo } from './perception.js';
 import { WATER_LEVEL } from '../world/generate.js';
 import { farmAI } from './animals.js';
+import { noNaturalSpawn } from './dungeon.js';
 
 export const MOB_CAP = 40, PER_PLAYER_CAP = 12;
 
@@ -169,6 +170,7 @@ export function spawnTick(g, dt) {
     const free = id => id === B.AIR || isPlant(id);
     if (sy <= WATER_LEVEL || !free(g.world.get(x, sy + 1, z)) || !free(g.world.get(x, sy + 2, z))) continue;
     if (torchNear(g.world, x, sy, z)) continue;                // đuốc đuổi quái: không sinh quái trong 8 block quanh đuốc
+    if (noNaturalSpawn(g, x, sy + 1, z)) continue;             // miệng hầm ngục và khối bao của hầm: không sinh quái tự nhiên
     const region = g.world.regionAt(x, z);
     const options = Object.entries(MOBS).filter(([, d]) => d.weight > 0 && d.regions.includes(region) && (d.when === 'any' || (d.when === 'night') === night));
     if (!options.length) continue;

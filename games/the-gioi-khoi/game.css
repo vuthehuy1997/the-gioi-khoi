@@ -107,3 +107,16 @@ html,body{margin:0;height:100%;background:#12141a;color:#eeede8;font-family:'Seg
 #fxbar .fx .left{font-weight:700;min-width:1.4em;text-align:right}
 #tip{position:absolute;left:50%;top:58%;transform:translateX(-50%);padding:3px 10px;border-radius:6px;background:#000b;font-size:13px;pointer-events:none;white-space:pre}
 #tip[hidden]{display:none}
+
+/* hầm ngục: dòng trạng thái, gợi ý hướng tới miệng hầm, biểu ngữ tên hầm, bảng chiến lợi phẩm */
+#dungeon{position:absolute;left:50%;top:44px;transform:translateX(-50%);display:flex;align-items:center;gap:6px;padding:3px 12px;border-radius:14px;background:#14102ccc;border:1px solid #6a4ea0;font-size:13px;text-shadow:0 0 3px #000;pointer-events:none;white-space:nowrap}
+#dungeon b{color:#e9c870}
+#dungeon img{width:18px;height:18px;vertical-align:middle}
+#dungeon[hidden],#dghint[hidden],#dgbanner[hidden]{display:none}
+#dghint{position:absolute;left:12px;top:64px;font-size:13px;color:#d8c8ff;text-shadow:0 0 3px #000;pointer-events:none}
+#dgbanner{position:absolute;left:50%;top:26%;transform:translateX(-50%);font-size:34px;font-weight:700;letter-spacing:2px;color:#f0d890;text-shadow:0 0 8px #000,0 0 18px #6a4ea0;pointer-events:none;animation:dgb 3s ease-out forwards}
+@keyframes dgb{0%{opacity:0;transform:translateX(-50%) scale(.85)}12%{opacity:1;transform:translateX(-50%) scale(1)}80%{opacity:1}100%{opacity:0}}
+.panel .lootrow{display:flex;align-items:center;gap:8px;margin:4px 0}
+.panel .lootrow .slot{width:40px;height:40px;border:2px solid #fff4;border-radius:4px;position:relative;display:grid;place-items:center}
+.panel .lootrow .slot img{width:34px;height:34px}
+.panel .lootrow .slot b{position:absolute;right:2px;bottom:0;font-size:12px}
