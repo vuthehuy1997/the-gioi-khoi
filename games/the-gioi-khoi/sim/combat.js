@@ -5,7 +5,7 @@ import { addItem, removeItem, canFit } from './inventory.js';
 import { stepBody } from './mobs.js';
 import { B, isSolid } from '../world/blocks.js';
 
-export const HIT_REACH = 4.5, HIT_CD = 0.5, REGEN_AFTER = 8, REGEN_EVERY = 4;
+export const REGEN_AFTER = 8, REGEN_EVERY = 4;
 // Hồi máu theo đói: no (>= 18) hồi nhanh, vừa (7..17) như luật cũ, đói (<= 6) không tự hồi.
 export const REGEN_FAST_AFTER = 4, REGEN_FAST_EVERY = 2, FOOD_FAST = 18, FOOD_NONE = 6;
 
@@ -13,21 +13,36 @@ import { aggro } from './perception.js';
 
 import { reduceDamage } from './armor.js';
 import { eat, exert, clearFx, powerMul, toughBonus, FOOD_ON_RESPAWN } from './hunger.js';
+import * as R from './rules.js';
+import { isInvuln, guardResult, applyGuard, spendStamina, resetFight, isRolling, isStunned, onGround } from './fight.js';
 
-// src: kẻ gây sát thương (quái, đạn); không có src hoặc opts.pure (khí độc, nóng lạnh, bỏng, đói, độc) thì giáp không làm nhẹ đi.
-// Trả { dealt, how } (how: null | 'roll' | 'shield' | 'perfect' dành cho gói Chiến đấu).
+// Đường ống sát thương người chơi: lăn (bất khả xâm phạm) -> khiên (cung phía trước) -> giáp -> tối thiểu 1.
+// src: kẻ gây sát thương (quái, đạn, bẫy); không có src hoặc opts.pure (khí độc, nóng lạnh, bỏng, đói, độc) thì bỏ qua cả ba bước.
+// opts.blockable === false: đòn khiên không chặn được (đập vùng của boss, gai, ống phun), lăn vẫn né được.
+// Trả { dealt, how } (how: null | 'roll' | 'shield' | 'perfect' | 'broke').
 export function hurtPlayer(g, p, dmg, src, opts = {}) {
   if (p.dead || dmg <= 0) return { dealt: 0, how: null };
-  if (src && !opts.pure) dmg = reduceDamage(dmg, p.armor, toughBonus(g, p));
+  let how = null;
+  if (src && !opts.pure) {
+    if (isInvuln(g, p)) return { dealt: 0, how: 'roll' };
+    const gd = opts.blockable === false ? null : guardResult(g, p, src, dmg);
+    if (gd) {
+      applyGuard(g, p, src, gd, dmg);
+      if (gd.perfect) return { dealt: 0, how: 'perfect' };
+      how = gd.broke ? 'broke' : 'shield'; if (!gd.broke) dmg = gd.dmg;
+    }
+    dmg = reduceDamage(dmg, p.armor, toughBonus(g, p));
+  }
+  dmg = Math.max(1, dmg);
   g.makeNoise(p.x, p.y, p.z, 9);
   p.hp = Math.max(0, p.hp - dmg); p.lastHurt = g.time; g.touch(p);
   g.emit(p.uid, { t: 'hurt', hp: p.hp, by: src ? src.id : null });
   if (p.hp <= 0) {
-    p.dead = true; p.respawnAt = g.time + 3; p.dig = null; clearFx(g, p);
+    p.dead = true; p.respawnAt = g.time + 3; p.dig = null; p.guardSince = null; p.drawSince = null; clearFx(g, p);
     g.emit(null, { t: 'died', uid: p.uid, name: p.name });
     g.onPlayerDeath?.(p);
   }
-  return { dealt: dmg, how: null };
+  return { dealt: dmg, how };
 }
 
 export function dropLoot(g, e) {
@@ -59,19 +74,48 @@ export function damageEntity(g, e, dmg, src) {
   return true;
 }
 
+// Đánh cận chiến theo lớp vũ khí (xem sim/rules.js WEAPON_CLS): hồi chiêu, tầm, thể lực, chuỗi kiếm, quét rìu, choáng chùy, đòn rơi.
+// Sát thương = floor(dmg x hệ số lớp/đòn), x1,5 nếu đang rơi (floor), rồi Sức mạnh x1,25 làm tròn lên ở bước cuối, tối thiểu 1.
 export function actHit(g, p, a) {
   const e = g.ents.get(a.id);
   if (!e || (e.kind !== 'mob' && e.kind !== 'boss')) return { ok: false, reason: 'no-target' };
+  if (isStunned(g, p)) return { ok: false, reason: 'stun' };
+  if (p.guardSince !== null) return { ok: false, reason: 'guard' };
+  if (isRolling(g, p) || p.drawSince !== null) return { ok: false, reason: 'busy' };
+  if (p.exh) return { ok: false, reason: 'tired' };
   if (g.time < p.attackAt) return { ok: false, reason: 'cooldown' };
+  const h = g.held(p), w = R.weaponOf(h);
   const d = Math.hypot(e.x - p.x, (e.y + e.h / 2) - (p.y + 1.62), e.z - p.z) - e.w / 2;
-  if (d > HIT_REACH) return { ok: false, reason: 'reach' };
-  const h = g.held(p);
-  const dmg = Math.max(1, Math.ceil((h && h.dmg ? h.dmg : HAND_DAMAGE) * powerMul(g, p)));        // Sức mạnh: x1,25 làm tròn lên
-  p.attackAt = g.time + HIT_CD;
+  if (d > w.reach) return { ok: false, reason: 'reach' };
+  if (!spendStamina(g, p, w.cost)) return { ok: false, reason: 'tired' };
+  let mul = 1, third = false;
+  if (w.cls === 'sword') {
+    if (g.time - p.combo.at > R.COMBO_WINDOW) p.combo.n = 0;
+    mul = R.COMBO_MULS[p.combo.n]; third = p.combo.n === 2;
+  } else if (w.cls === 'club') mul = R.CLUB_MUL;
+  const crit = !onGround(g, p) && p.fallVy < R.FALL_VY;
+  let dmg = Math.max(1, Math.floor((h && h.dmg ? h.dmg : HAND_DAMAGE) * mul + 1e-9));
+  if (crit) dmg = Math.floor(dmg * R.FALL_MUL + 1e-9);
+  dmg = Math.max(1, Math.ceil(dmg * powerMul(g, p) - 1e-9));
+  p.attackAt = g.time + w.cd;
+  if (w.cls === 'sword') {
+    if (third) { p.combo.n = 0; p.attackAt = g.time + R.COMBO_END_CD; } else { p.combo.n++; p.combo.at = g.time; }
+  }
   if (g.hunger) exert(p, 2);                                             // đánh nhau tốn sức: nhanh đói hơn
   g.makeNoise(p.x, p.y, p.z, 12);                                        // đánh nhau gây tiếng động
   g.damageEntity(e, dmg, p);
-  return { ok: true };
+  if (g.ents.has(e.id) && e.kind === 'mob') {
+    if (third && e.kbT > 0) { e.kbx *= 2; e.kbz *= 2; }                  // đòn 3 của kiếm hất lùi gấp đôi
+    if (w.cls === 'spear') e.kbT = 0;                                    // giáo chọc thẳng, không đẩy lùi
+    if (w.cls === 'club' && g.time >= (e.stunImmuneUntil || 0)) { e.stunUntil = g.time + R.CLUB_STUN; e.stunImmuneUntil = e.stunUntil + R.STUN_IMMUNE; e.windup = null; }
+  }
+  if (w.cls === 'axe') {                                                 // quét: tối đa 2 mục tiêu phụ quanh mục tiêu chính, mỗi mục tiêu nhận 70%
+    const near = [...g.ents.values()].filter(o => o !== e && (o.kind === 'mob' || o.kind === 'boss') && !o.tamed && o.hp > 0 && Math.abs(o.y - e.y) < 3 && Math.hypot(o.x - e.x, o.z - e.z) <= R.SWEEP_RADIUS)
+      .sort((x, y) => Math.hypot(x.x - e.x, x.z - e.z) - Math.hypot(y.x - e.x, y.z - e.z)).slice(0, R.SWEEP_MAX);
+    for (const o of near) g.damageEntity(o, Math.max(1, Math.floor(dmg * R.SWEEP_MUL + 1e-9)), p);
+  }
+  if (crit) g.emit(null, { t: 'crit', id: e.id });
+  return { ok: true, dmg, crit };
 }
 
 export function actUse(g, p) {
@@ -81,7 +125,7 @@ export function actUse(g, p) {
 export function actRespawn(g, p) {
   if (!p.dead) return { ok: false, reason: 'alive' };
   if (g.time < p.respawnAt) return { ok: false, reason: 'too-soon' };
-  p.dead = false; p.hp = p.maxHp; p.lastHurt = -99; p.food = FOOD_ON_RESPAWN; p.fat = 0; g.touch(p);
+  p.dead = false; p.hp = p.maxHp; p.lastHurt = -99; p.food = FOOD_ON_RESPAWN; p.fat = 0; resetFight(p); g.touch(p);
   const at = g.respawnPoint(p); g.teleportPlayer(p, at.x, at.y, at.z);
   g.emit(p.uid, { t: 'hurt', hp: p.hp, by: null });
   return { ok: true };
@@ -106,14 +150,36 @@ export function updateItems(g, dt) {
   }
 }
 
+// Đạn bay theo bước con (tối đa 0,4 block mỗi bước) để không xuyên tường mỏng hay thân quái. Đạn có trọng lực e.g (mũi tên).
+// Đạn người chơi (e.pl, owner là uid) chỉ trúng quái/boss và tính kill cho người bắn; đạn quái/bẫy chỉ trúng người chơi.
 export function updateProjectiles(g, dt) {
   for (const e of [...g.ents.values()]) {
     if (e.kind !== 'proj') continue;
-    e.x += e.vx * dt; e.y += e.vy * dt; e.z += e.vz * dt; e.ttl -= dt;
-    if (e.ttl <= 0 || isSolid(g.world.get(e.x, e.y, e.z))) { g.ents.delete(e.id); continue; }
-    for (const p of g.players.values()) {
-      if (p.dead) continue;
-      if (Math.hypot(p.x - e.x, p.z - e.z) < 0.55 && e.y > p.y - 0.1 && e.y < p.y + p.h + 0.1) { hurtPlayer(g, p, e.dmg, e); g.ents.delete(e.id); break; }
+    const speed = Math.hypot(e.vx, e.vy, e.vz), n = Math.max(1, Math.ceil(speed * dt / 0.4)), h = dt / n;
+    for (let i = 0; i < n; i++) {
+      if (e.g) e.vy -= e.g * h;
+      const sx = e.vx * h, sy = e.vy * h, sz = e.vz * h;
+      e.x += sx; e.y += sy; e.z += sz; e.ttl -= h; e.run = (e.run || 0) + Math.hypot(sx, sy, sz);
+      if (e.ttl <= 0 || e.run > (e.range || Infinity) || isSolid(g.world.get(e.x, e.y, e.z))) { g.ents.delete(e.id); break; }
+      if (e.pl) {
+        const m = [...g.ents.values()].find(o => (o.kind === 'mob' || o.kind === 'boss') && !o.tamed && o.hp > 0 && Math.hypot(o.x - e.x, o.z - e.z) <= o.w / 2 + 0.15 && e.y >= o.y - 0.1 && e.y <= o.y + o.h + 0.1);
+        if (!m) continue;
+        const shooter = g.player(e.owner) || null;
+        g.ents.delete(e.id);
+        g.damageEntity(m, Math.max(1, Math.floor(e.dmg + 1e-9)), shooter);
+        if (g.rng() < R.ARROW_RECOVER) g.dropItem('arrow', 1, e.x, e.y, e.z);          // một phần mũi tên rơi lại tại chỗ
+        break;
+      }
+      let gone = false;
+      for (const p of g.players.values()) {
+        if (p.dead) continue;
+        if (Math.hypot(p.x - e.x, p.z - e.z) < 0.55 && e.y > p.y - 0.1 && e.y < p.y + p.h + 0.1) {
+          const r = hurtPlayer(g, p, e.dmg, e, { blockable: e.blockable !== false });
+          if (r.how !== 'roll') { g.ents.delete(e.id); gone = true; }                   // lăn xuyên qua thì đạn bay tiếp
+          break;
+        }
+      }
+      if (gone) break;
     }
   }
 }

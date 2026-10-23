@@ -137,7 +137,7 @@ Nguyên tắc: cắt **từ cuối** (Gói 2 trước), giữ lõi mỗi gói ch
 | Lát | Trạng thái | Test mới | Ghi chú |
 |---|---|---|---|
 | S0 tới S5 | chưa bắt đầu | | |
-| C0 tới C7 | chưa bắt đầu | | |
+| C0 tới C7 | xong (gộp một lượt làm) | 23 bài `test_combat2_*` | thể lực, lăn, báo hiệu đòn, 5 lớp vũ khí, cung + mũi tên, khiên + tay phụ, tư thế người khác, HUD, âm, ACCEPTANCE C-AC1 tới C-AC35; bài cũ sửa: `test_survival_hunger_exertion`, `test_ui_inventory_shows_...` |
 | D0 tới D6 | chưa bắt đầu | | |
 
 Cơ sở hiện tại: `test_game.py` 106 bài xanh, `test_net.py` 21 bài xanh.

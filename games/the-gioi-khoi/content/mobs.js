@@ -17,7 +17,7 @@ export const MOBS = {
     drops: [{ item: 'venom', min: 1, max: 1, p: 0.5 }, { item: 'chitin', min: 1, max: 2, p: 0.7 }, { item: 'xu', min: 1, max: 4, p: 1 }] },
   'xuong-cung': { name: 'Xương Cung Thủ', hp: 14, speed: 2.8, w: 0.6, h: 1.8, ai: 'ranged-kite', sight: 22, fov: 90, close: 2, hearing: 0.8, turn: 4,
     shot: { dmg: 3, speed: 14, cd: 1.6, range: 18, style: 'arrow' }, regions: ['sa-mac-lua', 'rung-suong'], when: 'night', weight: 2, color: '#d8d4c4',
-    drops: [{ item: 'bone', min: 1, max: 3, p: 1 }, { item: 'xu', min: 1, max: 3, p: 1 }] },
+    drops: [{ item: 'bone', min: 1, max: 3, p: 1 }, { item: 'arrow', min: 2, max: 5, p: 0.6 }, { item: 'xu', min: 1, max: 3, p: 1 }] },
   'gau-bang': { name: 'Gấu Băng', hp: 40, speed: 2.8, w: 1.2, h: 1.4, ai: 'chase-melee', sight: 12, fov: 100, close: 3, hearing: 1.0, turn: 3, attack: { dmg: 6, range: 2.0, cd: 1.4 },
     regions: ['nui-bang'], when: 'any', weight: 3, color: '#e8f0f8',
     drops: [{ item: 'meat', min: 2, max: 3, p: 1 }, { item: 'shard', min: 1, max: 2, p: 0.6 }, { item: 'pelt', min: 1, max: 2, p: 0.6 }, { item: 'xu', min: 3, max: 6, p: 1 }] },

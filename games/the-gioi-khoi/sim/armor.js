@@ -22,9 +22,10 @@ export function armorStats(armor) {
 // Sát thương sau khi giáp giảm; luôn còn ít nhất 1. extra: điểm giáp ảo cộng thêm (hiệu ứng Da dày +3), vẫn trần MAX_REDUCE.
 export const reduceDamage = (dmg, armor, extra = 0) => Math.max(1, Math.round(dmg * (1 - Math.min(MAX_REDUCE, armorStats(armor).reduce + extra * REDUCE_PER_DEF))));
 
-// Mặc món ở ô kho i; món đang mặc (nếu có) về chính ô đó.
+// Mặc món ở ô kho i; món đang mặc (nếu có) về chính ô đó. Khiên đi vào ô tay phụ (p.offhand), cung/giáo thì không mặc được.
 export function equip(p, i) {
   const s = Number.isInteger(i) ? p.inv[i] : null, it = s && ITEMS[s.id];
+  if (it && it.shield) { const old = p.offhand; p.offhand = s.id; p.inv[i] = old ? { id: old, n: 1 } : null; return { ok: true }; }
   if (!it || !it.armor) return { ok: false, reason: 'not-armor' };
   const old = p.armor[it.armor.slot];
   p.armor[it.armor.slot] = s.id;

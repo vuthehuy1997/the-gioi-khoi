@@ -6,7 +6,7 @@ import { cleanName } from '../../platform/net/protocol.js';
 import { World } from './world/world.js';
 import { Game } from './sim/game.js';
 import { makePlayer, stepPlayer } from './sim/physics.js';
-import { breakTimeFor, nearStations } from './sim/rules.js';
+import { breakTimeFor, nearStations, weaponOf, reachOf, cdOf, costOf, drawForce, ROLL_TIME, ROLL_DIST, ROLL_COST, ROLL_CD, SLOW_MUL, BOW_CD } from './sim/rules.js';
 import { lightLevel } from './sim/daynight.js';
 import { HostSession } from './net/host.js';
 import { ClientSession } from './net/client.js';
@@ -58,7 +58,9 @@ const gov = { slow: 0, fast: 0 }, rawDts = []; let maxRadius = 6, wasOnGround = 
 let S = null, game = null, local = null, view = null, ents = null, panels = null;
 const dgLeft = {}; let dgLast = null, dgPoll = 0, dgSound = new Map();                       // hầm ngục: số quái còn (từ sự kiện host), hầm đang ở, nhịp bẫy lần trước
 let pending = 1, paused = false, wasLocked = false, lastHit = 0, dig = null, digCooldown = 0, lastSel = -1;
-const keys = new Set(), mouse = { left: false };
+const keys = new Set(), mouse = { left: false, right: false };
+// Chiến đấu (phía người chơi): chỉ DỰ ĐOÁN để mượt (lăn, giơ khiên, kéo cung); host mới là nguồn sự thật và gửi lại trong snapshot (ps[].act, me).
+let guardOn = false, draw = null, rollCdUntil = 0, lastShot = -9, guardRetry = 0, rollK = 0;
 const buf = [];                                  // vài ảnh chụp gần nhất để nội suy
 let interp = { ps: [], es: [] };
 
@@ -166,7 +168,10 @@ function optimistic(x, y, z, id) {
 function confirmEdit(x, y, z) { pendingEdits = pendingEdits.filter(p => !(p.x === x && p.y === y && p.z === z)); }
 function revertEdit() { const p = pendingEdits.shift(); if (p) S.world.set(p.x, p.y, p.z, p.prev); }
 
+const COMBAT_FAIL = { roll: { tired: 'Hết sức!' }, shoot: { tired: 'Hết sức!', 'no-ammo': 'Hết mũi tên!' } };
 function onFail(ev) {
+  if (ev.a === 'roll') local.roll = null;                                                  // host từ chối lăn: huỷ phần dự đoán
+  if (COMBAT_FAIL[ev.a]) { if (COMBAT_FAIL[ev.a][ev.reason]) hud.toast(COMBAT_FAIL[ev.a][ev.reason], 1400); return; }
   if (ev.a === 'break' || ev.a === 'place') revertEdit();
   if (ev.a === 'break' || ev.a === 'dig') { dig = null; hud.setProgress(null); digCooldown = 0.2; if (ev.reason === 'reach') hud.toast('Ở quá xa.', 800); return; }
   if (FAIL_TEXT[ev.reason]) hud.toast(FAIL_TEXT[ev.reason], 1800);
@@ -178,6 +183,7 @@ let deathTimer = null;
 function refreshYou() {
   const y = S.you; if (!y) return;
   hud.setHp(y.hp, y.maxHp); hud.setHotbar(y.inv, y.sel); hud.setFood(y.food); hud.setFx(y.fx);
+  if (!y.offhand || y.dead) guardOn = false; if (y.dead) cancelDraw();
   if (y.dead) { if (!deathTimer) { document.exitPointerLock?.(); panels.close(); panels.showDeath(false); deathTimer = setTimeout(() => panels.showDeath(true), 3000); } }
   else if (deathTimer || !$('death').hidden) { clearTimeout(deathTimer); deathTimer = null; panels.hideDeath(); lockPointer(); }
   if (panels.isOpen) panels.refresh({ you: y, near: nearStations(S.world, local.x, local.y, local.z) });
@@ -202,7 +208,13 @@ function handleEvent(ev) {
     case 'died': if (ev.uid === uid) sfx.play('die'); hud.toast(ev.uid === uid ? 'Bạn đã gục ngã.' : `${ev.name} đã gục ngã.`); break;
     case 'boss-start': sfx.play('boss'); hud.toast(`${ev.name} xuất hiện!`); break;
     case 'boss-defeated': sfx.play('victory'); hud.toast(`${ev.name} đã bị hạ!`, 5000); break;
-    case 'snd': sfx.play(ev.n); break;
+    case 'snd': if (ev.x !== undefined && Math.hypot(ev.x - local.x, ev.z - local.z) > 40) break; sfx.play(ev.n); break;
+    case 'exhausted': hud.toast('Hết sức!', 1400); sfx.play('exhausted'); cancelDraw(); break;
+    case 'shield': if (ev.perfect) { hud.shieldFlash('perfect'); sfx.play('parry'); } else if (ev.broke) { hud.shieldFlash('broke'); sfx.play('shieldbreak'); hud.toast('Khiên vỡ!', 1600); guardOn = false; } else sfx.play('shieldhit'); break;
+    case 'parry': { const e = interp.es.find(x => x.id === ev.id); if (e) { fx.burst(e.x, e.y + 1, e.z, [1, 0.9, 0.35], 14, 2.6); if (Math.hypot(e.x - local.x, e.z - local.z) < 20) sfx.play('parry'); } break; }
+    case 'roll': if (ev.uid !== uid) { const q = interp.ps.find(x => x.uid === ev.uid); if (q && Math.hypot(q.x - local.x, q.z - local.z) < 24) { sfx.play('roll'); fx.burst(q.x, q.y + 0.1, q.z, [0.72, 0.66, 0.52], 8, 1.2); } } break;
+    case 'windup': { ents.windup('e:' + ev.id, ev.time); const e = interp.es.find(x => x.id === ev.id); if (e && Math.hypot(e.x - local.x, e.z - local.z) < 14) sfx.play('windup'); break; }
+    case 'crit': { const e = interp.es.find(x => x.id === ev.id); if (e) { fx.burst(e.x, e.y + 1, e.z, [1, 0.85, 0.3], 16, 3); if (Math.hypot(e.x - local.x, e.z - local.z) < 20) sfx.play('crit'); } break; }
     case 'born': { const e = interp.es.find(x => x.id === ev.id) || { x: local.x, z: local.z }; if (Math.hypot(e.x - local.x, e.z - local.z) < 24) sfx.play('voice', { type: ev.type, intent: 'idle', dist: Math.hypot(e.x - local.x, e.z - local.z) }); break; }
     case 'pickup': sfx.play('pickup'); hud.toast(`+${ev.n} ${ITEMS[ev.item].name}`, 1200); break;
     case 'fail': onFail(ev); break;
@@ -224,11 +236,13 @@ addEventListener('keydown', e => {
   if (e.code === 'Escape') { if (panels.isOpen) panels.close(); else if (!paused && !S.you.dead) setPause(true); else if (paused) setPause(false); return; }
   if (inUi() && e.code !== 'KeyE') return;
   if (e.code === 'KeyE') { if (panels.kind === 'inventory') panels.close(); else if (!inUi()) { document.exitPointerLock?.(); panels.openInventory({ you: S.you, near: nearStations(S.world, local.x, local.y, local.z) }); } return; }
+  if (e.code === 'KeyQ') { if (!e.repeat) startRoll(); return; }
+  if (e.code === 'KeyF') { if (!e.repeat) startGuard(); return; }
   const m = /^Digit([1-9])$/.exec(e.code);
   if (m) S.act({ t: 'sel', i: Number(m[1]) - 1 });
 });
-addEventListener('keyup', e => keys.delete(e.code));
-addEventListener('blur', () => { keys.clear(); mouse.left = false; dig = null; hud.setProgress(null); });
+addEventListener('keyup', e => { keys.delete(e.code); if (e.code === 'KeyF' && !mouse.right) stopGuard(); });
+addEventListener('blur', () => { cancelDraw(); stopGuard(); keys.clear(); mouse.left = false; mouse.right = false; dig = null; hud.setProgress(null); });
 addEventListener('wheel', e => { if (!S || inUi()) return; S.act({ t: 'sel', i: (S.you.sel + (e.deltaY > 0 ? 1 : 8)) % 9 }); }, { passive: true });
 addEventListener('mousemove', e => {
   if (!S || document.pointerLockElement !== $('cv') || inUi()) return;
@@ -244,14 +258,14 @@ addEventListener('mousedown', e => {
   if (!S || !onCanvas(e)) return;
   if (!paused && !panels.isOpen && !S.you.dead && document.pointerLockElement !== $('cv') && !(debugOn() && NET === 'memory')) { lockPointer(); return; }
   if (inUi()) return;
-  if (e.button === 0) { mouse.left = true; } else if (e.button === 2) useItem();
+  if (e.button === 0) { mouse.left = true; } else if (e.button === 2) { if (!useItem()) { mouse.right = true; startGuard(); } }      // chuột phải: việc khác trước, không có việc thì giơ khiên
 });
-addEventListener('mouseup', e => { if (e.button === 0) { mouse.left = false; dig = null; hud.setProgress(null); } });
+addEventListener('mouseup', e => { if (e.button === 0) { mouse.left = false; dig = null; hud.setProgress(null); } else if (e.button === 2) { mouse.right = false; if (!keys.has('KeyF')) stopGuard(); } });
 addEventListener('contextmenu', e => e.preventDefault());
 
 function setPause(on) {
   paused = on; if (S && S.pause) S.pause(on); $('pause').hidden = !on; $('btn-save').hidden = $('btn-export').hidden = !game;
-  if (on) { document.exitPointerLock?.(); mouse.left = false; dig = null; hud.setProgress(null); } else lockPointer();
+  if (on) { cancelDraw(); stopGuard(); document.exitPointerLock?.(); mouse.left = false; mouse.right = false; dig = null; hud.setProgress(null); } else lockPointer();
 }
 $('btn-resume').onclick = () => setPause(false);
 let musicBeforeMute = 60;
@@ -270,8 +284,42 @@ $('btn-leave').onclick = async () => { if (game) await saveWorld('main', game.to
 $('btn-respawn').onclick = () => S.act({ t: 'respawn' });
 
 function inputNow() {
-  return { fx: (keys.has('KeyD') ? 1 : 0) - (keys.has('KeyA') ? 1 : 0), fz: (keys.has('KeyW') ? 1 : 0) - (keys.has('KeyS') ? 1 : 0),
+  const i = { fx: (keys.has('KeyD') ? 1 : 0) - (keys.has('KeyA') ? 1 : 0), fz: (keys.has('KeyW') ? 1 : 0) - (keys.has('KeyS') ? 1 : 0),
     jump: keys.has('Space'), sprint: keys.has('ShiftLeft') || keys.has('ShiftRight'), sneak: keys.has('KeyC') };
+  const m = meState();
+  if (guardOn || draw) { i.sprint = false; i.slow = SLOW_MUL; }                              // giơ khiên / kéo cung: đi chậm, không chạy nước rút
+  if (m.sta < 1 || m.exh > 0 || local.roll) i.sprint = false;                                // hết sức: không chạy (host tiêu thể lực cùng hằng số)
+  return i;
+}
+
+// ---------------------------------------------------------------- chiến đấu
+const meState = () => { const m = S && S.snap && S.snap.me; return { sta: m ? m.sta : 100, exh: m ? m.exh : 0, cmb: m ? m.cmb : 0, stn: m ? m.stn || 0 : 0 }; };
+const heldItem = () => { const id = S && S.you ? heldId() : null; return id ? ITEMS[id] : null; };
+const arrowCount = () => S.you.inv.reduce((n, s) => n + (s && s.id === 'arrow' ? s.n : 0), 0);
+function startRoll() {
+  if (!S || inUi() || local.roll) return;
+  const m = meState();
+  if (nowS < rollCdUntil || m.exh > 0 || m.sta < ROLL_COST || m.stn > 0) return;
+  const i = inputNow(); let fx = i.fx, fz = i.fz; if (!fx && !fz) fz = 1;                       // không bấm hướng: lăn về phía trước
+  const len = Math.hypot(fx, fz); fx /= len; fz /= len;
+  const sp = ROLL_DIST / ROLL_TIME, c = Math.cos(local.yaw), s = Math.sin(local.yaw);
+  local.roll = { t: 0, vx: (c * fx - s * fz) * sp, vz: (-s * fx - c * fz) * sp, side: fx >= 0 ? 1 : -1 };
+  rollCdUntil = nowS + ROLL_CD; guardOn = false; cancelDraw(); dig = null; hud.setProgress(null);
+  S.act({ t: 'roll', dx: fx, dz: fz }); sfx.play('roll');
+}
+function startGuard() {
+  if (!S || inUi() || guardOn || !S.you.offhand || local.roll) return;
+  const h = heldItem(); if (h && (h.food > 0 || h.heal > 0)) return;
+  guardOn = true; cancelDraw(); dig = null; hud.setProgress(null); S.act({ t: 'guard', on: true });
+}
+function stopGuard() { if (guardOn) { guardOn = false; if (S) S.act({ t: 'guard', on: false }); } }
+function cancelDraw() { if (draw) { draw = null; if (S) S.act({ t: 'draw', on: false }); hud.setDraw(null, null); } }
+// Cung: giữ chuột trái để kéo, thả để bắn (host đo lực kéo bằng đồng hồ của nó). Vòng kéo HUD chỉ để hiển thị.
+function bowTick(h, now) {
+  const m = meState();
+  if (mouse.left && !draw && !guardOn && !local.roll && m.exh <= 0 && m.stn <= 0 && now - lastShot > BOW_CD) { draw = { t0: now, id: heldId() }; S.act({ t: 'draw', on: true }); sfx.play('bowdraw'); }
+  else if (draw && !mouse.left) { S.act({ t: 'shoot', yaw: local.yaw, pitch: local.pitch }); lastShot = now; hand.swing(); draw = null; }
+  hud.setDraw(draw ? drawForce(h.bow, now - draw.t0) : null, arrowCount());
 }
 
 // ---------------------------------------------------------------- nhắm và tương tác
@@ -367,14 +415,19 @@ function tipFor(blk, en) {
 }
 
 function mining(dt, now) {
-  const o = eyeOf(), d = dirOf(), blk = S.world.raycast(o, d, 6), en = pickEntity(o, d, 4.5);
+  const hd = heldItem(), w = weaponOf(hd);
+  const o = eyeOf(), d = dirOf(), blk = S.world.raycast(o, d, 6), en = pickEntity(o, d, w.reach);
   const progNow = dig && blk && dig.x === blk.pos.x && dig.y === blk.pos.y && dig.z === blk.pos.z ? Math.min(1, (now - dig.t0) / Math.max(0.05, breakTimeFor(blk.id, heldId()))) : null;
   fx.setTarget(blk && !(en && (!blk || en.t < blk.dist)) ? blk.pos : null, mouse.left ? progNow : null);
   hud.setTip(tipFor(blk, en));
+  if (hd && hd.bow) { dig = null; hud.setProgress(null); bowTick(hd, now); return; }          // cầm cung: chuột trái kéo cung, không đào hay đánh
+  if (draw) cancelDraw();
   if (!mouse.left) return;
+  if (guardOn) return;                                                                         // đang giơ khiên: không đánh, không đào
   if (en && (en.e.kind === 'mob' || en.e.kind === 'boss') && (!blk || en.t < blk.dist)) {
     dig = null; hud.setProgress(null);
-    if (now - lastHit > 0.5) { lastHit = now; S.act({ t: 'hit', id: en.e.id }); hand.swing(); sfx.play('swing'); }
+    const m = meState();
+    if (now - lastHit > w.cd && m.exh <= 0 && m.stn <= 0 && !local.roll) { lastHit = now; S.act({ t: 'hit', id: en.e.id }); hand.swing(); sfx.play('swing'); }
     return;
   }
   if (!blk) { dig = null; hud.setProgress(null); return; }
@@ -449,20 +502,29 @@ function frame(dt) {
 function frameBody(dt) {
   nowS += dt;
   if (!S) { scene.render(); return; }
-  const y = S.you, ui = inUi();
-  if (!y.dead) stepPlayer(S.world, local, ui ? {} : inputNow(), dt);
-  const hs = Math.hypot(local.vx, local.vz), inp = ui ? {} : inputNow(), moving = !y.dead && hs > 0.8 && (inp.fx || inp.fz);
+  const y = S.you, ui = inUi(), me = meState(), stunned = me.stn > 0;
+  if (ui && (guardOn || draw)) { stopGuard(); cancelDraw(); }
+  if (y.dead || stunned) local.roll = null;
+  if (local.roll) { local.roll.t += dt; if (local.roll.t >= ROLL_TIME) local.roll = null; }
+  if (!ui && !guardOn && !stunned && !local.roll && y.offhand && (mouse.right || keys.has('KeyF')) && nowS > guardRetry) { guardRetry = nowS + 0.3; startGuard(); }      // giữ nút mà khiên bị hạ (choáng, lăn): giơ lại khi được
+  const inp = ui || stunned ? {} : inputNow();                                                // choáng: bỏ input di chuyển
+  if (!y.dead) stepPlayer(S.world, local, local.roll ? { ...inp, jump: false, roll: local.roll } : inp, dt);
+  const hs = Math.hypot(local.vx, local.vz), moving = !y.dead && hs > 0.8 && (inp.fx || inp.fz);
   S.sendState({ x: local.x, y: local.y, z: local.z, vx: local.vx, vy: local.vy, vz: local.vz, yaw: local.yaw, pitch: local.pitch, sneak: !!inp.sneak, sprint: !!(inp.sprint && moving && !inp.sneak) });
   sneakK += ((inp.sneak ? 1 : 0) - sneakK) * Math.min(1, dt * 12); $('sneak').hidden = !inp.sneak;
-  stepCameraFx(camFx, dt, { moving, sprint: !!inp.sprint, onGround: local.onGround, speed: hs });
+  stepCameraFx(camFx, dt, { moving, sprint: !!inp.sprint, onGround: local.onGround, speed: hs, rolling: local.roll ? local.roll.side : 0 });
   const bobY = Math.abs(Math.sin(camFx.bob)) * 0.05 * camFx.bobAmp;
   if (Math.abs(scene.camera.fov - camFx.fov) > 0.05) { scene.camera.fov = camFx.fov; scene.camera.updateProjectionMatrix(); }
-  scene.camera.position.set(local.x, local.y + 1.62 - bobY - sneakK * 0.3, local.z);
-  scene.camera.rotation.set(local.pitch, local.yaw, camFx.tilt + Math.sin(camFx.bob) * 0.006 * camFx.bobAmp);
+  scene.camera.position.set(local.x, local.y + 1.62 - bobY - sneakK * 0.3 - camFx.roll * 0.55, local.z);       // lăn: hạ thấp camera
+  scene.camera.rotation.set(local.pitch + camFx.roll * 0.25, local.yaw, camFx.tilt + Math.sin(camFx.bob) * 0.006 * camFx.bobAmp + camFx.roll * 0.3 * camFx.rollSide);
   if (moving && local.onGround) { stepDist += hs * dt; if (stepDist > 2.1) { stepDist = 0; sfx.play('step', { block: S.world.get(local.x, local.y - 0.5, local.z) }); } }
   if (local.onGround && !wasOnGround && local.vy > -1 && lastVy < -9) sfx.play('land');
   wasOnGround = local.onGround; lastVy = local.vy;
-  hand.setHeld(heldId(), heldId() ? icons.get(heldId()) : null); hand.update(dt, camFx.bob, camFx.bobAmp);
+  const hd = heldItem(), w = weaponOf(hd);
+  hand.setHeld(heldId(), heldId() ? icons.get(heldId()) : null); hand.setOff(y.offhand, y.offhand ? icons.get(y.offhand) : null);
+  hand.setPose({ guard: guardOn, draw: draw && hd && hd.bow ? drawForce(hd.bow, nowS - draw.t0) : 0 }); hand.update(dt, camFx.bob, camFx.bobAmp);
+  hud.setStamina(me); hud.setCombo(me.cmb, !!hd && w.cls === 'sword'); hud.setShield(guardOn, !!y.offhand);
+  if (!(hd && hd.bow) || ui) hud.setDraw(null, hd && hd.bow ? arrowCount() : null);
   if (!ui) mining(dt, nowS); else { fx.setTarget(null); hud.setTip(null); }
   const keep = game ? [...game.players.values()].filter(p => p.uid !== uid && !p.dead).map(p => ({ x: p.x, z: p.z, r: 4 })) : [];
   pending = view.update([local], undefined, keep);

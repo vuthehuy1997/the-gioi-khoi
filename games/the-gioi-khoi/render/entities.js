@@ -81,6 +81,18 @@ export function createEntityView(scene, { iconCanvas = null, onDeath = null } = 
     return o;
   }
 
+  // Khiên người chơi khác đeo: một hộp nhỏ gắn xương tay trái (mô hình dùng chung không đổi), nhấc lên khi giơ.
+  const SHIELD_COLOR = { wood_shield: '#a97c45', iron_shield: '#aab0b8' };
+  function setShieldMesh(o, id, up) {
+    if (!id) { if (o.shield) o.shield.visible = false; return; }
+    if (!o.shield) {
+      const m = new T.Group(); m.add(new T.Mesh(new T.BoxGeometry(0.07, 0.62, 0.46), new T.MeshBasicMaterial({ color: SHIELD_COLOR[id] || '#a97c45' })));
+      const bs = new T.Mesh(new T.BoxGeometry(0.1, 0.14, 0.14), new T.MeshBasicMaterial({ color: '#e0e4ea' })); bs.position.x = -0.04; m.add(bs);
+      o.rig.bones.armL.add(m); o.shield = m; o.shieldId = id;
+    }
+    if (o.shieldId !== id) { o.shield.children[0].material.color.set(SHIELD_COLOR[id] || '#a97c45'); o.shieldId = id; }
+    o.shield.visible = true; o.shield.position.set(-0.11, -0.3, up ? -0.2 : -0.02);
+  }
   const setFlash = (o, on) => { if (o.rig && o.flashing !== on) { o.rig.mesh.material = on ? o.lib.flash : o.lib.material; o.flashing = on; } };
 
   return {
@@ -114,11 +126,17 @@ export function createEntityView(scene, { iconCanvas = null, onDeath = null } = 
         }
         if (o.rig && g.visible) {
           const far = dist > 56;
-          if (!far || ((t * 60) | 0) % 3 === 0) animate(o.rig, { phase: o.phase, k: Math.min(1, o.speed / 2.2), t, pitch: e.pitch || 0, swing: o.swing > 0 ? o.swing / 0.25 : 0 });
+          if (!far || ((t * 60) | 0) % 3 === 0) animate(o.rig, { phase: o.phase, k: Math.min(1, o.speed / 2.2), t, pitch: e.pitch || 0, swing: o.swing > 0 ? o.swing / 0.25 : 0, act: e.kind === 'player' ? e.act | 0 : 0 });
+          if (e.kind === 'player') setShieldMesh(o, e.off || null, e.act === 1);
           if (e.hp !== undefined && o.hp !== undefined && e.hp < o.hp) o.flash = 0.16;
           o.hp = e.hp;
           if (o.flash > 0) { o.flash -= dt; setFlash(o, true); } else setFlash(o, false);
           if (o.swing > 0) o.swing -= dt;
+          if (o.wind) {                                                                  // báo hiệu đòn: ngả người ra sau rồi nhoài tới
+            o.wind.t += dt; const f = Math.min(1, o.wind.t / o.wind.total);
+            g.rotation.x = f < 0.8 ? -0.45 * (f / 0.8) : 0.25 * ((f - 0.8) / 0.2) - 0.45 * (1 - (f - 0.8) / 0.2);
+            if (o.wind.t >= o.wind.total) { o.wind = null; g.rotation.x = 0; }
+          }
           if (e.kind === 'mob') {                                                       // dấu cảnh giác
             const st = e.st | 0, want = st === 2 ? 'chase' : st === 3 ? 'search' : st === 1 ? 'curious' : null;
             if (want && dist < 30) {
@@ -166,12 +184,15 @@ export function createEntityView(scene, { iconCanvas = null, onDeath = null } = 
       for (let i = rings.length - 1; i >= 0; i--) { const r = rings[i]; r.life -= dt; r.m.material.opacity = 0.25 + 0.4 * (1 - Math.max(0, r.life) / r.total); if (r.life <= 0) { group.remove(r.m); rings.splice(i, 1); } }
     },
     swing(key) { const o = objs.get(key); if (o) o.swing = 0.25; },
+    windup(key, time) { const o = objs.get(key); if (o && o.rig) o.wind = { t: 0, total: Math.max(0.1, time) }; },
     // dùng cho test: khớp xương, nháy đỏ, số lệnh vẽ của thực thể
     rigOf(key) {
       const o = objs.get(key); if (!o || !o.rig) return null;
       const by = role => o.lib.model.bones.filter(b => b.role === role).map(b => o.rig.bones[b.id].rotation.x);
       return { legs: by('leg'), arms: [...by('arm'), ...by('armstill')], flashing: !!o.flashing, hasShadow: shadows.count > 0, drawCalls: 1, bones: o.lib.model.bones.length, dying: dead.has(key) };
     },
+    // dùng cho test: tư thế chiến đấu (xoay thân, khiên đeo, đang báo hiệu đòn)
+    poseOf(key) { const o = objs.get(key); return o ? { rx: o.g.rotation.x, shield: !!(o.shield && o.shield.visible), shieldUp: !!(o.shield && o.shield.position.z < -0.1), wind: !!o.wind } : null; },
     deathPose(key) { const o = objs.get(key); return o && dead.has(key) ? { rz: o.g.rotation.z, rx: o.g.rotation.x, scale: o.g.scale.x, spin: o.spin, left: o.dying } : null; },
     telegraph(x, y, z, r, time) {
       const m = new T.Mesh(new T.CircleGeometry(r, 40), new T.MeshBasicMaterial({ color: '#ff3b3b', transparent: true, opacity: 0.3, depthWrite: false, side: T.DoubleSide }));

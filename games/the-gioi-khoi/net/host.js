@@ -6,7 +6,7 @@ import { cleanName } from '../../../platform/net/protocol.js';
 import { snapshotFor, youOf } from './snapshot.js';
 
 const ACT_PER_SEC = 40;
-const REPORT = new Set(['break', 'dig', 'place', 'buy', 'sell', 'craft', 'use', 'respawn', 'interact', 'equip', 'unequip', 'toggle', 'sleep', 'chest-open', 'chest-move', 'till', 'plant', 'harvest', 'feed', 'shear', 'gate', 'dchest']);
+const REPORT = new Set(['break', 'dig', 'place', 'buy', 'sell', 'craft', 'use', 'respawn', 'interact', 'equip', 'unequip', 'toggle', 'sleep', 'chest-open', 'chest-move', 'till', 'plant', 'harvest', 'feed', 'shear', 'gate', 'dchest', 'roll', 'shoot']);
 
 export class HostSession {
   constructor(game, room, uid, name) {
@@ -34,6 +34,7 @@ export class HostSession {
 
   start() {
     const g = this.game;
+    g.hostUid = this.uid;                                       // chủ phòng không cần bù độ trễ khi lăn (xem sim/fight.js)
     this.player = g.player(this.uid) || g.addPlayer(this.uid, this.name);
     this.you = youOf(this.player);
     if (this.room) {

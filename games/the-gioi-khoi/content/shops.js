@@ -7,7 +7,7 @@ export const SHOPS = {
   },
   'tho-ren': {
     name: 'Lò rèn',
-    sells: [{ item: 'wood_pick', price: 8 }, { item: 'stone_pick', price: 20 }, { item: 'stone_sword', price: 25 }, { item: 'stone_axe', price: 18 }, { item: 'planks', price: 1 }, { item: 'stick', price: 1 }, { item: 'charcoal', price: 3 }, { item: 'iron_ingot', price: 20 }, { item: 'torch', price: 2 }],
+    sells: [{ item: 'wood_pick', price: 8 }, { item: 'stone_pick', price: 20 }, { item: 'stone_sword', price: 25 }, { item: 'stone_axe', price: 18 }, { item: 'planks', price: 1 }, { item: 'stick', price: 1 }, { item: 'charcoal', price: 3 }, { item: 'iron_ingot', price: 20 }, { item: 'torch', price: 2 }, { item: 'arrow', price: 2 }],
     buys: [{ item: 'stone', price: 1 }, { item: 'crystal', price: 12 }, { item: 'gem', price: 40 }, { item: 'fang', price: 4 }, { item: 'bone', price: 2 }, { item: 'iron_ore', price: 5 }, { item: 'iron_ingot', price: 12 }, { item: 'chitin', price: 5 }],
   },
   'thuong-nhan': {

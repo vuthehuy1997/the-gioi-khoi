@@ -7,6 +7,7 @@ import { perceive, turnToward, angDiff, yawTo } from './perception.js';
 import { WATER_LEVEL } from '../world/generate.js';
 import { farmAI } from './animals.js';
 import { noNaturalSpawn } from './dungeon.js';
+import { WINDUP_FAST, WINDUP_SLOW, WINDUP_SLOW_CD, WINDUP_SLACK } from './rules.js';
 
 export const MOB_CAP = 40, PER_PLAYER_CAP = 12;
 
@@ -61,17 +62,36 @@ export function wander(g, e, d, dt, P) {
   if (e.wdx || e.wdz) walk(g, e, e.wdx, e.wdz, d.speed * 0.3); else lookAround(g, e, 0.7);
 }
 
+// Quái cận chiến vào tầm thì vung đòn có báo hiệu (windup) rồi mới trừ máu; người chơi lùi ra khỏi tầm + dung sai trong lúc đó thì trượt.
+// Hồi chiêu tính từ lúc bắt đầu vung nên nhịp đánh tổng giữ nguyên số liệu cũ. Đòn chốt ở windupStep().
 function meleeAttack(g, e, d, t) {
   const a = d.attack;
-  if (g.time < e.atkAt) return;
+  if (e.windup || g.time < e.atkAt) return;
   const dist = Math.hypot(t.p.x - e.x, (t.p.y + 0.9) - (e.y + e.h / 2), t.p.z - e.z);
   if (dist <= a.range + t.p.w / 2) {
-    e.atkAt = g.time + a.cd;
-    g.hurtPlayer(t.p, a.dmg, e);
-    const k = 5 / Math.max(0.1, Math.hypot(t.p.x - e.x, t.p.z - e.z));
-    g.emit(t.p.uid, { t: 'kb', vx: (t.p.x - e.x) * k, vz: (t.p.z - e.z) * k, vy: 4 });
-    g.emit(null, { t: 'swing', id: e.id });
+    const ww = a.cd >= WINDUP_SLOW_CD ? WINDUP_SLOW : WINDUP_FAST;
+    e.windup = { until: g.time + ww, uid: t.p.uid }; e.atkAt = g.time + a.cd; e.vx = 0; e.vz = 0;
+    g.emit(null, { t: 'windup', id: e.id, time: ww });
   }
+}
+
+// Đang vung: đứng yên, quay về mục tiêu; hết thời gian vung thì đòn trúng nếu mục tiêu còn trong tầm (+ dung sai).
+function windupStep(g, e, d) {
+  const w = e.windup, t = g.player(w.uid), a = d.attack;
+  e.vx = 0; e.vz = 0;
+  if (!t || t.dead) { e.windup = null; return; }
+  face(e, t.x - e.x, t.z - e.z);
+  if (g.time < w.until) return;
+  e.windup = null;
+  const dist = Math.hypot(t.x - e.x, (t.y + 0.9) - (e.y + e.h / 2), t.z - e.z);
+  if (dist <= a.range + WINDUP_SLACK + t.w / 2) {
+    const r = g.hurtPlayer(t, a.dmg, e);
+    if (r.how === null || r.how === 'broke' || r.how === 'shield') {                       // khiên chỉ đẩy lùi nửa lực
+      const k = 5 / Math.max(0.1, Math.hypot(t.x - e.x, t.z - e.z)) * (r.how === 'shield' ? 0.5 : 1);
+      g.emit(t.uid, { t: 'kb', vx: (t.x - e.x) * k, vz: (t.z - e.z) * k, vy: 4 });
+    }
+  }
+  g.emit(null, { t: 'swing', id: e.id });
 }
 
 export const AI = {
@@ -136,7 +156,9 @@ export function stepMobs(g, dt) {
   for (const e of [...g.ents.values()]) {
     if (e.kind !== 'mob' || e.dormant) continue;                          // dormant: thú nuôi xa mọi người, đóng băng hoàn toàn
     const d = MOBS[e.type];
-    if (!e.frozen) AI[d.ai](g, e, d, dt); else { e.vx = 0; e.vz = 0; }
+    if (e.stunUntil > g.time) { e.windup = null; e.vx = 0; e.vz = 0; }                  // choáng (chùy, đỡ hoàn hảo): đứng yên, không đánh
+    else if (e.windup) windupStep(g, e, d);
+    else if (!e.frozen) AI[d.ai](g, e, d, dt); else { e.vx = 0; e.vz = 0; }
     if (e.yawT !== undefined) e.yaw = turnToward(e.yaw, e.yawT, (d.turn || 5) * dt);
     if (e.kbT > 0) { e.kbT -= dt; e.vx = e.kbx; e.vz = e.kbz; }
     stepBody(g, e, dt);

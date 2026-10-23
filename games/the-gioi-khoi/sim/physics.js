@@ -44,19 +44,21 @@ export function moveBody(world, b, dt) {
   if (moveAxis(world, b, 'y', b.vy * dt)) { if (b.vy < 0) b.onGround = true; b.vy = 0; }
 }
 
-// input: { fx: ngang (+1 sang phải), fz: dọc (+1 tiến), jump, sprint }; yaw = 0 là hướng -z.
+// input: { fx: ngang (+1 sang phải), fz: dọc (+1 tiến), jump, sprint, sneak, slow, roll }; yaw = 0 là hướng -z.
+// slow (0..1): nhân tốc độ đi và cấm chạy nước rút (giơ khiên, kéo cung). roll { vx, vz }: đang lăn, ghi đè vận tốc ngang.
 export function stepPlayer(world, p, input, dt) {
   const water = world.get(p.x, p.y + 0.4, p.z) === B.WATER;
   p.inWater = water;
   let fx = input.fx || 0, fz = input.fz || 0;
   const len = Math.hypot(fx, fz);
   if (len > 1) { fx /= len; fz /= len; }
-  const speed = (input.sneak ? SNEAK : input.sprint ? SPRINT : WALK) * (water ? 0.6 : 1);
+  const speed = (input.sneak ? SNEAK : input.sprint && !input.slow ? SPRINT : WALK) * (water ? 0.6 : 1) * (input.slow || 1);
   const s = Math.sin(p.yaw || 0), c = Math.cos(p.yaw || 0);
   const tvx = (c * fx - s * fz) * speed, tvz = (-s * fx - c * fz) * speed;
   const acc = (p.onGround ? 60 : 14) * dt;
   p.vx += Math.max(-acc, Math.min(acc, tvx - p.vx));
   p.vz += Math.max(-acc, Math.min(acc, tvz - p.vz));
+  if (input.roll) { p.vx = input.roll.vx; p.vz = input.roll.vz; }
   p.vy -= (water ? 6 : GRAVITY) * dt;
   p.vy = Math.max(water ? -3 : -50, p.vy);
   if (input.jump) {

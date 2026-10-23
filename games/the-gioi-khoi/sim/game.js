@@ -23,6 +23,7 @@ import { hungerTick, restorePlayerState, serializePlayerState, FOOD_MAX } from '
 import * as farm from './farm.js';
 import * as animals from './animals.js';
 import * as dungeon from './dungeon.js';
+import * as fight from './fight.js';
 
 const ENV_TEXT = {
   heat: n => `Cái nóng ở ${n} thiêu đốt bạn. Mặc đồ chống nóng (vỏ bọ cạp, than hồng) để chịu được.`,
@@ -35,6 +36,7 @@ export class Game {
   constructor({ seed, world, spawning = true, env = true, hunger = true } = {}) {
     this.seed = seed; this.spawning = spawning; this.env = env;       // env: false tắt nóng/lạnh/độc của vùng (dùng khi thử nghiệm)
     this.hunger = hunger;                                              // hunger: false tắt đói, rủi ro ngộ độc và hồi máu theo đói (các bài thử cũ)
+    this.hostUid = null;                                               // uid chủ phòng (HostSession đặt): chỉ để bù độ trễ lăn cho khách
     this.dg = {};                                                      // trạng thái chạy của hầm ngục (đợt quái, bẫy hẹn giờ): không lưu, xem sim/dungeon.js
     this.crops = new Map(); this.farm = new Map();                     // sổ cây trồng ('x,y,z' ô cây) và ruộng trống ('x,y,z' ô đất cày): xem sim/farm.js
     this.world = world || new World(seed);
@@ -57,7 +59,7 @@ export class Game {
   }
 
   // Người đang gục lưu ở điểm hồi sinh (không để họ hiện lại ngay tại xác).
-  playerSave(p) { const at = p.dead ? { x: this.spawn.x + 0.5, y: this.world.surfaceY(this.spawn.x, this.spawn.z) + 1, z: this.spawn.z + 0.5 } : p; return { name: p.name, x: at.x, y: at.y, z: at.z, hp: p.dead ? p.maxHp : p.hp, maxHp: p.maxHp, inv: p.inv, sel: p.sel, quests: p.quests, armor: p.armor, home: p.home || null, region: null, ...serializePlayerState(this, p) }; }
+  playerSave(p) { const at = p.dead ? { x: this.spawn.x + 0.5, y: this.world.surfaceY(this.spawn.x, this.spawn.z) + 1, z: this.spawn.z + 0.5 } : p; return { name: p.name, x: at.x, y: at.y, z: at.z, hp: p.dead ? p.maxHp : p.hp, maxHp: p.maxHp, inv: p.inv, sel: p.sel, quests: p.quests, armor: p.armor, home: p.home || null, region: null, offhand: p.offhand || null, ...serializePlayerState(this, p) }; }
 
   static fromSave(save, opts = {}) {
     const g = new Game({ seed: save.seed, ...opts });
@@ -84,9 +86,10 @@ export class Game {
     const p = makePlayer(sx + 0.5, this.world.surfaceY(sx, sz) + 1, sz + 0.5);
     Object.assign(p, { uid, name: String(name || 'Khách').slice(0, 16), hp: MAX_HP, maxHp: MAX_HP, inv: makeInventory(), sel: 0, rev: 1,
       armor: emptyArmor(), home: null, dead: false, respawnAt: 0, tpSeq: 0, lastHurt: -99, attackAt: 0, dig: null, lastState: this.time, quests: { active: {}, done: {} }, region: null,
-      food: FOOD_MAX, fat: 0, fx: {}, fxView: [], psn: null, eatAt: -99, hungerWarn: -99 });
+      food: FOOD_MAX, fat: 0, fx: {}, fxView: [], psn: null, eatAt: -99, hungerWarn: -99, offhand: null });
+    fight.resetFight(p);
     saved = saved || (Object.hasOwn(this.savedPlayers, uid) ? this.savedPlayers[uid] : null);
-    if (saved) { const { food, fatigue, fx, poison, ...rest } = JSON.parse(JSON.stringify(saved)); Object.assign(p, rest, { uid, dead: false, name: p.name }); }
+    if (saved) { const { food, fatigue, fx, poison, offhand, ...rest } = JSON.parse(JSON.stringify(saved)); Object.assign(p, rest, { uid, dead: false, name: p.name, offhand: typeof offhand === 'string' && ITEMS[offhand] && ITEMS[offhand].shield ? offhand : null }); }
     restorePlayerState(this, p, saved || {});                // đói, mệt, hiệu ứng, ngộ độc: kẹp giá trị, đổi "giây còn lại" thành thời điểm hết hạn
     this.players.set(uid, p);
     return p;
@@ -138,19 +141,23 @@ export class Game {
     if (!p) return { ok: false, reason: 'no-player' };
     if (p.dead && a.t !== 'respawn') return { ok: false, reason: 'dead' };
     switch (a.t) {
-      case 'sel': if (a.i >= 0 && a.i < HOTBAR) { p.sel = a.i | 0; this.touch(p); return { ok: true }; } return { ok: false, reason: 'bad-slot' };
+      case 'sel': if (a.i >= 0 && a.i < HOTBAR) { p.sel = a.i | 0; fight.afterHeldChange(this, p); this.touch(p); return { ok: true }; } return { ok: false, reason: 'bad-slot' };
       case 'dig': return this.actDig(p, a);
       case 'break': return this.actBreak(p, a);
       case 'place': return this.actPlace(p, a);
       case 'craft': return this.actCraft(p, a);
       case 'swap': return this.actSwap(p, a);
-      case 'equip': { const r = equip(p, a.i); if (r.ok) this.touch(p); return r; }
+      case 'equip': { const r = equip(p, a.i); if (r.ok) { if (!p.offhand) p.guardSince = null; this.touch(p); } return r; }
       case 'unequip': return this.actUnequip(p, a);
       case 'toggle': return this.actToggle(p, a);
       case 'sleep': return this.actSleep(p, a);
       case 'chest-open': return this.actChestOpen(p, a);
       case 'chest-move': return this.actChestMove(p, a);
       case 'hit': return combat.actHit(this, p, a);
+      case 'roll': return fight.actRoll(this, p, a);
+      case 'guard': return fight.actGuard(this, p, a);
+      case 'draw': return fight.actDraw(this, p, a);
+      case 'shoot': return fight.actShoot(this, p, a);
       case 'use': return combat.actUse(this, p);
       case 'till': return farm.actTill(this, p, a);
       case 'plant': return farm.actPlant(this, p, a);
@@ -235,7 +242,7 @@ export class Game {
   actSwap(p, a) {
     const ok = i => Number.isInteger(i) && i >= 0 && i < p.inv.length;
     if (!ok(a.a) || !ok(a.b)) return { ok: false, reason: 'bad-slot' };
-    [p.inv[a.a], p.inv[a.b]] = [p.inv[a.b], p.inv[a.a]]; this.touch(p);
+    [p.inv[a.a], p.inv[a.b]] = [p.inv[a.b], p.inv[a.a]]; fight.afterHeldChange(this, p); this.touch(p);
     return { ok: true };
   }
 
@@ -246,6 +253,7 @@ export class Game {
   }
 
   actUnequip(p, a) {
+    if (a.slot === 'offhand') { const r = fight.unequipOffhand(p); if (r.ok) this.touch(p); return r; }
     const id = ARMOR_SLOTS.includes(a.slot) ? p.armor[a.slot] : null;
     if (!id) return { ok: false, reason: 'empty' };
     if (!canFit(p.inv, id, 1)) return { ok: false, reason: 'full' };
@@ -310,7 +318,7 @@ export class Game {
   // ---- trạng thái người chơi do client báo (vị trí do client mô phỏng, host chỉ kiểm tra tốc độ) ----
   // Dịch chuyển người chơi do máy chủ quyết định. seq tăng để loại các gói vị trí cũ còn đang bay.
   teleportPlayer(p, x, y, z) {
-    p.x = x; p.y = y; p.z = z; p.vx = p.vy = p.vz = 0; p.lastState = this.time; p.tpSeq++;
+    p.x = x; p.y = y; p.z = z; p.vx = p.vy = p.vz = 0; p.lastState = this.time; p.tpSeq++; p.fallVy = 0; p.yRef = y; p.yRefT = this.time;
     this.emit(p.uid, { t: 'teleport', x, y, z, seq: p.tpSeq });
   }
 
@@ -322,6 +330,9 @@ export class Game {
     if (![st.x, st.y, st.z, st.yaw, st.pitch].every(Number.isFinite)) return false;
     if ((st.seq | 0) < p.tpSeq) return false;                                                 // gói cũ gửi trước lần dịch chuyển gần nhất
     if (dist > 14 * dt + 3) { this.teleportPlayer(p, p.x, p.y, p.z); return false; }          // di chuyển quá nhanh: kéo về
+    if (p.yRefT === undefined || this.time - p.yRefT >= 0.05) {                                // vận tốc rơi do host tự đo từ chênh độ cao (không tin st.vy): dùng cho đòn rơi
+      p.fallVy = p.yRefT === undefined ? 0 : (st.y - p.yRef) / (this.time - p.yRefT); p.yRef = st.y; p.yRefT = this.time;
+    }
     p.x = st.x; p.y = st.y; p.z = st.z; p.yaw = st.yaw; p.pitch = st.pitch;
     p.sneak = st.sneak === true; p.sprint = st.sprint === true && !p.sneak;
     if (p.sprint && this.time >= (p.nextStepNoise || 0)) { p.nextStepNoise = this.time + 0.6; this.makeNoise(p.x, p.y, p.z, 8); }          // chạy nước rút ồn
@@ -415,6 +426,7 @@ export class Game {
     combat.updateProjectiles(this, dt);
     combat.updatePlayers(this, dt);
     hungerTick(this, dt);
+    fight.fightTick(this, dt);
     farm.farmTick(this, dt);
     animals.animalTick(this, dt);
     dungeon.dungeonTick(this, dt);

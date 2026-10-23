@@ -43,9 +43,13 @@ export function createPanels({ act, onClose }) {
       else d.onclick = () => act({ t: 'unequip', slot });
       row.appendChild(d);
     }
+    const off = you.offhand, od = slotEl(off ? { id: off, n: 1 } : null);                       // ô thứ 5: tay phụ (chỉ nhận khiên)
+    od.title = off ? `${itemName(off)} (bấm để cởi)` : 'Tay phụ (khiên)'; od.classList.add('eq', 'offhand'); od.dataset.slot = 'offhand';
+    if (!off) { const l = document.createElement('em'); l.textContent = 'Tay phụ'; od.appendChild(l); } else od.onclick = () => act({ t: 'unequip', slot: 'offhand' });
+    row.appendChild(od);
     const st = armorStats(you.armor), info = document.createElement('div'); info.className = 'eqinfo';
     const res = Object.entries(st.resist).filter(([, n]) => n > 0).map(([k, n]) => `chống ${KIND_NAME[k]} ${n}/4`).join(' · ');
-    info.textContent = `Giáp ${st.def} (giảm ${Math.round(st.reduce * 100)}% sát thương)` + (res ? ' · ' + res : '') + (st.fireproof ? ' · đi được trên nham thạch' : '');
+    info.textContent = `Giáp ${st.def} (giảm ${Math.round(st.reduce * 100)}% sát thương)` + (res ? ' · ' + res : '') + (st.fireproof ? ' · đi được trên nham thạch' : '') + (off && ITEMS[off] && ITEMS[off].shield ? ` · khiên giảm ${Math.round(ITEMS[off].shield.reduce * 100)}% đòn chặn được` : '');
     box.append(row, info);
     return box;
   }
@@ -55,9 +59,9 @@ export function createPanels({ act, onClose }) {
     root.textContent = ''; head('Kho đồ & chế tạo');
     const grid = invGrid(you, {
       onClick: (i) => { if (i < 9) act({ t: 'sel', i }); else act({ t: 'swap', a: i, b: you.sel }); },
-      onRight: (i, s) => { if (s && ITEMS[s.id].armor) act({ t: 'equip', i }); },
+      onRight: (i, s) => { if (s && (ITEMS[s.id].armor || ITEMS[s.id].shield)) act({ t: 'equip', i }); },
     });
-    const hint = document.createElement('p'); hint.className = 'hint'; hint.textContent = 'Bấm ô trên cùng (1–9) để chọn; bấm ô bên dưới để đổi chỗ với ô đang chọn. Bấm chuột phải vào trang bị để mặc; bấm vào ô trang bị để cởi.';
+    const hint = document.createElement('p'); hint.className = 'hint'; hint.textContent = 'Bấm ô trên cùng (1–9) để chọn; bấm ô bên dưới để đổi chỗ với ô đang chọn. Bấm chuột phải vào trang bị hoặc khiên để mặc; bấm vào ô trang bị (kể cả Tay phụ) để cởi.';
     const rec = document.createElement('div'); rec.className = 'recipes';
     const stations = Object.entries(near).filter(([, v]) => v).map(([k]) => STATION_NAME[k]);
     const rh = document.createElement('h3'); rh.textContent = 'Công thức' + (stations.length ? ` (gần: ${stations.join(', ')})` : ' (cần đứng gần bàn, lò hay đe cho đồ nâng cao)'); rec.appendChild(rh);

@@ -11,6 +11,7 @@ import { REGIONS } from './regions.js';
 import { CROPS, EFFECTS } from './farming.js';
 import { DUNGEONS, LOOT, LAYOUT, TRAP, GUARD } from './dungeons.js';
 import { BLOCKS, BLOCK_BY_NAME } from '../world/blocks.js';
+import { WEAPON_CLS, weaponOf } from '../sim/rules.js';
 
 export async function loadContent() {
   return { items: ITEMS, recipes: RECIPES, mobs: MOBS, bosses: BOSSES, npcs: NPCS, villages: VILLAGES, quests: QUESTS, shops: SHOPS, regions: REGIONS, blocks: BLOCKS, crops: CROPS, effects: EFFECTS, dungeons: DUNGEONS, loot: LOOT, layout: LAYOUT, trap: TRAP, guard: GUARD };
@@ -35,6 +36,16 @@ export function validateContent(c) {
     if (it.fx && !(it.fx.secs > 0)) err(`vật phẩm ${id}: hiệu ứng thiếu thời lượng`);
     if (it.risk && !(it.risk.poison >= 0 && it.risk.poison <= 1)) err(`vật phẩm ${id}: xác suất ngộ độc không hợp lệ`);
     if (it.plant && !crops[it.plant]) err(`vật phẩm ${id}: gieo ra cây không tồn tại "${it.plant}"`);
+  }
+  // vũ khí, cung, khiên: lớp hợp lệ, thông số đủ; cung cần mũi tên
+  const num = (v, lo, hi) => typeof v === 'number' && Number.isFinite(v) && v >= lo && v <= hi;
+  for (const [id, it] of Object.entries(c.items)) {
+    const weaponish = it.dmg > 1 && (it.tool && ['sword', 'axe'].includes(it.tool.type) || it.weapon || it.relic) || it.weapon;
+    if (weaponish) { const w = weaponOf(it); if (!WEAPON_CLS[w.cls]) err(`vật phẩm ${id}: lớp vũ khí lạ "${w.cls}"`); else if (!(w.cd > 0 && w.cost >= 0 && w.reach > 0)) err(`vật phẩm ${id}: thông số vũ khí không hợp lệ`); }
+    if (it.bow) { const b = it.bow; if (!(num(b.draw, 0.2, 5) && num(b.dmgMin, 1, 99) && num(b.dmgMax, b.dmgMin || 1, 99) && num(b.speedMin, 1, 99) && num(b.speedMax, b.speedMin || 1, 99))) err(`vật phẩm ${id}: thông số cung (bow) không hợp lệ`); if (!c.items.arrow) err(`vật phẩm ${id}: cung cần vật phẩm "arrow"`); }
+    if (/(^|_)bow$/.test(id) && !it.bow) err(`vật phẩm ${id}: cung thiếu bow`);
+    if (it.shield) { const s2 = it.shield; if (!(num(s2.reduce, 0.05, 0.95) && num(s2.costMul, 0.1, 10))) err(`vật phẩm ${id}: thông số khiên (shield) không hợp lệ`); }
+    if (/(^|_)shield$/.test(id) && !it.shield) err(`vật phẩm ${id}: khiên thiếu shield`);
   }
   for (const [id, cr] of Object.entries(crops)) {
     hasItem(cr.seed, `cây ${id} (hạt)`);

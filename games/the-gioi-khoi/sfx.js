@@ -80,6 +80,16 @@ const sounds = {
   vent: () => { noise(0.42, 0.07, 1600); tone(120, 0.3, 'sawtooth', 0.025, 40); },
   gate: () => { tone(70, 0.55, 'sawtooth', 0.08, -25); noise(0.45, 0.06, 320); setTimeout(() => noise(0.2, 0.05, 500), 380); },
   chestopen: () => { tone(220, 0.16, 'triangle', 0.05, 90); setTimeout(() => { tone(880, 0.3, 'sine', 0.05); tone(1320, 0.4, 'sine', 0.03); }, 140); },
+  // chiến đấu: lăn, kéo cung, bắn, khiên, đòn rơi, kiệt sức (mỗi âm dưới 0,5 giây)
+  roll: () => { noise(0.22, 0.07, 900); tone(240, 0.2, 'triangle', 0.03, -120); },
+  bowdraw: () => { tone(150, 0.18, 'triangle', 0.035, 90); noise(0.1, 0.02, 1800); },
+  bowshot: () => { noise(0.07, 0.07, 3200); tone(420, 0.12, 'triangle', 0.06, -260); },
+  shieldhit: () => { noise(0.08, 0.1, 1400); tone(150, 0.12, 'square', 0.07, -50); },
+  parry: () => { tone(1320, 0.28, 'sine', 0.07, 0); tone(1980, 0.22, 'sine', 0.045); noise(0.06, 0.09, 3800); },
+  shieldbreak: () => { noise(0.3, 0.12, 700); tone(110, 0.3, 'sawtooth', 0.08, -70); tone(70, 0.25, 'square', 0.05, -30); },
+  exhausted: () => { tone(200, 0.3, 'sine', 0.05, -90); noise(0.25, 0.03, 400); },
+  crit: () => { noise(0.12, 0.1, 2600); tone(660, 0.14, 'sawtooth', 0.06, 380); tone(1200, 0.1, 'sine', 0.04); },
+  windup: () => { tone(180, 0.14, 'sawtooth', 0.03, 140); },
   die: () => { tone(260, 0.6, 'sawtooth', 0.08, -200); },
 };
 

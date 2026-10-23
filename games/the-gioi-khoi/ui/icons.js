@@ -54,6 +54,30 @@ function tool(ctx, kind, color) {
 }
 
 const poly = (ctx, fill, pts) => { ctx.fillStyle = fill; ctx.beginPath(); pts.forEach(([x, y], i) => i ? ctx.lineTo(x, y) : ctx.moveTo(x, y)); ctx.closePath(); ctx.fill(); };
+
+// Giáo: cán xiên, đầu giáo tô theo bậc (gỗ vót nhọn / đá / sắt).
+function spearIcon(ctx, head, shaft, edge = '#17110c') {
+  ctx.strokeStyle = shaft; ctx.lineWidth = 2.6; ctx.lineCap = 'round'; ctx.beginPath(); ctx.moveTo(5, 28); ctx.lineTo(22, 11); ctx.stroke();
+  poly(ctx, head, [[29, 3], [19, 7], [20.5, 8.5], [25, 13], [26.5, 14]]);
+  ctx.strokeStyle = edge; ctx.lineWidth = 1; ctx.beginPath(); ctx.moveTo(29, 3); ctx.lineTo(22.5, 10.5); ctx.stroke();
+  ctx.strokeStyle = '#c9a050'; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(19.5, 13); ctx.lineTo(23, 16.5); ctx.stroke();           // dây buộc
+}
+// Cung: thân cong, dây căng; cung sắt có đầu bọc kim loại.
+function bowIcon(ctx, wood, grip, iron) {
+  ctx.lineCap = 'round'; ctx.strokeStyle = wood; ctx.lineWidth = 3.4; ctx.beginPath(); ctx.moveTo(9, 3); ctx.quadraticCurveTo(29, 16, 9, 29); ctx.stroke();
+  ctx.strokeStyle = grip; ctx.lineWidth = 4; ctx.beginPath(); ctx.moveTo(21.5, 13); ctx.lineTo(21.5, 19); ctx.stroke();
+  if (iron) { ctx.fillStyle = '#dfe3e9'; ctx.fillRect(7, 2, 4, 3); ctx.fillRect(7, 27, 4, 3); }
+  ctx.strokeStyle = '#efe9d6'; ctx.lineWidth = 1.1; ctx.beginPath(); ctx.moveTo(9, 3); ctx.lineTo(9, 29); ctx.stroke();
+}
+// Khiên: hình khiên cổ, viền, núm giữa; khiên gỗ có ván dọc, khiên sắt có dấu hiệu.
+function shieldIcon(ctx, face, edge, boss, iron) {
+  const path = () => { ctx.beginPath(); ctx.moveTo(5, 5); ctx.lineTo(27, 5); ctx.lineTo(27, 16); ctx.quadraticCurveTo(26, 25, 16, 30); ctx.quadraticCurveTo(6, 25, 5, 16); ctx.closePath(); };
+  ctx.fillStyle = edge; path(); ctx.fill();
+  ctx.save(); ctx.translate(16, 17); ctx.scale(0.82, 0.82); ctx.translate(-16, -17); ctx.fillStyle = face; path(); ctx.fill(); ctx.restore();
+  if (!iron) { ctx.strokeStyle = '#6b4a22'; ctx.lineWidth = 1.2; for (const x of [11, 16, 21]) { ctx.beginPath(); ctx.moveTo(x, 7); ctx.lineTo(x, 24); ctx.stroke(); } }
+  else { ctx.fillStyle = '#c0453a'; ctx.fillRect(14.5, 8, 3, 16); ctx.fillRect(10, 13, 12, 3); }
+  ctx.fillStyle = boss; ctx.beginPath(); ctx.arc(16, 16, 3.6, 0, 7); ctx.fill(); ctx.strokeStyle = edge; ctx.lineWidth = 1; ctx.stroke();
+}
 const MATERIAL = {
   amethyst: ctx => { poly(ctx, '#7c4bc4', [[5, 26], [8, 12], [12, 8], [14, 26]]); poly(ctx, '#b88af0', [[13, 26], [16, 4], [21, 10], [22, 26]]); poly(ctx, '#e6ccff', [[16, 4], [18, 6], [17, 26], [13, 26]]); poly(ctx, '#9a68de', [[21, 26], [24, 14], [28, 18], [27, 26]]); },
   mushroom: ctx => { ctx.fillStyle = '#d8ece0'; ctx.fillRect(14, 15, 4, 11); ctx.fillStyle = '#35b8a4'; ctx.beginPath(); ctx.ellipse(16, 14, 11, 8, 0, Math.PI, 0); ctx.fill(); ctx.fillStyle = '#e8fff4'; for (const [x, y] of [[11, 10], [17, 8], [21, 12]]) ctx.fillRect(x, y, 3, 3); },
@@ -70,6 +94,13 @@ const MATERIAL = {
   chitin: ctx => { ctx.fillStyle = '#c8742a'; ctx.beginPath(); ctx.ellipse(16, 16, 11, 8, 0.3, 0, 7); ctx.fill(); ctx.strokeStyle = '#7a3e14'; ctx.lineWidth = 2; for (const x of [10, 16, 22]) { ctx.beginPath(); ctx.moveTo(x - 2, 9); ctx.lineTo(x + 1, 23); ctx.stroke(); } },
   cooked_meat: ctx => { ctx.fillStyle = '#8a4a1e'; ctx.beginPath(); ctx.ellipse(13, 13, 8, 6, -0.5, 0, 7); ctx.fill(); ctx.fillStyle = '#b8742e'; ctx.beginPath(); ctx.ellipse(12, 12, 5, 3, -0.5, 0, 7); ctx.fill(); ctx.strokeStyle = '#eee'; ctx.lineWidth = 3; ctx.lineCap = 'round'; ctx.beginPath(); ctx.moveTo(18, 18); ctx.lineTo(25, 25); ctx.stroke(); },
   pelt: ctx => { ctx.fillStyle = '#d98a3a'; ctx.beginPath(); ctx.moveTo(6, 8); ctx.lineTo(26, 6); ctx.lineTo(28, 22); ctx.lineTo(18, 27); ctx.lineTo(8, 24); ctx.closePath(); ctx.fill(); ctx.fillStyle = '#f2d2a0'; ctx.fillRect(12, 12, 8, 6); },
+
+  // ---- chiến đấu: giáo (đầu giáo đổi theo bậc), chùy sắt, cung, mũi tên, khiên ----
+  wood_spear: ctx => spearIcon(ctx, '#c79a58', '#8a6a3a'), stone_spear: ctx => spearIcon(ctx, '#9aa0a8', '#6b4a22', '#5c6168'), iron_spear: ctx => spearIcon(ctx, '#dfe3e9', '#6b4a22', '#7d828c'),
+  iron_club: ctx => { ctx.strokeStyle = '#6b4a22'; ctx.lineWidth = 3.4; ctx.lineCap = 'round'; ctx.beginPath(); ctx.moveTo(6, 27); ctx.lineTo(19, 14); ctx.stroke(); poly(ctx, '#7d828c', [[15, 11], [21, 5], [28, 8], [29, 15], [23, 20], [17, 18]]); poly(ctx, '#c9ced6', [[17, 10], [21, 6], [26, 8], [22, 12]]); ctx.fillStyle = '#e8ecf0'; for (const [x, y] of [[21, 12], [26, 13], [22, 17]]) ctx.fillRect(x - 1, y - 1, 2.2, 2.2); },
+  bow: ctx => bowIcon(ctx, '#9a6a34', '#6b4a22', false), iron_bow: ctx => bowIcon(ctx, '#9aa0a8', '#6b4a22', true),
+  arrow: ctx => { ctx.strokeStyle = '#8a5a2b'; ctx.lineWidth = 2.2; ctx.lineCap = 'round'; ctx.beginPath(); ctx.moveTo(6, 26); ctx.lineTo(23, 9); ctx.stroke(); poly(ctx, '#cfd3da', [[27, 5], [20, 7], [25, 12]]); poly(ctx, '#f4f2ea', [[4, 24], [10, 24], [7, 28]]); poly(ctx, '#d9d4c4', [[4, 22], [4, 28], [8, 26]]); ctx.strokeStyle = '#17110c'; ctx.lineWidth = 0.8; ctx.beginPath(); ctx.moveTo(20, 7); ctx.lineTo(25, 12); ctx.stroke(); },
+  wood_shield: ctx => shieldIcon(ctx, '#a97c45', '#6b4a22', '#8a5a2b', false), iron_shield: ctx => shieldIcon(ctx, '#aab0b8', '#5c6168', '#e0e4ea', true),
 
   // ---- hầm ngục: chìa, bình hồi máu, Mảnh Cổ Vật ----
   dungeon_key: ctx => { ctx.fillStyle = '#e0b84a'; ctx.beginPath(); ctx.arc(10, 10, 6.5, 0, 7); ctx.fill(); ctx.fillStyle = '#3a2a10'; ctx.beginPath(); ctx.arc(10, 10, 2.6, 0, 7); ctx.fill(); ctx.fillStyle = '#e0b84a'; ctx.fillRect(13, 12, 14, 3.5); ctx.fillRect(21, 15, 3, 6); ctx.fillRect(26, 15, 3, 8); ctx.fillStyle = '#fff6'; ctx.fillRect(6, 6, 3, 2); },

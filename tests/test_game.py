@@ -2471,7 +2471,7 @@ def test_ui_inventory_shows_equipment_stations_and_equips_by_right_click(pg, bro
       document.querySelector('#panel .slot.eq').click(); await wait(300); out.headAfter = me.armor.head;
       return out;
     }""")
-    assert r['open'] and r['equipSlots'] == 4 and 'Giáp 0' in r['info0'], r
+    assert r['open'] and r['equipSlots'] == 5 and 'Giáp 0' in r['info0'], r          # 4 ô giáp + ô Tay phụ (Gói Chiến đấu)
     assert len(r['groups']) == 4 and r['groups'][0].startswith('Thủ công') and all('chưa ở gần' in g for g in r['groups'][1:]), r
     assert r['head'] == 'iron_helm' and 'Giáp 2' in r['info1'] and '8%' in r['info1'], r
     assert not r['swordBtnBefore'] and r['swordBtnAfter'] and 'Đe rèn' in r['near'] and r['sword'], r
@@ -2570,8 +2570,8 @@ def test_survival_hunger_exertion(pg):
       const { g, p, cx, cz, y0 } = mkArena({ hunger: true });
       const q = g.addPlayer('u2', 'Q'); q.x = cx + 12.5; q.z = cz + 12.5; q.y = y0 + 1;            // đối chứng: cùng thời gian, không đánh
       const m = spawnMob(g, 'xac-song', cx + 0.5 + 1.5, y0 + 1, cz + 0.5); m.frozen = true; m.hp = m.maxHp = 1e6;
-      giveHeld(g, p, 'iron_sword'); let hits = 0;
-      for (let i = 0; i < 23; i++) { g.tick(0.5); m.x = cx + 2; m.z = cz + 0.5; m.kbT = 0; if (g.act('u1', { t: 'hit', id: m.id }).ok) hits++; }
+      giveHeld(g, p, 'iron_sword'); let hits = 0;      // cách 0.9 s mỗi đòn: kiếm có hồi chiêu 0.8 s sau đòn 3 của chuỗi (Gói Chiến đấu), nhịp 0.5 s cũ sẽ trượt vài đòn; thể lực đổ đầy mỗi lượt vì đánh liên tục tốn thể lực
+      for (let i = 0; i < 23; i++) { g.tick(0.9); p.stamina = 100; m.x = cx + 2; m.z = cz + 0.5; m.kbT = 0; if (g.act('u1', { t: 'hit', id: m.id }).ok) hits++; }
       return { hits, fatHit: p.fat, fatCtl: q.fat, foodHit: p.food, foodCtl: q.food, t: g.time };
     """)
     assert r['hits'] == 23 and abs(r['fatHit'] - r['fatCtl'] - 46 + 45) < 0.01, r          # 46 mệt thêm, 45 đã đổi thành 1 điểm đói
@@ -4223,6 +4223,730 @@ def test_dungeon_tester_abuse_dead_players_spam_reach_full_inventory_and_key_los
     assert r['bossSpawned'] and not r['bossAfter'] and not r['bossFlag'], r
     # chìa không được biến mất khi chết (đặc tả mục 10.1): ở kho giữ lại hoặc rơi ra đất
     assert r['keyDeath']['inInv'] + r['keyDeath']['onGround'] >= 1, r
+
+
+# ---------------------------------------------------------------- Gói Chiến đấu có chiều sâu (test_combat2_*)
+
+FIGHT_JS = ARENA_JS + """
+const fight = await imp('sim/fight.js');
+const rules = await imp('sim/rules.js');
+const combatM = await imp('sim/combat.js');
+const invM = await imp('sim/inventory.js');
+const { makeRng } = await imp('sim/rng.js');
+const { spawnBoss } = await imp('sim/boss.js');
+const { snapshotFor } = await imp('net/snapshot.js');
+const { makePlayer, stepPlayer } = await imp('sim/physics.js');
+const give = (g, p, ids, sel = 0) => { p.inv.fill(null); ids.forEach((it, i) => { const [id, n = 1] = Array.isArray(it) ? it : [it]; p.inv[i] = { id, n }; }); p.sel = sel; g.touch(p); };
+// Sân phẳng; người chơi quay về -z (yaw 0), quái đứng yên 2.5 block phía trước, nhiều máu.
+const mkFight = (held = 'iron_sword', opts = {}) => {
+  const A = mkArena(opts); const { g, p, cx, cz, y0 } = A; give(g, p, [held]);
+  A.mob = (dx, dz, type = 'xac-song') => { const m = spawnMob(g, type, cx + 0.5 + dx, y0 + 1, cz + 0.5 + dz); m.frozen = true; m.hp = m.maxHp = 1000; return m; };
+  A.m = A.mob(0, -2.5); return A;
+};
+const hurtAt = (g, p, dmg, dx, dz, opts, extra = {}) => g.hurtPlayer(p, dmg, { id: 777, kind: 'mob', x: p.x + dx, y: p.y, z: p.z + dz, ...extra }, opts);
+const FRONT = [0, -3], BACK = [0, 3];
+const lost = (g, p, f) => { p.hp = p.maxHp = 100; f(); const l = 100 - p.hp; p.hp = 100; return l; };
+const hitAt = (g, m, t) => { g.time = t; const h0 = m.hp, r = g.act('u1', { t: 'hit', id: m.id }); return { ok: r.ok, reason: r.reason, dmg: h0 - m.hp }; };
+"""
+
+
+@test
+def test_combat2_stamina_drain_regen_and_exhaust(pg):
+    r = ev(pg, FIGHT_JS + r"""
+      const { g, p, m } = mkFight(); const out = {};
+      out.start = [p.stamina, p.maxStamina, snapshotFor(g, 'u1').me.sta];
+      p.sprint = true; p.vx = 4; run(g, 2.0); out.sprint = p.stamina;                              // AC-2: chạy thật 2 giây
+      p.stamina = 100; p.vx = 0; p.vz = 0; p.staAt = 0; run(g, 2.0); out.idleSprint = p.stamina;     // đứng yên mà cờ sprint bật: không tiêu
+      p.sprint = false; p.stamina = 50; p.staAt = 0;
+      fight.spendStamina(g, p, 10); const base = p.stamina;                                          // AC-3
+      run(g, 0.9); out.noRegen = p.stamina - base; run(g, 1.1); out.regen = p.stamina - base;
+      p.stamina = 5; p.staAt = 0; g.drain();
+      const okSpend = fight.spendStamina(g, p, 5);                                                   // AC-4: về 0 thì kiệt sức 2 giây
+      out.exh = { okSpend, sta: p.stamina, left: p.exhUntil - g.time, me: snapshotFor(g, 'u1').me.exh, ev: g.drain().filter(e => e.ev.t === 'exhausted').length };
+      const roll = g.act('u1', { t: 'roll', dx: 0, dz: 1 }), hit = g.act('u1', { t: 'hit', id: m.id });
+      out.blocked = [roll.reason, hit.reason, g.act('u1', { t: 'draw', on: true }).ok];
+      run(g, 2.1); out.after = { exh: !!p.exh, sta: p.stamina, me: snapshotFor(g, 'u1').me.exh };
+      p.stamina = 100; fight.spendStamina(g, p, 100); out.rollExh = g.act('u1', { t: 'roll', dx: 0, dz: 1 }).reason;
+      return out;
+    """)
+    assert r['start'] == [100, 100, 100], r
+    assert abs(r['sprint'] - 84) <= 2 and r['idleSprint'] == 100, r
+    assert abs(r['noRegen']) < 0.5 and abs(r['regen'] - 25) <= 2, r
+    assert r['exh']['okSpend'] and r['exh']['sta'] == 0 and abs(r['exh']['left'] - 2.0) < 0.01 and r['exh']['me'] > 1.5 and r['exh']['ev'] == 1, r
+    assert r['blocked'] == ['tired', 'tired', False], r
+    assert not r['after']['exh'] and r['after']['sta'] >= 20 and r['after']['me'] == 0, r
+    assert r['rollExh'] == 'tired', r
+
+
+@test
+def test_combat2_roll_cost_cooldown_iframes_and_cancels(pg):
+    r = ev(pg, FIGHT_JS + r"""
+      const { g, p, m } = mkFight(); const out = {}; g.time = 10;
+      const r1 = g.act('u1', { t: 'roll', dx: 0, dz: 1 }); out.r1 = [r1.ok, p.stamina];
+      const r2 = g.act('u1', { t: 'roll', dx: 0, dz: 1 }); out.r2 = [r2.ok, r2.reason];
+      out.act = snapshotFor(g, 'u1').ps[0].act;
+      const dm = (dt, opts, extra) => lost(g, p, () => { g.time = 10 + dt; hurtAt(g, p, 3, ...FRONT, opts, extra); });
+      out.window = { t04: dm(0.04), t10: dm(0.10), t30: dm(0.30), t36: dm(0.36) };                    // AC-6
+      out.proj = lost(g, p, () => { g.time = 10.2; g.hurtPlayer(p, 3, { id: 9, kind: 'proj', x: p.x, y: p.y + 1, z: p.z - 2 }); });
+      out.gas = lost(g, p, () => { g.time = 10.2; g.hurtPlayer(p, 3, null); });                       // không src: không được miễn
+      out.pure = lost(g, p, () => { g.time = 10.2; hurtAt(g, p, 3, ...FRONT, { pure: true }); });
+      g.time = 10.5; out.r3 = g.act('u1', { t: 'roll', dx: 0, dz: 1 }).reason;                          // < 0.8 s kể từ lúc lăn đầu
+      g.time = 10.81; out.r4 = g.act('u1', { t: 'roll', dx: 1, dz: 0 }); out.sta = p.stamina;
+      out.rolling = [snapshotFor(g, 'u1').ps[0].act, (g.time = 11.4, snapshotFor(g, 'u1').ps[0].act || 0)];
+      // AC-24: lăn huỷ giơ khiên và kéo cung; kéo cung quá 0.3 s thì không lăn được; choáng thì không lăn
+      p.offhand = 'wood_shield'; p.stamina = 100; g.time = 20; g.act('u1', { t: 'guard', on: true }); out.guardOn = p.guardSince !== null;
+      g.act('u1', { t: 'roll', dx: 0, dz: 1 }); out.guardAfterRoll = p.guardSince;
+      give(g, p, ['bow', ['arrow', 5]]); g.time = 30; g.act('u1', { t: 'draw', on: true }); g.time = 30.2; g.act('u1', { t: 'roll', dx: 0, dz: 1 }); out.drawAfterRoll = p.drawSince;
+      g.time = 40; g.act('u1', { t: 'draw', on: true }); g.time = 40.5; out.busy = g.act('u1', { t: 'roll', dx: 0, dz: 1 }).reason; p.drawSince = null;
+      g.time = 50; p.stunUntil = 51; out.stun = g.act('u1', { t: 'roll', dx: 0, dz: 1 }).reason; p.stunUntil = 0;
+      out.bad = [g.act('u1', { t: 'roll', dx: 'x', dz: NaN }).reason, g.act('u1', { t: 'roll', dx: 5, dz: 0 }).ok];
+      g.time = 99; out.dead = (p.dead = true, g.act('u1', { t: 'roll', dx: 0, dz: 1 }).reason);
+      return out;
+    """)
+    assert r['r1'] == [True, 75] and r['r2'] == [False, 'cooldown'] and r['act'] == 3, r
+    assert r['window']['t04'] == 3 and r['window']['t10'] == 0 and r['window']['t30'] == 0 and r['window']['t36'] == 3, r
+    assert r['proj'] == 0 and r['gas'] == 3 and r['pure'] == 3, r
+    assert r['r3'] == 'cooldown' and r['r4']['ok'] and r['sta'] == 50, r
+    assert r['rolling'] == [3, 0], r
+    assert r['guardOn'] and r['guardAfterRoll'] is None and r['drawAfterRoll'] is None and r['busy'] == 'busy' and r['stun'] == 'stun', r
+    assert r['bad'][0] == 'bad-args' and r['bad'][1], r
+    assert r['dead'] == 'dead', r
+
+
+@test
+def test_combat2_respawn_resets_fight_state(pg):
+    r = ev(pg, FIGHT_JS + r"""
+      const { g, p } = mkFight(); const out = {}; p.offhand = 'wood_shield'; g.time = 5;
+      g.act('u1', { t: 'guard', on: true }); p.stamina = 12; p.stunUntil = 99; p.combo = { n: 2, at: 5 }; p.rollAt = 5; p.exh = true; p.exhUntil = 99;
+      g.hurtPlayer(p, 999, null); out.dead = p.dead; g.time = 9; g.tick(0.05);
+      const r = g.act('u1', { t: 'respawn' });
+      out.res = { ok: r.ok, sta: p.stamina, exh: !!p.exh, guard: p.guardSince, draw: p.drawSince, stun: p.stunUntil <= g.time, combo: p.combo.n, roll: g.time - p.rollAt > 1, off: p.offhand };
+      return out;
+    """)
+    assert r['dead'] and r['res'] == {'ok': True, 'sta': 100, 'exh': False, 'guard': None, 'draw': None, 'stun': True, 'combo': 0, 'roll': True, 'off': 'wood_shield'}, r
+
+
+@test
+def test_combat2_sword_combo_cooldown_and_reset(pg):
+    r = ev(pg, FIGHT_JS + r"""
+      const { g, p, m } = mkFight('iron_sword'); const out = {}; give(g, p, ['iron_sword', 'iron_sword']);
+      const h = [], kb = [];
+      for (const t of [10, 10.5, 11.0]) { h.push(hitAt(g, m, t).dmg); kb.push(Math.hypot(m.kbx, m.kbz)); }                // AC-8: 6, 6, 9
+      out.dmg = h; out.kbRatio = kb[2] / kb[0]; out.cmbAfter3 = snapshotFor(g, 'u1').me.cmb;
+      out.cd = [hitAt(g, m, 11.5).reason, hitAt(g, m, 11.81).ok];                                       // sau đòn 3: hồi chiêu 0.8 s
+      hitAt(g, m, 20); hitAt(g, m, 20.5); out.cmb2 = snapshotFor(g, 'u1').me.cmb;
+      out.gap = hitAt(g, m, 21.6).dmg;                                                                  // cách > 0.8 s: về đòn 1
+      hitAt(g, m, 30); hitAt(g, m, 30.5); g.act('u1', { t: 'sel', i: 1 }); g.act('u1', { t: 'sel', i: 0 });
+      out.swap = hitAt(g, m, 31.2).dmg;                                                                 // đổi vật cầm: về đòn 1
+      // đòn không trúng (quá tầm) không tăng chuỗi
+      const far = mkFight('iron_sword'); const f = far.mob(0, -9); far.p.combo = { n: 0, at: -99 };
+      out.miss = [hitAt(far.g, f, 10).reason, far.p.combo.n];
+      out.wood = (() => { const w = mkFight('wood_sword'); return [hitAt(w.g, w.m, 10).dmg, hitAt(w.g, w.m, 10.5).dmg, hitAt(w.g, w.m, 11).dmg]; })();       // 4, 4, floor(6)
+      return out;
+    """)
+    assert r['dmg'] == [6, 6, 9] and 1.9 < r['kbRatio'] < 2.1 and r['cmbAfter3'] == 0, r
+    assert r['cd'] == ['cooldown', True] and r['cmb2'] == 2 and r['gap'] == 6 and r['swap'] == 6, r
+    assert r['miss'] == ['reach', 0] and r['wood'] == [4, 4, 6], r
+
+
+@test
+def test_combat2_axe_sweep_club_stun_spear_reach_and_fall_crit(pg):
+    r = ev(pg, FIGHT_JS + r"""
+      const out = {};
+      // rìu: mục tiêu chính + 2 mục tiêu gần nhất trong 2.5 block (70%); quái thứ 4 và quái xa không bị
+      let T = mkFight('iron_axe'); let { g, p, m } = T;
+      const b = T.mob(1, -2.5), c = T.mob(-1.5, -2.5), d = T.mob(0, -4.5), e = T.mob(0, -6.5);
+      const r1 = hitAt(g, m, 10); out.axe = { main: r1.dmg, b: 1000 - b.hp, c: 1000 - c.hp, d: 1000 - d.hp, e: 1000 - e.hp };
+      out.axeCd = [hitAt(g, m, 10.5).reason, hitAt(g, m, 10.81).ok];
+      // chùy: x1.3, choáng quái thường 1 s, miễn choáng 3 s sau đó, boss không choáng
+      T = mkFight('swamp_club'); ({ g, p, m } = T);
+      const bs = spawnBoss(g, 'thu-linh-soi', T.cx + 0.5 + 3, T.y0 + 1, T.cz + 0.5); bs.frozen = true;
+      out.club = { dmg: hitAt(g, m, 10).dmg, stun: m.stunUntil - 10, immune: m.stunImmuneUntil - 10 };
+      hitAt(g, m, 11.01); out.clubAgain = m.stunUntil - 10;
+      const mm = T.mob(3, -4); mm.hp = 1000; mm.frozen = false; mm.state = 'chase'; mm.target = 'u1'; mm.lastSeen = { x: p.x, y: p.y, z: p.z }; mm.alert = 1;
+      const w = spawnMob(g, 'soi-xam', T.cx + 0.5 + 10, T.y0 + 1, T.cz + 0.5 - 10); const w2 = spawnMob(g, 'soi-xam', T.cx + 0.5 - 10, T.y0 + 1, T.cz + 0.5 - 10);
+      for (const x of [w, w2]) { x.state = 'chase'; x.target = 'u1'; x.lastSeen = { x: p.x, y: p.y, z: p.z }; x.alert = 1; x.e = { x: x.x, z: x.z }; }
+      w.stunUntil = g.time + 5; g.hp = 0; p.x = T.cx + 0.5; p.z = T.cz + 0.5; run(g, 0.6);
+      out.stunnedMoved = Math.hypot(w.x - w.e.x, w.z - w.e.z); out.freeMoved = Math.hypot(w2.x - w2.e.x, w2.z - w2.e.z);
+      p.hp = 100; p.maxHp = 100;
+      g.act('u1', { t: 'hit', id: bs.id }); out.boss = bs.stunUntil || 0;
+      // giáo: tầm 6, không đẩy lùi; kiếm không tới
+      T = mkFight('wood_spear'); ({ g, p, m } = T); const sp = T.mob(0, -5.6); const q = T.mob(0, -7.5);
+      out.spear = [hitAt(g, sp, 10).dmg, sp.kbT || 0, hitAt(g, q, 11).reason];
+      give(g, p, ['wood_sword']); out.sword = hitAt(g, sp, 12).reason;
+      // đòn rơi x1.5
+      T = mkFight('iron_sword'); ({ g, p, m } = T);
+      p.y = T.y0 + 3; p.fallVy = -5; const air = hitAt(g, m, 10).dmg;
+      p.y = T.y0 + 3; p.fallVy = -1; const slow = hitAt(g, m, 11).dmg;
+      p.y = T.y0 + 1; p.fallVy = -5; const ground = hitAt(g, m, 12).dmg;
+      out.fall = [air, slow, ground];
+      return out;
+    """)
+    assert r['axe'] == {'main': 5, 'b': 3, 'c': 3, 'd': 0, 'e': 0}, r
+    assert r['axeCd'] == ['cooldown', True], r
+    assert r['club']['dmg'] == 14 and abs(r['club']['stun'] - 1.0) < 0.01 and abs(r['club']['immune'] - 4.0) < 0.01 and abs(r['clubAgain'] - 1.0) < 0.01, r
+    assert r['stunnedMoved'] < 0.05 and r['freeMoved'] > 0.5 and r['boss'] == 0, r
+    assert r['spear'] == [4, 0, 'reach'] and r['sword'] == 'reach', r
+    assert r['fall'] == [9, 6, 6], r
+
+
+@test
+def test_combat2_each_weapon_costs_stamina_and_tired_changes_nothing(pg):
+    r = ev(pg, FIGHT_JS + r"""
+      const out = {};
+      for (const [id, key] of [['iron_sword', 'sword'], ['iron_axe', 'axe'], ['swamp_club', 'club'], ['wood_spear', 'spear'], ['wood_pick', 'hand'], [null, 'bare']]) {
+        const { g, p, m } = mkFight(id || 'stick'); if (!id) give(g, p, []);
+        out[key] = [hitAt(g, m, 10).ok, 100 - p.stamina];
+      }
+      const { g, p, m } = mkFight('iron_sword'); p.stamina = 3; const before = { at: p.attackAt, cmb: p.combo.n, hp: m.hp };
+      const r = hitAt(g, m, 10); out.tired = { reason: r.reason, same: p.attackAt === before.at && p.combo.n === before.cmb && m.hp === before.hp, sta: p.stamina };
+      out.table = Object.fromEntries(Object.entries(rules.WEAPON_CLS).map(([k, v]) => [k, [v.cd, v.cost, v.reach]]));
+      return out;
+    """)
+    assert r['sword'] == [True, 6] and r['axe'] == [True, 12] and r['club'] == [True, 15] and r['spear'] == [True, 8] and r['hand'] == [True, 4] and r['bare'] == [True, 4], r
+    assert r['tired'] == {'reason': 'tired', 'same': True, 'sta': 3}, r
+    assert r['table'] == {'hand': [0.5, 4, 4.5], 'sword': [0.5, 6, 4.5], 'axe': [0.8, 12, 4.5], 'club': [1.0, 15, 4.5], 'spear': [0.7, 8, 6.0]}, r
+
+
+@test
+def test_combat2_melee_mobs_telegraph_before_they_hit(pg):
+    r = ev(pg, FIGHT_JS + r"""
+      const out = {};
+      const watch = (type, away) => {
+        const { g, p, cx, cz, y0 } = mkArena(); const m = faceTo(spawnMob(g, type, p.x, y0 + 1, p.z - 1.0), p);
+        const d = MOBS[type].attack; let tw = null, hpAt = null, evs = 0, hit = null;
+        for (let t = 0; t < 4 && hit === null; t += 0.05) {
+          g.tick(0.05); evs += g.drain().filter(e => e.ev.t === 'windup' && e.ev.id === m.id).length;
+          if (m.windup && tw === null) { tw = g.time; out[type + 'Len'] = m.windup.until - g.time; if (away) p.x += 6; }
+          if (tw !== null && p.hp < 20 && hit === null) hit = g.time - tw;
+          if (away && tw !== null && g.time - tw > 0.7) break;                                       // lùi ra khỏi tầm trong lúc vung: không mất máu
+        }
+        return { hit, dmg: 20 - p.hp, evs, want: d.dmg, windup: tw !== null };
+      };
+      out.fast = watch('xac-song', false); out.slow = watch('gau-bang', false); out.dodged = watch('xac-song', true);
+      return out;
+    """)
+    f, s, d = r['fast'], r['slow'], r['dodged']
+    assert f['windup'] and f['evs'] >= 1 and f['dmg'] == f['want'] == 4 and 0.30 <= f['hit'] <= 0.5, r
+    assert abs(r['xac-songLen'] - 0.35) < 0.06, r
+    assert s['dmg'] == s['want'] == 6 and 0.55 <= s['hit'] <= 0.75 and abs(r['gau-bangLen'] - 0.6) < 0.06, r
+    assert d['windup'] and d['dmg'] == 0 and d['hit'] is None, r
+
+
+@test
+def test_combat2_bow_draw_force_damage_ammo_and_cooldown(pg):
+    r = ev(pg, FIGHT_JS + r"""
+      const { g, p, m } = mkFight('bow'); const out = {}; give(g, p, ['bow', ['arrow', 20]]); m.frozen = true;
+      const arrows = () => invM.countItem(p.inv, 'arrow'), proj = () => [...g.ents.values()].filter(e => e.kind === 'proj');
+      const shot = (t0, hold) => { p.stamina = 100; g.time = t0; const d = g.act('u1', { t: 'draw', on: true }); g.time = t0 + hold; const s = g.act('u1', { t: 'shoot', yaw: 0, pitch: 0 }); return { d: d.ok, s }; };
+      out.noBow = (give(g, p, ['stick']), g.act('u1', { t: 'draw', on: true }).reason); give(g, p, ['bow', ['arrow', 20]]);
+      let s = shot(10, 0.1); out.weak = [s.s.reason, arrows(), proj().length, p.drawSince];                        // AC-15: < 0.2 s: không bắn
+      s = shot(20, 1.0); const a1 = proj()[0]; out.full = [s.s.ok, a1 && a1.dmg, a1 && Math.hypot(a1.vx, a1.vy, a1.vz), arrows(), p.stamina, a1 && a1.owner, a1 && a1.style];
+      g.ents.delete(a1.id);
+      s = shot(30, 0.6); const a2 = proj()[0]; out.part = [a2.dmg, Math.hypot(a2.vx, a2.vy, a2.vz)]; g.ents.delete(a2.id);
+      s = shot(40, 1.0); const s2 = shot(40 + 1.0 + 0.1, 0.25); out.cd = [s.s.ok, s2.s.reason]; proj().forEach(e => g.ents.delete(e.id));   // AC-16: cách < 0.4 s
+      give(g, p, ['bow']); s = shot(60, 1.0); out.noAmmo = [s.s.reason, proj().length];
+      give(g, p, ['bow', ['arrow', 3]]); p.stamina = 100; g.time = 70; g.act('u1', { t: 'draw', on: true }); g.time = 71; p.stamina = 4; out.tiredShot = [g.act('u1', { t: 'shoot', yaw: 0, pitch: 0 }).reason, arrows()]; p.stamina = 100;
+      out.noDraw = (g.time = 80, g.act('u1', { t: 'shoot', yaw: 0, pitch: 0 }).ok);
+      out.badArgs = (g.act('u1', { t: 'draw', on: true }), g.time = 82, g.act('u1', { t: 'shoot', yaw: 'x', pitch: {} }).ok);
+      return out;
+    """)
+    assert r['noBow'] == 'no-bow', r
+    assert r['weak'] == ['weak', 20, 0, None], r
+    assert r['full'][0] and abs(r['full'][1] - 10) < 0.01 and abs(r['full'][2] - 28) < 1 and r['full'][3:] == [19, 90, 'u1', 'arrow'], r
+    assert abs(r['part'][0] - 6.6) <= 0.5 and abs(r['part'][1] - 21) <= 1.0001, r
+    assert r['cd'] == [True, 'cooldown'], r
+    assert r['noAmmo'] == ['no-ammo', 0], r
+    assert r['tiredShot'] == ['tired', 3] and r['noDraw'] is False and r['badArgs'] is True, r
+
+
+@test
+def test_combat2_arrows_fall_stop_at_blocks_skip_players_and_credit_kills(pg):
+    r = ev(pg, FIGHT_JS + r"""
+      const { g, p, m, cx, cz, y0 } = mkFight('bow'); const out = {}; give(g, p, ['bow', ['arrow', 40]]);
+      m.x = cx + 0.5 + 12; m.z = cz + 0.5 + 12;                                                           // dời quái ra ngoài đường bay
+      const proj = () => [...g.ents.values()].filter(e => e.kind === 'proj');
+      const fire = (t0, pitch = 0, yaw = 0) => { p.stamina = 100; g.time = t0; g.act('u1', { t: 'draw', on: true }); g.time = t0 + 1; return g.act('u1', { t: 'shoot', yaw, pitch }); };
+      fire(10); const a = proj()[0]; const y1 = a.y, z1 = a.z; run(g, 0.5);
+      out.drop = y1 - a.y; out.flew = z1 - a.z;                                                           // AC-17: rơi 1.1 ± 0.3 sau 0.5 s
+      run(g, 5); out.gone = proj().length;                                                                // xoá sau 4 s / vượt tầm / chạm đất
+      fire(20, -1.4); run(g, 0.3); out.ground = proj().length;                                            // chạm block thì biến mất
+      const q = g.addPlayer('u2', 'B'); q.x = cx + 0.5; q.z = cz + 0.5 - 8; q.y = y0 + 1; const hp = q.hp;
+      fire(30); run(g, 0.6); out.otherPlayer = [q.hp === hp, p.hp === 20];                                // không trúng người chơi
+      // trúng quái: trừ máu, aggro, kill tính cho người bắn
+      const t = spawnMob(g, 'xac-song', cx + 0.5 + 0.0, y0 + 1, cz + 0.5 - 6.0); t.frozen = true; t.hp = t.maxHp = 50; q.x = cx + 20; g.drain();
+      fire(40); run(g, 0.5); out.hitMob = [50 - t.hp, t.state, proj().length];
+      t.hp = 1; let kills = []; g.onKill = (e, src) => kills.push([e.type, src && src.uid]);
+      fire(50); run(g, 0.5); out.kill = kills; out.killedEv = g.drain().filter(e => e.ev.t === 'killed').map(e => e.ev.by);
+      // sát thương Sức mạnh x1.25 (làm tròn lên) cũng áp cho mũi tên
+      return out;
+    """)
+    assert abs(r['drop'] - 1.1) <= 0.3 and r['flew'] > 8, r
+    assert r['gone'] == 0 and r['ground'] == 0 and r['otherPlayer'] == [True, True], r
+    assert r['hitMob'][0] == 10 and r['hitMob'][1] == 'chase' and r['hitMob'][2] == 0, r
+    assert r['kill'] == [['xac-song', 'u1']] and r['killedEv'] == ['u1'], r
+
+
+@test
+def test_combat2_arrows_sometimes_drop_back_and_skeletons_drop_arrows(pg):
+    r = ev(pg, FIGHT_JS + r"""
+      const { g, p, m, cx, cz, y0 } = mkFight('bow'); const out = {}; g.rng = makeRng(4242);
+      give(g, p, ['bow', ['arrow', 64], ['arrow', 64]]); m.z = cz + 0.5 - 3; let back = 0; const dropOrig = g.dropItem.bind(g); g.dropItem = (id, n, x, y, z) => { if (id === 'arrow') back += n; return dropOrig(id, n, x, y, z); };
+      for (let i = 0; i < 100; i++) { p.stamina = 100; m.z = cz + 0.5 - 3; m.kbT = 0; m.hp = 1000; g.time = 10 + i * 2; g.act('u1', { t: 'draw', on: true }); g.time += 1.0; g.act('u1', { t: 'shoot', yaw: 0, pitch: 0 }); for (let k = 0; k < 4; k++) g.tick(0.05); }
+      out.recovered = back; out.arrowsLeft = invM.countItem(p.inv, 'arrow');
+      // Xương Cung Thủ rơi 2 tới 5 mũi tên với xác suất 0.6
+      g.dropItem = dropOrig; g.rng = makeRng(99); let drops = 0, mn = 99, mx = 0;
+      for (let i = 0; i < 100; i++) {
+        g.ents.clear(); combatM.dropLoot(g, { kind: 'mob', type: 'xuong-cung', x: cx, y: y0 + 1, z: cz, shearCd: 0 });
+        const n = [...g.ents.values()].filter(e => e.kind === 'item' && e.item === 'arrow').reduce((a, e) => a + e.n, 0);
+        if (n) { drops++; mn = Math.min(mn, n); mx = Math.max(mx, n); }
+      }
+      out.skel = { drops, mn, mx };
+      return out;
+    """)
+    assert 20 <= r['recovered'] <= 40 and r['arrowsLeft'] == 28, r
+    assert 45 <= r['skel']['drops'] <= 75 and r['skel']['mn'] >= 2 and r['skel']['mx'] <= 5, r
+
+
+@test
+def test_combat2_shield_blocks_front_arc_costs_stamina_and_armor_applies_after(pg):
+    r = ev(pg, FIGHT_JS + r"""
+      const { g, p, m } = mkFight('iron_sword'); const out = {}; g.time = 10;
+      const raise = (id = 'wood_shield') => { p.offhand = id; p.guardSince = null; p.guardLast = -99; p.stamina = 100; p.exh = false; p.stunUntil = 0; return g.act('u1', { t: 'guard', on: true }); };
+      const side = (deg, r = 3) => [Math.sin(deg * Math.PI / 180) * r, -Math.cos(deg * Math.PI / 180) * r];
+      raise(); g.time = 10.5;                                                                              // quá cửa sổ đỡ hoàn hảo
+      out.wood = [lost(g, p, () => hurtAt(g, p, 10, ...FRONT)), 100 - p.stamina];                           // AC-20: 10 -> 4, thể lực -20
+      p.stamina = 100; out.back = lost(g, p, () => hurtAt(g, p, 10, ...BACK));
+      out.deg65 = lost(g, p, () => hurtAt(g, p, 10, ...side(65))); out.deg55 = lost(g, p, () => hurtAt(g, p, 10, ...side(55)));
+      out.noSrc = lost(g, p, () => g.hurtPlayer(p, 10, null)); out.pure = lost(g, p, () => hurtAt(g, p, 10, ...FRONT, { pure: true }));
+      p.stamina = 100; out.slam = [lost(g, p, () => hurtAt(g, p, 10, ...FRONT, { blockable: false })), 100 - p.stamina];     // AC-21: đập vùng bỏ qua khiên
+      g.time = 20; raise('iron_shield'); g.time = 20.5; p.stamina = 100;
+      out.iron = [lost(g, p, () => hurtAt(g, p, 10, ...FRONT)), 100 - p.stamina];                           // 10 -> 2, thể lực -15
+      p.armor = { head: 'iron_helm', chest: 'iron_chest', legs: 'iron_legs', feet: 'iron_boots' }; raise(); g.time += 0.5; p.stamina = 100;
+      out.armor = lost(g, p, () => hurtAt(g, p, 10, ...FRONT)); p.armor = { head: null, chest: null, legs: null, feet: null };
+      // đạn chặn được, mất đạn
+      raise(); g.time += 0.5; p.stamina = 100; const pr = { id: 5, kind: 'proj', x: p.x, y: p.y + 1, z: p.z - 2, owner: null };
+      out.proj = lost(g, p, () => g.hurtPlayer(p, 10, pr));
+      // tốc độ x0.6 và không sprint
+      const W = g.world, mk = () => { const b = makePlayer(m.x + 5, m.y, m.z + 5); b.yaw = 0; return b; };
+      const speedOf = input => { const b = mk(); for (let i = 0; i < 20; i++) stepPlayer(W, b, input, 0.05); return Math.abs(b.vz); };
+      const base = speedOf({ fz: 1 }), slow = speedOf({ fz: 1, slow: 0.6 }), slowSprint = speedOf({ fz: 1, sprint: true, slow: 0.6 });
+      out.speed = [slow / base, slowSprint / base];
+      return out;
+    """)
+    assert r['wood'] == [4, 20] and r['back'] == 10 and r['deg65'] == 10 and r['deg55'] == 4, r
+    assert r['noSrc'] == 10 and r['pure'] == 10 and r['slam'] == [10, 0], r
+    assert r['iron'] == [2, 15] and r['armor'] == 2 and r['proj'] == 4, r
+    assert abs(r['speed'][0] - 0.6) < 0.02 and abs(r['speed'][1] - 0.6) < 0.02, r
+
+
+@test
+def test_combat2_shield_perfect_parry_window_and_cooldown(pg):
+    r = ev(pg, FIGHT_JS + r"""
+      const { g, p, m, cx, cz, y0 } = mkFight('iron_sword'); const out = {}; p.offhand = 'wood_shield';
+      const fresh = (t) => { p.stamina = 100; g.time = t; p.guardSince = null; p.guardLast = -99; p.exh = false; p.stunUntil = 0; m.stunUntil = 0; g.drain(); };
+      fresh(10); g.act('u1', { t: 'guard', on: true }); g.time = 10.1; m.windup = { until: 11, uid: 'u1' };
+      const hp0 = p.hp; const res = g.hurtPlayer(p, 10, m);
+      out.perfect = { how: res.how, dealt: res.dealt, hp: hp0 - p.hp, sta: p.stamina, stun: m.stunUntil - g.time, windup: m.windup || null,
+        ev: g.drain().map(e => e.ev).filter(e => e.t === 'shield' || e.t === 'parry').map(e => e.t + (e.perfect ? ':p' : '')) };
+      fresh(20); g.act('u1', { t: 'guard', on: true }); g.time = 20.3;                                      // giơ ở 0.30 s: không còn đỡ hoàn hảo
+      out.late = [g.hurtPlayer(p, 10, m).how, m.stunUntil];
+      fresh(30); g.act('u1', { t: 'guard', on: true }); g.time = 30.1; g.act('u1', { t: 'guard', on: false });
+      g.time = 30.3; g.act('u1', { t: 'guard', on: true }); out.regrab = g.hurtPlayer(p, 10, m).how;          // giơ lại < 0.5 s: không có cửa sổ mới
+      g.act('u1', { t: 'guard', on: false }); g.time = 31.0; p.stamina = 100; g.act('u1', { t: 'guard', on: true }); out.again = g.hurtPlayer(p, 10, m).how;
+      fresh(40); const bs = spawnBoss(g, 'thu-linh-soi', cx + 0.5, y0 + 1, cz + 0.5 - 3); bs.frozen = true;
+      g.act('u1', { t: 'guard', on: true }); g.time = 40.1; out.boss = [g.hurtPlayer(p, 10, bs).how, bs.stunUntil || 0];
+      // vỡ khiên
+      fresh(50); p.stamina = 5; g.act('u1', { t: 'guard', on: true }); g.time = 50.5; g.drain(); const hp1 = p.hp;
+      const br = g.hurtPlayer(p, 10, m);
+      out.broke = { dealt: br.dealt, hp: hp1 - p.hp, sta: p.stamina, stun: p.stunUntil - g.time, guard: p.guardSince, exh: !!p.exh, ev: g.drain().map(e => e.ev).filter(e => e.t === 'shield' || e.t === 'exhausted').map(e => e.t + (e.broke ? ':b' : '')) };
+      out.stunnedRoll = g.act('u1', { t: 'roll', dx: 0, dz: 1 }).reason;
+      out.minDmg = (() => { fresh(60); p.armor = { head: 'iron_helm', chest: 'iron_chest', legs: 'iron_legs', feet: 'iron_boots' }; p.stamina = 0; p.exh = false; p.guardSince = 55; const h = p.hp; g.hurtPlayer(p, 1, m); return h - p.hp; })();
+      return out;
+    """)
+    p = r['perfect']
+    assert p['how'] == 'perfect' and p['dealt'] == 0 and p['hp'] == 0 and p['sta'] == 100 and abs(p['stun'] - 0.8) < 0.01 and p['windup'] is None, r
+    assert 'shield:p' in p['ev'] and 'parry' in p['ev'], r
+    assert r['late'] == ['shield', 0] and r['regrab'] == 'shield' and r['again'] == 'perfect', r
+    assert r['boss'] == ['perfect', 0], r
+    b = r['broke']
+    assert b['dealt'] == 10 and b['hp'] == 10 and b['sta'] == 0 and abs(b['stun'] - 1.0) < 0.01 and b['guard'] is None and b['exh'], r
+    assert 'shield:b' in b['ev'] and r['stunnedRoll'] == 'stun' and r['minDmg'] == 1, r
+
+
+@test
+def test_combat2_guard_rules_no_hit_or_draw_while_guarding(pg):
+    r = ev(pg, FIGHT_JS + r"""
+      const { g, p, m } = mkFight('iron_sword'); const out = {}; g.time = 10;
+      give(g, p, ['iron_sword', 'bow', 'meat', ['arrow', 4]]);
+      out.noShield = g.act('u1', { t: 'guard', on: true }).reason;
+      p.offhand = 'wood_shield'; p.sel = 2; out.food = g.act('u1', { t: 'guard', on: true }).reason; p.sel = 0;
+      out.ok = g.act('u1', { t: 'guard', on: true }).ok; out.act = snapshotFor(g, 'u1').ps[0].act; out.off = snapshotFor(g, 'u1').ps[0].off;
+      g.time = 11; out.hit = g.act('u1', { t: 'hit', id: m.id }).reason;
+      g.act('u1', { t: 'sel', i: 1 }); out.draw = g.act('u1', { t: 'draw', on: true }).reason;
+      g.act('u1', { t: 'guard', on: false }); out.afterAct = snapshotFor(g, 'u1').ps[0].act; out.drawOk = g.act('u1', { t: 'draw', on: true }).ok; out.act2 = snapshotFor(g, 'u1').ps[0].act;
+      out.guardCancelsDraw = (g.act('u1', { t: 'guard', on: true }), p.drawSince);
+      g.act('u1', { t: 'guard', on: false }); p.stunUntil = g.time + 1; out.stunAct = snapshotFor(g, 'u1').ps[0].act; out.stunGuard = g.act('u1', { t: 'guard', on: true }).reason;
+      p.stunUntil = 0; g.act('u1', { t: 'guard', on: true }); p.offhand = null; g.tick(0.05); out.lostShield = p.guardSince;
+      return out;
+    """)
+    assert r['noShield'] == 'no-shield' and r['food'] == 'food' and r['ok'] and r['act'] == 1 and r['off'] == 'wood_shield', r
+    assert r['hit'] == 'guard' and r['draw'] == 'busy' and r['afterAct'] is None and r['drawOk'] and r['act2'] == 2, r
+    assert r['guardCancelsDraw'] is None and r['stunAct'] == 4 and r['stunGuard'] == 'stun' and r['lostShield'] is None, r
+
+
+@test
+def test_combat2_offhand_equip_unequip_and_save_roundtrip(pg):
+    r = ev(pg, FIGHT_JS + r"""
+      const { g, p } = mkFight('iron_sword'); const out = {};
+      give(g, p, ['wood_shield', 'iron_shield', 'bow', 'wood_spear', 'iron_sword']);
+      out.eq1 = [g.act('u1', { t: 'equip', i: 0 }).ok, p.offhand, p.inv[0]];
+      out.eq2 = [g.act('u1', { t: 'equip', i: 1 }).ok, p.offhand, p.inv[1] && p.inv[1].id];                  // đổi chỗ: khiên cũ về đúng ô
+      out.notArmor = [2, 3, 4].map(i => g.act('u1', { t: 'equip', i }).reason);
+      p.stamina = 10; p.combo = { n: 2, at: 5 }; p.stunUntil = 99; p.guardSince = 4;
+      const save = JSON.parse(JSON.stringify(g.toSave()));
+      out.saved = [save.players.u1.offhand, 'stamina' in save.players.u1, 'combo' in save.players.u1, save.v];
+      const g2 = Game.fromSave(save, { spawning: false, env: false, hunger: false }); const q = g2.addPlayer('u1', 'T');
+      out.loaded = { off: q.offhand, sta: q.stamina, exh: !!q.exh, combo: q.combo.n, guard: q.guardSince, stun: q.stunUntil <= g2.time };
+      // save cũ không có offhand; save hỏng có offhand lạ
+      const old = JSON.parse(JSON.stringify(save)); delete old.players.u1.offhand;
+      out.old = Game.fromSave(old, { spawning: false, env: false, hunger: false }).addPlayer('u1', 'T').offhand;
+      for (const bad of ['iron_sword', 'khong-co', 5, {}, 'bow']) { const h = JSON.parse(JSON.stringify(save)); h.players.u1.offhand = bad; out['bad' + JSON.stringify(bad)] = Game.fromSave(h, { spawning: false, env: false, hunger: false }).addPlayer('u1', 'T').offhand; }
+      // cởi: về kho; kho đầy thì từ chối
+      p.inv.fill(null); const un = g.act('u1', { t: 'unequip', slot: 'offhand' }); out.un = [un.ok, p.offhand, p.inv[0] && p.inv[0].id];
+      out.unEmpty = g.act('u1', { t: 'unequip', slot: 'offhand' }).reason;
+      p.offhand = 'wood_shield'; for (let i = 0; i < p.inv.length; i++) p.inv[i] = { id: 'dirt', n: 64 }; out.unFull = [g.act('u1', { t: 'unequip', slot: 'offhand' }).reason, p.offhand];
+      const { checkVersion } = await imp('save.js'); out.v1 = (() => { const s = JSON.parse(JSON.stringify(save)); s.v = 1; return checkVersion(s).v; })();
+      return out;
+    """)
+    assert r['eq1'] == [True, 'wood_shield', None] and r['eq2'] == [True, 'iron_shield', 'wood_shield'], r
+    assert r['notArmor'] == ['not-armor'] * 3, r
+    assert r['saved'] == ['iron_shield', False, False, 2], r
+    assert r['loaded'] == {'off': 'iron_shield', 'sta': 100, 'exh': False, 'combo': 0, 'guard': None, 'stun': True}, r
+    assert r['old'] is None and r['bad"iron_sword"'] is None and r['bad"khong-co"'] is None and r['bad5'] is None and r['bad{}'] is None and r['bad"bow"'] is None, r
+    assert r['un'] == [True, None, 'iron_shield'] and r['unEmpty'] == 'empty' and r['unFull'] == ['full', 'wood_shield'] and r['v1'] == 2, r
+
+
+@test
+def test_combat2_boss_slams_ignore_shield_but_can_be_rolled(pg):
+    r = ev(pg, FIGHT_JS + r"""
+      const out = {}; const { BOSSES } = await imp('content/bosses.js');
+      // đập vùng và nhảy đập: không chặn được; đánh thường và đạn: chặn được
+      out.flags = Object.entries(BOSSES).filter(([, d]) => !d.dungeon).map(([id, d]) => [id, Object.values(d.moves).filter(m => m.type === 'slam' || m.type === 'leap').length]);
+      const { g, p, cx, cz, y0 } = mkFight('iron_sword'); p.offhand = 'wood_shield'; g.time = 10;
+      const bs = spawnBoss(g, 'bo-cap-chua', cx + 0.5, y0 + 1, cz + 0.5 - 3); bs.phase = 0;
+      g.act('u1', { t: 'guard', on: true }); g.time = 11; p.hp = p.maxHp = 100;
+      const bossMod = await imp('sim/boss.js');
+      // chiêu đập vùng gọi qua startMove: kiểm bằng cách bắt tham số opts của hurtPlayer
+      const calls = []; const orig = g.hurtPlayer.bind(g); g.hurtPlayer = (pl, d, s, o) => { calls.push(o && o.blockable); return orig(pl, d, s, o); };
+      bs.act = { name: 'quake', type: 'slam', until: g.time, x: bs.x, z: bs.z, dmg: 10, r: 6 }; g.tick(0.05);
+      bs.cd = { claw: 0, sting: 0 }; bs.act = { name: 'leap', type: 'leap', phase: 'air', t0: g.time - 1, until: g.time, dmg: 8, r: 6 }; bs.onGround = true; g.tick(0.05);
+      out.calls = calls;
+      return out;
+    """)
+    assert any(n > 0 for _, n in r['flags']), r
+    assert r['calls'][0] is False and r['calls'][1] is False, r
+
+
+@test
+def test_combat2_snapshot_fields_and_cheating_clients_cannot_fake_force_or_time(pg):
+    r = ev(pg, FIGHT_JS + r"""
+      const { g, p, m } = mkFight('bow'); const out = {}; give(g, p, ['bow', ['arrow', 9]]); p.offhand = 'wood_shield';
+      g.time = 10; g.act('u1', { t: 'draw', on: true, force: 1, since: -999, time: -999 });
+      const s0 = snapshotFor(g, 'u1'); out.draw = [s0.ps[0].act, s0.me.sta, s0.me.exh, s0.me.cmb];
+      const r1 = g.act('u1', { t: 'shoot', yaw: 0, pitch: 0, force: 1, power: 1, draw: 99, t0: -1e9 });          // vừa kéo xong: lực do đồng hồ host
+      out.fake = [r1.ok, r1.reason, invM.countItem(p.inv, 'arrow')];
+      g.time = 20; g.act('u1', { t: 'draw', on: true }); g.time = 20.05; out.fake2 = g.act('u1', { t: 'shoot', force: 5 }).reason;
+      p.sel = 0; g.time = 30; give(g, p, ['iron_sword']); g.act('u1', { t: 'guard', on: true, since: g.time + 999 }); g.time = 30.4;
+      out.guardWindow = g.hurtPlayer(p, 4, m).how;                                                                // gửi since giả: vẫn là đỡ thường
+      // mob choáng hiện trong snapshot; đạn có trọng lực -> pit
+      m.stunUntil = g.time + 1; const sm = snapshotFor(g, 'u1').es.find(e => e.id === m.id); out.stn = sm.stn;
+      return out;
+    """)
+    assert r['draw'] == [2, 100, 0, 0], r
+    assert r['fake'] == [False, 'weak', 9] and r['fake2'] == 'weak', r
+    assert r['guardWindow'] == 'shield' and r['stn'] == 1, r
+
+
+@test
+def test_combat2_new_items_recipes_content_valid_and_distinct_icons(pg, browser, base):
+    _open_game(pg, base)
+    r = pg.evaluate("""async () => {
+      const imp = p => import('/games/the-gioi-khoi/' + p);
+      const { validateContent, loadContent } = await imp('content/validate.js'); const { ITEMS } = await imp('content/items.js'); const { RECIPES } = await imp('content/recipes.js');
+      const { craft } = await imp('sim/crafting.js'); const { makeInventory, countItem, addItem } = await imp('sim/inventory.js'); const { weaponOf } = await imp('sim/rules.js');
+      const { makeAtlas } = await imp('render/atlas.js'); const { createIcons } = await imp('ui/icons.js');
+      const c = await loadContent(); const errors = validateContent(c); const out = { errors };
+      const ids = ['bow', 'iron_bow', 'arrow', 'wood_shield', 'iron_shield', 'wood_spear', 'stone_spear', 'iron_spear', 'iron_club'];
+      const R = { bow: [{ stick: 3, pelt: 1 }, 'workbench', 1], iron_bow: [{ iron_ingot: 2, stick: 3, pelt: 1 }, 'anvil', 1], arrow: [{ stick: 1, bone: 1 }, 'workbench', 4], wood_shield: [{ planks: 5, stick: 1 }, 'workbench', 1],
+        iron_shield: [{ iron_ingot: 4, planks: 2 }, 'anvil', 1], wood_spear: [{ planks: 1, stick: 2 }, 'workbench', 1], stone_spear: [{ stone: 2, stick: 2 }, 'workbench', 1], iron_spear: [{ iron_ingot: 2, stick: 2 }, 'anvil', 1], iron_club: [{ iron_ingot: 3, stick: 1 }, 'anvil', 1] };
+      out.recipes = {};
+      for (const [id, [inn, st, n]] of Object.entries(R)) {
+        const inv = makeInventory(); for (const [k, v] of Object.entries(inn)) addItem(inv, k, v);
+        const noStation = craft(makeInventory().map(() => null), id, { workbench: true, anvil: true });
+        const wrong = (() => { const i2 = inv.map(s => s && { ...s }); return craft(i2, id, { workbench: st !== 'workbench', anvil: st !== 'anvil', furnace: true }); })();
+        const ok = craft(inv, id, { [st]: true });
+        out.recipes[id] = [ok, countItem(inv, id), n, wrong, noStation, inv.filter(Boolean).length];
+      }
+      out.weapons = Object.fromEntries(['iron_sword', 'iron_axe', 'frost_axe', 'swamp_club', 'iron_club', 'wood_spear', 'stone_spear', 'iron_spear', 'wood_pick', 'shears', 'wolf_blade'].map(k => [k, weaponOf(ITEMS[k]).cls]));
+      out.spearDmg = ['wood_spear', 'stone_spear', 'iron_spear', 'iron_club'].map(k => ITEMS[k].dmg); out.bow = [ITEMS.bow.bow, ITEMS.iron_bow.bow]; out.shield = [ITEMS.wood_shield.shield, ITEMS.iron_shield.shield]; out.stack = ITEMS.arrow.stack;
+      const icons = createIcons(makeAtlas()), urls = {}, blank = [];
+      for (const id of ids) { urls[id] = icons.get(id); const cv = icons.canvas(id), d = cv.getContext('2d').getImageData(0, 0, cv.width, cv.height).data; let n = 0; for (let i = 3; i < d.length; i += 4) if (d[i] > 40) n++; if (n < 60) blank.push(id); }
+      out.icons = { distinct: new Set(Object.values(urls)).size, n: ids.length, blank };
+      // dữ liệu hỏng bị bắt
+      const bad = JSON.parse(JSON.stringify(c)); bad.items.bow.bow = undefined; bad.items.iron_shield.shield = undefined; bad.items.wood_spear.weapon = { cls: 'phi-tieu' }; bad.recipes.find(r => r.id === 'arrow').in = { khong_co_gi: 1 };
+      out.broken = validateContent(bad).join(' | ');
+      out.shop = c.shops['tho-ren'].sells.filter(s => s.item === 'arrow').length;
+      return out;
+    }""")
+    assert r['errors'] == [], r
+    for k, v in r['recipes'].items():
+        assert v[0] and v[1] == v[2] and not v[3] and not v[4] and v[5] == 1, (k, r)
+    assert r['weapons'] == {'iron_sword': 'sword', 'iron_axe': 'axe', 'frost_axe': 'axe', 'swamp_club': 'club', 'iron_club': 'club', 'wood_spear': 'spear', 'stone_spear': 'spear', 'iron_spear': 'spear', 'wood_pick': 'hand', 'shears': 'hand', 'wolf_blade': 'sword'}, r
+    assert r['spearDmg'] == [4, 5, 7, 8] and r['stack'] == 64, r
+    assert r['bow'][0]['draw'] == 1.0 and r['bow'][0]['dmgMin'] == 3 and r['bow'][0]['dmgMax'] == 10 and r['bow'][0]['speedMin'] == 12 and r['bow'][0]['speedMax'] == 28, r
+    assert r['bow'][1]['draw'] == 0.8 and r['bow'][1]['dmgMax'] == 14 and r['bow'][1]['speedMax'] == 32, r
+    assert r['shield'][0] == {'reduce': 0.6, 'costMul': 2} and r['shield'][1] == {'reduce': 0.8, 'costMul': 1.5}, r
+    assert r['icons']['distinct'] == r['icons']['n'] and r['icons']['blank'] == [], r
+    for needle in ['bow', 'iron_shield', 'phi-tieu', 'khong_co_gi']:
+        assert needle in r['broken'], (needle, r['broken'])
+    assert r['shop'] == 1, r
+
+
+@test
+def test_combat2_perf_tick_with_fights(pg):
+    r = ev(pg, FIGHT_JS + r"""
+      const { g, p, cx, cz, y0 } = mkFight('bow'); give(g, p, ['bow', ['arrow', 64]]); p.offhand = 'wood_shield';
+      for (let i = 0; i < 40; i++) { const m = spawnMob(g, i % 2 ? 'xac-song' : 'soi-xam', cx + 0.5 + (i % 8) * 2 - 8, y0 + 1, cz + 0.5 - 6 - Math.floor(i / 8) * 2); m.state = 'chase'; m.target = 'u1'; m.alert = 1; m.lastSeen = { x: p.x, y: p.y, z: p.z }; }
+      for (let i = 0; i < 4; i++) { const q = g.addPlayer('q' + i, 'Q' + i); q.x = cx + 0.5 + i; q.z = cz + 0.5; q.y = y0 + 1; q.maxHp = q.hp = 9999; q.offhand = 'iron_shield'; g.act('q' + i, { t: 'guard', on: true }); }
+      p.maxHp = p.hp = 9999; const ts = [];
+      for (let i = 0; i < 200; i++) { if (i % 20 === 0) { p.stamina = 100; g.act('u1', { t: 'draw', on: true }); } if (i % 20 === 12) g.act('u1', { t: 'shoot', yaw: 0, pitch: 0 }); const t0 = performance.now(); g.tick(0.05); ts.push(performance.now() - t0); }
+      return { avg: ts.reduce((a, b) => a + b, 0) / ts.length, max: Math.max(...ts) };
+    """)
+    assert r['avg'] < 5 and r['max'] < 25, r
+
+
+
+@test
+def test_combat2_hud_and_equipment_ui(pg, browser, base):
+    _open_game(pg, base)
+    r = pg.evaluate(r"""async () => {
+      const G = '/games/the-gioi-khoi/', imp = p => import(G + p), wait = ms => new Promise(r => setTimeout(r, ms));
+      const until = async (f, ms = 5000) => { const t = Date.now(); while (!f()) { if (Date.now() - t > ms) throw new Error('hết giờ chờ: ' + String(f).slice(0, 120)); await wait(30); } };
+      const g = __g, game = g.game, uid = g.S.uid, p = game.player(uid), $ = id => document.getElementById(id), out = {};
+      const { itemTip } = await imp('ui/hud.js'); const { countItem } = await imp('sim/inventory.js');
+      p.maxHp = p.hp = 1000; game.touch(p); p.inv.fill(null);
+      const give = (id, n = 1) => { game.giveItem(uid, id, n); };
+      const sel = id => { const i = p.inv.findIndex(s => s && s.id === id); game.act(uid, { t: 'sel', i }); return i; };
+      // thanh thể lực: tỷ lệ, vàng dưới 40, đỏ khi kiệt sức
+      p.staAt = game.time + 1000; p.stamina = 50; await until(() => $('stamina').firstElementChild.style.width === '50%'); out.w50 = [$('stamina').className, $('stamina').getBoundingClientRect().width > 50];
+      p.stamina = 30; await until(() => $('stamina').classList.contains('low')); out.low = $('stamina').firstElementChild.style.width;
+      p.stamina = 0; p.exh = true; p.exhUntil = game.time + 2; await until(() => $('stamina').classList.contains('exh')); out.exh = $('stamina').className;
+      p.exh = false; p.staAt = 0; p.stamina = 100; await until(() => !$('stamina').classList.contains('exh'));
+      // 3 chấm chuỗi kiếm
+      give('iron_sword'); sel('iron_sword'); await wait(200);
+      const dots = () => [...$('combo').children].filter(i => i.classList.contains('on')).length;
+      p.combo = { n: 2, at: game.time + 100 }; await until(() => dots() === 2); out.dots = [dots(), $('combo').children.length, $('combo').hidden];
+      p.combo = { n: 0, at: -99 }; await until(() => dots() === 0);
+      // cung: vòng kéo đầy ở 1.0 s, số mũi tên đúng
+      give('bow'); give('arrow', 12); sel('bow'); await wait(200); out.arrowsShown = $('arrows').textContent; out.ringHidden = $('drawring').hidden;
+      g.mouse.left = true; await until(() => !$('drawring').hidden && +$('drawring').dataset.p > 10, 4000);
+      out.ringMid = +$('drawring').dataset.p; await until(() => +$('drawring').dataset.p === 100, 4000); out.ringFull = [$('drawring').dataset.p, $('drawring').classList.contains('full')];
+      g.mouse.left = false; await until(() => countItem(p.inv, 'arrow') === 11); await until(() => $('drawring').hidden); out.afterShot = [$('arrows').textContent, p.stamina < 100];
+      // khiên: ô Tay phụ, mặc bằng chuột phải, giơ bằng F, biểu tượng sáng
+      give('wood_shield'); out.shieldHidden = $('shieldico').hidden;
+      sel('iron_sword'); await wait(150);
+      document.dispatchEvent(new KeyboardEvent('keydown', { code: 'KeyE' })); window.dispatchEvent(new KeyboardEvent('keydown', { code: 'KeyE' })); await until(() => !$('panel').hidden);
+      out.slots = document.querySelectorAll('#panel .equiprow .slot').length; out.offEmpty = document.querySelector('#panel .slot.offhand').textContent;
+      const sh = [...document.querySelectorAll('#panel .grid .slot')].find(d => d.querySelector('img') && d.querySelector('img').alt === 'Khiên gỗ');
+      out.tipShield = sh.title; out.tipSword = itemTip('iron_sword'); out.tipBow = itemTip('bow'); out.tipSpear = itemTip('wood_spear'); out.tipClub = itemTip('swamp_club'); out.tipAxe = itemTip('iron_axe');
+      sh.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true })); await until(() => p.offhand === 'wood_shield');
+      await until(() => document.querySelector('#panel .slot.offhand img'));
+      out.eqText = document.querySelector('#panel .eqinfo').textContent; out.offImg = document.querySelector('#panel .slot.offhand img').alt;
+      document.querySelector('#panel .slot.offhand').click(); await until(() => p.offhand === null); out.back = countItem(p.inv, 'wood_shield');
+      document.querySelector('#panel .slot.offhand') && 0;
+      game.act(uid, { t: 'equip', i: p.inv.findIndex(s => s && s.id === 'wood_shield') }); await until(() => !$('shieldico').hidden);
+      document.querySelector('#panel button.x').click(); await wait(100);
+      window.dispatchEvent(new KeyboardEvent('keydown', { code: 'KeyF' })); await until(() => $('shieldico').classList.contains('up')); await until(() => p.guardSince !== null);
+      out.act = game.player(uid) && (await imp('net/snapshot.js')).snapshotFor(game, uid).ps[0].act;
+      g.hud.shieldFlash('perfect'); out.flash = [$('shieldico').classList.contains('perfect'), $('fightflash').classList.contains('perfect')];
+      window.dispatchEvent(new KeyboardEvent('keyup', { code: 'KeyF' })); await until(() => !$('shieldico').classList.contains('up')); await until(() => p.guardSince === null);
+      return out;
+    }""")
+    assert r['w50'][0] == '' and r['w50'][1] and r['low'] == '30%' and 'exh' in r['exh'], r
+    assert r['dots'] == [2, 3, False], r
+    assert r['arrowsShown'] == '➶ 12' and r['ringHidden'] and r['ringMid'] > 10 and r['ringFull'] == ['100', True], r
+    assert r['afterShot'][0] == '➶ 11' and r['afterShot'][1], r
+    assert r['shieldHidden'] and r['slots'] == 5 and 'Tay phụ' in r['offEmpty'], r
+    assert 'giảm 60%' in r['tipShield'] and 'thể lực gấp 2' in r['tipShield'] and 'đỡ trong 0.25 giây' in r['tipShield'], r
+    assert 'Kiếm' in r['tipSword'] and 'Hồi chiêu 0.5 giây' in r['tipSword'] and 'thể lực 6/đòn' in r['tipSword'] and 'tầm 4.5' in r['tipSword'] and 'x1.5' in r['tipSword'], r
+    assert 'sát thương 3 tới 10' in r['tipBow'] and 'Giữ chuột trái' in r['tipBow'], r
+    assert 'Giáo' in r['tipSpear'] and 'tầm 6' in r['tipSpear'] and 'Chùy' in r['tipClub'] and 'choáng' in r['tipClub'] and 'Rìu' in r['tipAxe'] and 'Quét' in r['tipAxe'], r
+    assert 'khiên giảm 60%' in r['eqText'] and r['offImg'] == 'Khiên gỗ' and r['back'] == 1 and r['act'] == 1 and r['flash'] == [True, True], r
+
+
+@test
+def test_combat2_e2e_roll_key_moves_about_3_5_blocks_without_being_pulled_back(pg, browser, base):
+    _open_game(pg, base)
+    pg.evaluate(r"""() => {
+      const g = __g, game = g.game, p = game.player(g.S.uid), w = game.world, cx = 2000, cz = 2000, y0 = 30;
+      for (let dx = -12; dx <= 12; dx++) for (let dz = -12; dz <= 12; dz++) { w.set(cx + dx, y0, cz + dz, 1); for (let dy = 1; dy <= 6; dy++) w.set(cx + dx, y0 + dy, cz + dz, 0); }
+      game.flags['boss:thu-linh-soi'] = true; game.flags['boss:bo-cap-chua'] = true; game.env = false;
+      game.teleportPlayer(p, cx + 0.5, y0 + 1, cz + 4.5);
+      window.__evs = []; g.S.on('ev', e => { if (e.t === 'teleport' || e.t === 'fail') window.__evs.push(e.t + ':' + (e.a || '') + (e.reason || '')); });
+    }""")
+    pg.wait_for_function("Math.abs(__g.local.z - 2004.5) < 0.3", timeout=8000); pg.wait_for_timeout(500); pg.evaluate("window.__evs.length = 0")
+    start = pg.evaluate("() => { const l = __g.local; l.yaw = 0; return { x: l.x, z: l.z, sta: __g.game.player(__g.S.uid).stamina }; }")
+    pg.keyboard.press('KeyQ')
+    pg.wait_for_function("window.__g.local.roll === null || window.__g.local.roll === undefined", timeout=4000)
+    pg.wait_for_timeout(900)
+    r = pg.evaluate("""() => { const l = __g.local, p = __g.game.player(__g.S.uid); return { x: l.x, z: l.z, evs: window.__evs, sta: p.stamina, cd: p.rollCdAt > 0, rolled: p.rollAt > 0 }; }""")
+    dist = ((r['x'] - start['x']) ** 2 + (r['z'] - start['z']) ** 2) ** 0.5
+    assert 3.1 <= dist <= 3.9, (dist, r, start)
+    assert r['z'] < start['z'] and abs(r['x'] - start['x']) < 0.3, (r, start)             # không bấm hướng: lăn về phía trước (-z khi yaw 0)
+    assert r['evs'] == [] and r['rolled'] and r['cd'] and r['sta'] < start['sta'] - 10, r
+
+
+@test
+def test_combat2_multiplayer_guard_roll_bow_and_cheating_clients(pg):
+    r = ev(pg, NET_JS + r"""
+      const { game, host } = await mkHost('CMBTA', { env: false }); const out = {};
+      game.flags['boss:thu-linh-soi'] = true; game.flags['boss:bo-cap-chua'] = true;
+      const a = await join('CMBTA', 'ua', 'An'), b = await join('CMBTA', 'ub', 'Bình');
+      await until(() => game.players.size === 3 && a.snap && b.snap && a.snap.ps.length === 3);
+      const cx = 2000, cz = 2000, y0 = 30;
+      for (let dx = -25; dx <= 25; dx++) for (let dz = -25; dz <= 25; dz++) { game.world.set(cx + dx, y0, cz + dz, 1); for (let dy = 1; dy <= 8; dy++) game.world.set(cx + dx, y0 + dy, cz + dz, 0); }
+      const pa = game.player('ua'), pb = game.player('ub'), ph = game.player('uh');
+      game.teleportPlayer(pa, cx + 0.5, y0 + 1, cz + 0.5); game.teleportPlayer(pb, cx + 5.5, y0 + 1, cz + 0.5); game.teleportPlayer(ph, cx - 5.5, y0 + 1, cz + 0.5);
+      for (const p of [pa, pb, ph]) { p.maxHp = p.hp = 500; }
+      const actOf = (s, uid) => { const q = s.ps.find(x => x.uid === uid); return q ? (q.act || 0) : -1; };
+      // --- khiên: khách đeo rồi giơ; host và khách thứ hai cùng thấy act = 1 và khiên
+      game.giveItem('ua', 'wood_shield', 1); await until(() => a.you && a.you.inv.some(s => s && s.id === 'wood_shield'));
+      a.act({ t: 'equip', i: a.you.inv.findIndex(s => s && s.id === 'wood_shield') }); await until(() => a.you.offhand === 'wood_shield');
+      const pa0 = pa.stamina; a.act({ t: 'guard', on: true });
+      await until(() => actOf(b.snap, 'ua') === 1 && actOf(a.snap, 'ua') === 1 && actOf(host.snap, 'ua') === 1);
+      out.guard = [actOf(host.snap, 'ua'), actOf(a.snap, 'ua'), actOf(b.snap, 'ua'), b.snap.ps.find(x => x.uid === 'ua').off];
+      // gửi thời điểm giả để kéo dài cửa sổ đỡ hoàn hảo: bị bỏ qua
+      a.act({ t: 'guard', on: false }); await until(() => actOf(host.snap, 'ua') === 0);
+      a.act({ t: 'guard', on: true, since: 1e9, time: 1e9 }); await until(() => pa.guardSince !== null); await wait(450);
+      const src = { id: 1, kind: 'mob', x: pa.x, y: pa.y, z: pa.z - 3 };
+      out.spoofGuard = game.hurtPlayer(pa, 4, src).how; a.act({ t: 'guard', on: false });
+      // --- lăn: act = 3 trong 0.45 s rồi hết; khách nhận bù độ trễ
+      await until(() => pa.stamina >= 99, 6000); a.act({ t: 'roll', dx: 0, dz: 1 });
+      await until(() => actOf(b.snap, 'ua') === 3); out.roll = [actOf(b.snap, 'ua'), 0, game.time - pa.rollAt >= 0.08 - 1e-9];                // khách chịu bù trễ 0.08 s (chủ phòng thì không)
+      await until(() => actOf(b.snap, 'ua') !== 3, 3000); out.rollEnds = actOf(b.snap, 'ua');
+      out.rollSta = a.snap.me && a.snap.me.sta <= 80;
+      // --- cung: khách kéo, bắn; mũi tên hiện ở cả hai và trúng quái; kill tính cho khách
+      game.giveItem('ua', 'bow', 1); game.giveItem('ua', 'arrow', 10); await until(() => a.you.inv.some(s => s && s.id === 'arrow'));
+      a.act({ t: 'sel', i: a.you.inv.findIndex(s => s && s.id === 'bow') }); await until(() => pa.sel === a.you.inv.findIndex(s => s && s.id === 'bow'));
+      const mob = spawnMob(game, 'xac-song', cx + 0.5, y0 + 1, cz + 0.5 - 7); mob.frozen = true; mob.hp = mob.maxHp = 4;
+      pa.yaw = 0; pa.pitch = 0; const evs = []; b.on('ev', e => evs.push(e));
+      await until(() => pa.stamina >= 99, 6000);
+      a.act({ t: 'shoot', yaw: 0, pitch: 0, force: 1 }); await wait(150); out.noDrawShot = [pa.drawSince, pa.shotAt < 0, a.you.inv.filter(s => s && s.id === 'arrow').reduce((n, s) => n + s.n, 0)];
+      a.act({ t: 'draw', on: true }); await wait(120); const fails = []; a.on('ev', e => { if (e.t === 'fail') fails.push(e.a + ':' + e.reason); });
+      a.act({ t: 'shoot', yaw: 0, pitch: 0, force: 1, power: 1 }); await until(() => fails.length > 0, 2000); out.fakeShot = fails[0];
+      a.act({ t: 'draw', on: true }); await wait(500);
+      let seenA = false, seenB = false; a.act({ t: 'shoot', yaw: 0, pitch: 0 });
+      for (let i = 0; i < 80 && !(seenA && seenB); i++) { await wait(20); seenA = seenA || a.snap.es.some(e => e.kind === 'proj' && e.style === 'arrow'); seenB = seenB || b.snap.es.some(e => e.kind === 'proj' && e.style === 'arrow'); }
+      out.arrowSeen = [seenA, seenB];
+      await until(() => !game.ents.has(mob.id), 4000); out.killed = evs.filter(e => e.t === 'killed').map(e => e.by);
+      out.arrows = a.you.inv.filter(s => s && s.id === 'arrow').reduce((n, s) => n + s.n, 0);
+      return out;
+    """)
+    assert r['guard'] == [1, 1, 1, 'wood_shield'], r
+    assert r['spoofGuard'] == 'shield', r
+    assert r['roll'][0] == 3 and r['roll'][2] and r['rollEnds'] in (0, -1) and r['rollSta'], r
+    assert r['noDrawShot'][0] is None and r['noDrawShot'][1] and r['noDrawShot'][2] == 10, r
+    assert r['fakeShot'] == 'shoot:weak', r
+    assert r['arrowSeen'] == [True, True] and r['killed'] == ['ua'] and r['arrows'] == 9, r
+
+
+
+@test
+def test_combat2_poses_effects_sounds_and_toasts(pg, browser, base):
+    _open_game(pg, base)
+    r = pg.evaluate(r"""async () => {
+      const G = '/games/the-gioi-khoi/', imp = p => import(G + p), wait = ms => new Promise(r => setTimeout(r, ms));
+      const g = __g, out = {}; const { stepCameraFx, newCameraFx } = await imp('render/camerafx.js');
+      // camera: lăn thì hạ thấp, hết lăn thì trở lại
+      const cf = newCameraFx(); for (let i = 0; i < 12; i++) stepCameraFx(cf, 0.05, { moving: false, sprint: false, onGround: true, speed: 0, rolling: -1 }); const mid = cf.roll, side = cf.rollSide;
+      for (let i = 0; i < 30; i++) stepCameraFx(cf, 0.05, { moving: false, sprint: false, onGround: true, speed: 0 }); out.cam = [mid > 0.8, side, cf.roll < 0.05];
+      // người chơi khác theo ps[].act: tư thế khác nhau, khiên đeo hiện ra, nhấc lên khi giơ
+      const L = g.local, mk = (act, off) => ({ key: 'p:zz', kind: 'player', uid: 'zz', name: 'Z', x: L.x + 3, y: L.y, z: L.z + 3, yaw: 0, hp: 20, maxHp: 20, act, off });
+      const pose = act => { g.ents.update([mk(act, act === 1 ? 'wood_shield' : null)], 1, 0.016, [], g.scene.camera.position); const r = g.ents.rigOf('p:zz'); return { arms: r.arms.map(v => Math.round(v * 100) / 100), p: g.ents.poseOf('p:zz') }; };
+      out.poses = [0, 1, 2, 3, 4].map(pose); out.armSets = new Set(out.poses.map(p => JSON.stringify(p.arms))).size;
+      g.ents.update([mk(0, 'iron_shield')], 1, 0.016, [], g.scene.camera.position); out.shieldDown = g.ents.poseOf('p:zz');
+      g.ents.update([mk(1, 'iron_shield')], 1, 0.016, [], g.scene.camera.position); out.shieldUp = g.ents.poseOf('p:zz');
+      g.ents.update([mk(0, null)], 1, 0.016, [], g.scene.camera.position); out.shieldGone = g.ents.poseOf('p:zz').shield;
+      // quái ngả người khi báo hiệu đòn
+      const { spawnMob } = await imp('sim/mobs.js'); const game = g.game; const m = spawnMob(game, 'xac-song', L.x + 3, L.y, L.z - 3); m.frozen = true;
+      await wait(500); g.handleEvent({ t: 'windup', id: m.id, time: 0.35 }); await wait(250); out.wind = g.ents.poseOf('e:' + m.id);
+      // âm thanh và thông báo
+      const st = () => ({ ...g.sfx.stats });
+      for (const ev of [{ t: 'exhausted' }, { t: 'shield', perfect: true }, { t: 'shield', broke: true }, { t: 'shield', dmg: 2 }, { t: 'roll', uid: 'zz' }, { t: 'crit', id: m.id }, { t: 'parry', id: m.id }, { t: 'windup', id: m.id, time: 0.3 }, { t: 'snd', n: 'bowshot', x: L.x, z: L.z }, { t: 'snd', n: 'bowshot', x: L.x + 500, z: L.z }]) g.handleEvent(ev);
+      const s = st(); out.sfx = ['exhausted', 'parry', 'shieldbreak', 'shieldhit', 'crit', 'windup', 'bowshot'].map(k => s[k] || 0);
+      g.handleEvent({ t: 'exhausted' }); out.toast1 = document.getElementById('toast').textContent; g.handleEvent({ t: 'shield', broke: true }); out.toast2 = document.getElementById('toast').textContent;
+      g.handleEvent({ t: 'fail', a: 'shoot', reason: 'no-ammo' }); out.toast3 = document.getElementById('toast').textContent; g.handleEvent({ t: 'fail', a: 'roll', reason: 'tired' }); out.toast4 = document.getElementById('toast').textContent;
+      for (const name of ['roll', 'bowdraw', 'bowshot', 'shieldhit', 'parry', 'shieldbreak', 'exhausted', 'crit', 'windup']) g.sfx.play(name);
+      return out;
+    }""")
+    assert r['cam'] == [True, -1, True], r
+    assert r['armSets'] == 5, r
+    assert not r['poses'][0]['p']['shield'] and r['poses'][1]['p']['shield'] and r['poses'][1]['p']['shieldUp'], r
+    assert r['shieldDown']['shield'] and not r['shieldDown']['shieldUp'] and r['shieldUp']['shieldUp'] and not r['shieldGone'], r
+    assert r['wind']['wind'] and r['wind']['rx'] < -0.05, r
+    assert all(n >= 1 for n in r['sfx'][:6]) and r['sfx'][6] == 1, r                        # tiếng bắn ở xa 500 block bị bỏ
+    assert r['toast1'] == 'Hết sức!' and r['toast2'] == 'Khiên vỡ!' and r['toast3'] == 'Hết mũi tên!' and r['toast4'] == 'Hết sức!', r
+
+
+
+@test
+def test_combat2_fall_speed_is_measured_by_the_host_from_height_changes(pg):
+    r = ev(pg, FIGHT_JS + r"""
+      const { g, p, m, cx, cz, y0 } = mkFight('iron_sword'); const out = {};
+      const st = (y, extra = {}) => ({ x: cx + 0.5, y, z: cz + 0.5, yaw: 0, pitch: 0, vx: 0, vy: 0, vz: 0, seq: p.tpSeq, ...extra });
+      g.teleportPlayer(p, cx + 0.5, y0 + 6, cz + 0.5); let y = y0 + 6;
+      for (let i = 0; i < 6; i++) { g.time += 0.05; y -= 0.5; g.applyState('u1', st(y, { vy: +99 })); }               // rơi 10 block/giây; khách khai vy = +99 cũng không ăn thua
+      out.fall = [p.fallVy < -5, g.time > 0]; out.crit = hitAt(g, m, g.time + 1).dmg;
+      // đứng yên trên không nhưng khai vy = -50: host đo được ~0 nên không được x1.5
+      g.teleportPlayer(p, cx + 0.5, y0 + 6, cz + 0.5);
+      for (let i = 0; i < 6; i++) { g.time += 0.05; g.applyState('u1', st(y0 + 6, { vy: -50 })); }
+      m.y = y0 + 6; out.fake = [p.fallVy > -0.5, hitAt(g, m, g.time + 1).dmg]; m.y = y0 + 1;
+      // chạm đất thì không còn đòn rơi dù vận tốc cũ còn âm
+      g.teleportPlayer(p, cx + 0.5, y0 + 1, cz + 0.5); p.fallVy = -9; out.ground = hitAt(g, m, g.time + 1).dmg;
+      return out;
+    """)
+    assert r['fall'][0] and r['crit'] == 9 and r['fake'] == [True, 6] and r['ground'] == 6, r
+
+
+@test
+def test_combat2_tester_abuse_dead_spam_nan_and_bad_save(pg):
+    r = ev(pg, FIGHT_JS + r"""
+      const { g, p, m } = mkFight('wooden_bow'); const out = {};
+      give(g, p, ['wooden_bow', ['arrow', 20]]);
+      // spam: 200 lệnh bắn/lăn/giơ khiên/kéo cung liên tiếp không được lỗi, mũi tên không âm, thể lực trong [0,100]
+      let err = null;
+      try { for (let i = 0; i < 200; i++) { g.time += 0.01; for (const t of ['draw', 'shoot', 'roll', 'guard', 'hit']) g.act('u1', { t, id: m.id, on: true, dx: 0, dy: 0, dz: -1 }); g.tick(0.01); } } catch (e) { err = String(e); }
+      out.err = err; out.sta = p.stamina >= 0 && p.stamina <= 100; out.arr = p.inv.reduce((n, s) => n + (s && s.id === 'arrow' ? s.n : 0), 0) >= 0;
+      // giá trị NaN/Infinity từ khách không làm hỏng toạ độ
+      try { g.act('u1', { t: 'shoot', dx: NaN, dy: Infinity, dz: NaN }); g.act('u1', { t: 'roll', dx: NaN, dz: NaN }); g.tick(0.05); } catch (e) { out.err2 = String(e); }
+      out.finite = [p.x, p.y, p.z].every(Number.isFinite);
+      // chết giữa lúc kéo cung/giơ khiên: mọi lệnh bị từ chối và hồi sinh xoá trạng thái
+      p.hp = 0; p.dead = true;
+      out.dead = ['roll', 'guard', 'draw', 'shoot', 'hit'].map(t => g.act('u1', { t, id: m.id }).ok);
+      g.act('u1', { t: 'respawn' });
+      out.resp = [p.stamina, !!p.guardSince, !!p.drawSince, p.exhaust || 0];
+      // save hỏng ở offhand
+      for (const bad of [{ id: 'khong-co', n: 1 }, 5, 'x', { id: 'wooden_bow', n: 1 }]) {
+        const sv = JSON.parse(JSON.stringify(g.toSave())); (sv.players ||= {}); for (const k in sv.players) sv.players[k].offhand = bad;
+        try { const g2 = Game.fromSave(sv, { spawning: false }); g2.addPlayer('u1', 'T'); g2.tick(0.05); } catch (e) { out.save = String(e); }
+      }
+      return out;
+    """)
+    assert not r.get('err') and not r.get('err2') and r['sta'] and r['arr'] and r['finite'], r
+    assert r['dead'] == [False] * 5 and r['resp'][0] == 100 and not r['resp'][1] and not r['resp'][2], r
+    assert not r.get('save'), r
+
 
 if __name__ == '__main__':
     run(TESTS)

@@ -35,11 +35,14 @@ function pickMove(g, e, d, t, dist) {
   return opts.length ? opts[Math.floor(g.rng() * opts.length)] : null;
 }
 
-function damageNear(g, e, x, z, r, dmg) {
+// blockable: false cho đập vùng và nhảy đập (khiên không chặn được, lăn vẫn né được).
+function damageNear(g, e, x, z, r, dmg, blockable = true) {
   for (const p of alive(g)) if (Math.hypot(p.x - x, p.z - z) <= r + p.w / 2 && Math.abs(p.y - e.y) < 3) {
-    g.hurtPlayer(p, dmg, e);
-    const k = 7 / Math.max(0.1, Math.hypot(p.x - e.x, p.z - e.z));
-    g.emit(p.uid, { t: 'kb', vx: (p.x - e.x) * k, vz: (p.z - e.z) * k, vy: 5 });
+    const res = g.hurtPlayer(p, dmg, e, { blockable });
+    if (res.how === null || res.how === 'broke' || res.how === 'shield') {
+      const k = 7 / Math.max(0.1, Math.hypot(p.x - e.x, p.z - e.z)) * (res.how === 'shield' ? 0.5 : 1);
+      g.emit(p.uid, { t: 'kb', vx: (p.x - e.x) * k, vz: (p.z - e.z) * k, vy: 5 });
+    }
   }
 }
 
@@ -77,10 +80,10 @@ function stepBossAI(g, e, d, dt) {
 
   if (e.act) {
     const a = e.act;
-    if (a.type === 'slam') { e.vx = e.vz = 0; if (g.time >= a.until) { damageNear(g, e, a.x, a.z, a.r, a.dmg); g.emit(null, { t: 'swing', id: e.id }); e.act = null; } }
+    if (a.type === 'slam') { e.vx = e.vz = 0; if (g.time >= a.until) { damageNear(g, e, a.x, a.z, a.r, a.dmg, false); g.emit(null, { t: 'swing', id: e.id }); e.act = null; } }
     else if (a.type === 'leap') {
       if (a.phase === 'wind') { e.vx = e.vz = 0; if (g.time >= a.until) { const dx = a.tx - e.x, dz = a.tz - e.z, T = 0.7; e.vx = dx / T; e.vz = dz / T; e.vy = 9; a.phase = 'air'; a.t0 = g.time; } }
-      else if (e.onGround && g.time - a.t0 > 0.25) { e.vx = e.vz = 0; damageNear(g, e, e.x, e.z, a.r, a.dmg); e.act = null; }
+      else if (e.onGround && g.time - a.t0 > 0.25) { e.vx = e.vz = 0; damageNear(g, e, e.x, e.z, a.r, a.dmg, false); e.act = null; }
       else if (g.time - a.t0 > 2) e.act = null;
     }
     return;

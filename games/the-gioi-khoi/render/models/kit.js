@@ -162,6 +162,16 @@ export function animate(rig, st) {
       if (b.role === 'leg') rx += d * 0.9; else if (b.role === 'arm' || b.role === 'armstill') rx += d * 0.8;
       else if (b.role === 'head') rx += d * 0.55; else if (b.role === 'flap') rz += d * 1.1; else if (b.role === 'tail' || b.role === 'tailseg') rx += d * 0.4;
     }
+    if (st.act) {                                                   // tư thế chiến đấu của người chơi: 1 giơ khiên, 2 kéo cung, 3 lăn, 4 choáng/kiệt sức
+      const k = st.act;
+      if (k === 1 && b.id === 'armL') { rx = -1.35; rz = 0.25; }
+      else if (k === 2 && b.id === 'armL') { rx = -1.5; }
+      else if (k === 2 && b.id === 'armR') { rx = -1.3; ry = 0.5; }
+      else if (k === 3 && (b.id === 'body' || b.id === 'head')) rx = b.id === 'body' ? 0.9 : 0.4;
+      else if (k === 3 && (b.role === 'arm' || b.role === 'leg')) rx = b.role === 'leg' ? -1.0 : -1.4;
+      else if (k === 4 && b.id === 'head') rz = 0.35;
+      else if (k === 4 && b.role === 'arm') rx = 0.4;
+    }
     bone.rotation.set(rx, ry, rz);
   }
   if (rig.model.hover) rig.root.position.y = Math.sin(st.t * 2) * 0.12 * rig.model.scale + rig.model.hover * rig.model.scale / 16;

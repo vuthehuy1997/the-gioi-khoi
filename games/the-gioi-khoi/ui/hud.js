@@ -2,10 +2,14 @@
 import { ITEMS } from '../content/items.js';
 import { EFFECTS } from '../content/farming.js';
 import { foodIcon, fxIcon } from './icons.js';
+import { weaponOf, BOW_COST, PARRY_WINDOW } from '../sim/rules.js';
 
 const $ = id => document.getElementById(id);
 export const itemName = id => (ITEMS[id] ? ITEMS[id].name : id);
 // Chú giải vật phẩm nhiều dòng (tên, thức ăn, hiệu ứng, rủi ro, công dụng); dùng làm title của ô kho và thanh nhanh.
+const CLS_NAME = { hand: 'Tay không', sword: 'Kiếm', axe: 'Rìu', club: 'Chùy', spear: 'Giáo' };
+const CLS_TRAIT = { hand: 'Đánh nhẹ, nhanh.', sword: 'Chuỗi 3 đòn trúng liên tiếp: đòn cuối mạnh x1.5 và hất lùi.', axe: 'Quét: đánh thêm tối đa 2 quái đứng gần mục tiêu (70% sát thương).',
+  club: 'Nặng x1.3, choáng quái thường 1 giây (boss miễn choáng).', spear: 'Tầm xa hơn, chọc thẳng không đẩy lùi.' };
 const USE_TEXT = { hoe: 'Bấm phải lên đất, cỏ, bùn, rêu để cày ruộng.' };
 export function itemTip(id) {
   const it = ITEMS[id], lines = [itemName(id)];
@@ -20,7 +24,15 @@ export function itemTip(id) {
   if (id === 'ancient_shard') lines.push('Đổi lấy cuốc và kiếm cổ vật ở đe rèn, hoặc bán cho thương nhân.');
   if (it.tool && USE_TEXT[it.tool.type]) lines.push(USE_TEXT[it.tool.type]);
   if (id === 'shears') lines.push('Bấm phải lên cừu trưởng thành để cắt len.');
-  if (it.dmg > 1 && it.tool) lines.push(`Sát thương ${it.dmg}`);
+  const weaponish = it.dmg > 1 && (it.tool && ['sword', 'axe'].includes(it.tool.type) || it.weapon || it.relic);
+  if (weaponish) {
+    const w = weaponOf(it);
+    lines.push(`${CLS_NAME[w.cls]} · sát thương ${it.dmg}`, `Hồi chiêu ${w.cd} giây · thể lực ${w.cost}/đòn · tầm ${w.reach}`, CLS_TRAIT[w.cls]);
+  } else if (it.dmg > 1 && it.tool) lines.push(`Sát thương ${it.dmg}`);
+  if (it.bow) lines.push(`Giữ chuột trái để kéo, thả để bắn (cần Mũi tên, tốn ${BOW_COST} thể lực).`, `Kéo đầy ${it.bow.draw} giây · sát thương ${it.bow.dmgMin} tới ${it.bow.dmgMax}`);
+  if (it.shield) lines.push(`Khiên: giảm ${Math.round(it.shield.reduce * 100)}% sát thương chặn được ở phía trước. Bấm chuột phải trong kho để đeo; giữ chuột phải hoặc F để giơ.`,
+    `Mỗi cú chặn tốn thể lực gấp ${it.shield.costMul} lần sát thương; đỡ trong ${PARRY_WINDOW} giây đầu là đỡ hoàn hảo.`);
+  if (id === 'arrow') lines.push('Đạn của cung. Có thể nhặt lại một phần sau khi bắn trúng quái.');
   return lines.join('\n');
 }
 export const itemColor = id => { let h = 0; for (const c of String(id)) h = (h * 31 + c.charCodeAt(0)) % 360; return `hsl(${h},55%,45%)`; };
@@ -78,6 +90,36 @@ export function createHud() {
         const t = document.createElement('span'); t.className = 'left'; t.textContent = f.left;
         d.append(im, nm, t); bar.appendChild(d); fxLeft.set(f.id, performance.now() + f.left * 1000);
       }
+    },
+    // Thể lực: sta 0..100 (làm tròn), exh > 0 là kiệt sức. Thanh xanh lá, vàng dưới 40, đỏ nhấp nháy khi kiệt sức.
+    setStamina({ sta, exh }) {
+      const el = $('stamina'); if (!el) return;
+      const v = Math.max(0, Math.min(100, sta ?? 100)), i = el.firstElementChild, key = v + ':' + (exh > 0);
+      if (el.dataset.k === key) return; el.dataset.k = key;
+      i.style.width = v + '%'; el.classList.toggle('low', v < 40); el.classList.toggle('exh', exh > 0); el.title = `Thể lực ${Math.round(v)}/100`;
+    },
+    // Chuỗi kiếm: 3 chấm dưới tâm ngắm, n chấm sáng. show=false khi không cầm kiếm.
+    setCombo(n, show = true) {
+      const el = $('combo'); if (!el) return;
+      const key = show + ':' + n; if (el.dataset.k === key) return; el.dataset.k = key;
+      el.hidden = !show; [...el.children].forEach((c, k) => c.classList.toggle('on', k < n));
+    },
+    // Vòng kéo cung: p 0..1 hoặc null (ẩn); arrows: số mũi tên (hoặc null khi không cầm cung).
+    setDraw(p, arrows) {
+      const ring = $('drawring'), cnt = $('arrows'); if (!ring || !cnt) return;
+      ring.hidden = p == null; if (p != null) { const v = Math.round(Math.max(0, Math.min(1, p)) * 100); ring.dataset.p = v; ring.style.setProperty('--p', v + '%'); ring.classList.toggle('full', v >= 100); }
+      cnt.hidden = arrows == null; if (arrows != null) cnt.textContent = '➶ ' + arrows;
+    },
+    // Biểu tượng khiên: hiện khi đang đeo khiên; sáng khi giơ.
+    setShield(on, has) {
+      const el = $('shieldico'); if (!el) return;
+      el.hidden = !has; el.classList.toggle('up', !!on);
+    },
+    shieldFlash(kind) {
+      const el = $('shieldico'), f = $('fightflash'); if (!el || !f) return;
+      for (const n of ['perfect', 'broke']) { el.classList.remove(n); f.classList.remove(n); }
+      void el.offsetWidth; el.classList.add(kind); f.classList.add(kind);
+      clearTimeout(el._t); el._t = setTimeout(() => { el.classList.remove(kind); f.classList.remove(kind); }, 400);
     },
     // Dòng trạng thái hầm ngục: st = { name, room (1..4), left, keys: { dungeon_key, boss_key } } hoặc null (ngoài hầm).
     setDungeon(st) {

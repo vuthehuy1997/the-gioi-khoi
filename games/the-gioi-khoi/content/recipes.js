@@ -52,6 +52,16 @@ export const RECIPES = [
   r('iron_sword', ['iron_sword', 1], { iron_ingot: 2, stick: 1 }, 'anvil'),
   r('iron_hoe', ['iron_hoe', 1], { iron_ingot: 2, stick: 2 }, 'anvil'),
   r('shears', ['shears', 1], { iron_ingot: 2 }, 'anvil'),
+  // ---- chiến đấu: cung, mũi tên, khiên, giáo, chùy ----
+  r('bow', ['bow', 1], { stick: 3, pelt: 1 }, true),
+  r('iron_bow', ['iron_bow', 1], { iron_ingot: 2, stick: 3, pelt: 1 }, 'anvil'),
+  r('arrow', ['arrow', 4], { stick: 1, bone: 1 }, true),
+  r('wood_shield', ['wood_shield', 1], { planks: 5, stick: 1 }, true),
+  r('iron_shield', ['iron_shield', 1], { iron_ingot: 4, planks: 2 }, 'anvil'),
+  r('wood_spear', ['wood_spear', 1], { planks: 1, stick: 2 }, true),
+  r('stone_spear', ['stone_spear', 1], { stone: 2, stick: 2 }, true),
+  r('iron_spear', ['iron_spear', 1], { iron_ingot: 2, stick: 2 }, 'anvil'),
+  r('iron_club', ['iron_club', 1], { iron_ingot: 3, stick: 1 }, 'anvil'),
   // ---- trang bị theo vùng: mỗi bộ dùng tài nguyên của một vùng và chống một loại môi trường ----
   ...set('fur', true, ['pelt', [3, 5, 4, 2]]),                                        // Rừng/Núi Băng: chống lạnh
   ...set('chitin', true, ['chitin', [3, 5, 4, 2]]),                                   // Sa Mạc/Núi Lửa: chống nóng

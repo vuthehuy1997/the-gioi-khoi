@@ -120,3 +120,27 @@ html,body{margin:0;height:100%;background:#12141a;color:#eeede8;font-family:'Seg
 .panel .lootrow .slot{width:40px;height:40px;border:2px solid #fff4;border-radius:4px;position:relative;display:grid;place-items:center}
 .panel .lootrow .slot img{width:34px;height:34px}
 .panel .lootrow .slot b{position:absolute;right:2px;bottom:0;font-size:12px}
+
+/* chiến đấu: thể lực, vòng kéo cung, chấm chuỗi kiếm, khiên */
+#stamina{position:absolute;left:12px;bottom:38px;width:150px;height:5px;border-radius:3px;background:#0009;border:1px solid #fff3;overflow:hidden;pointer-events:none}
+#stamina i{display:block;height:100%;width:100%;background:#4cd964;transition:width .1s linear}
+#stamina.low i{background:#f2c230}
+#stamina.exh i{background:#ff3b30;animation:exhaust .5s infinite}
+@keyframes exhaust{0%,100%{opacity:1}50%{opacity:.35}}
+#drawring{position:absolute;left:50%;top:50%;width:44px;height:44px;transform:translate(-50%,-50%);border-radius:50%;pointer-events:none;--p:0%;
+  background:conic-gradient(#ffd45e var(--p),#ffffff22 0);-webkit-mask:radial-gradient(circle,transparent 17px,#000 18px);mask:radial-gradient(circle,transparent 17px,#000 18px)}
+#drawring.full{background:#7dff7d}
+#drawring[hidden],#combo[hidden],#arrows[hidden],#shieldico[hidden]{display:none}
+#combo{position:absolute;left:50%;top:calc(50% + 28px);transform:translateX(-50%);display:flex;gap:6px;pointer-events:none}
+#combo i{width:9px;height:9px;border-radius:50%;background:#ffffff33;border:1px solid #fff8}
+#combo i.on{background:#ffd45e;box-shadow:0 0 6px #ffb52e}
+#arrows{position:absolute;left:50%;bottom:62px;transform:translate(130px,0);font-size:16px;font-weight:700;text-shadow:0 0 3px #000;pointer-events:none}
+#shieldico{position:absolute;left:176px;bottom:30px;width:28px;height:28px;border-radius:6px;background:#0007;opacity:.45;pointer-events:none;border:2px solid #fff4}
+#shieldico::after{content:'';position:absolute;inset:4px;border:2px solid #cfd6e0;border-radius:3px 3px 50% 50%}
+#shieldico.up{opacity:1;border-color:#9fd0ff;box-shadow:0 0 8px #6fb4ff}
+#shieldico.perfect{border-color:#ffe066;box-shadow:0 0 14px #ffd23c;opacity:1}
+#shieldico.broke{border-color:#ff4d4d;box-shadow:0 0 14px #ff3b30;opacity:1}
+#fightflash{position:absolute;inset:0;pointer-events:none;opacity:0;transition:opacity .4s}
+#fightflash.perfect{opacity:1;box-shadow:inset 0 0 90px 24px #ffe066aa;transition:none}
+#fightflash.broke{opacity:1;box-shadow:inset 0 0 90px 24px #ff3b30aa;transition:none}
+.slot.eq.offhand{border-color:#9fd0ff88}

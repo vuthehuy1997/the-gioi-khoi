@@ -35,7 +35,7 @@ export const ITEMS = Object.fromEntries([
   named('iron_shovel', 'Xẻng sắt', 'shovel', 2, 4.5, 3, { color: '#b7bcc4' }), named('iron_sword', 'Kiếm sắt', 'sword', 2, 1, 6, { color: '#b7bcc4' }),
   // vũ khí di vật: rèn từ chiến lợi phẩm của boss
   named('wolf_blade', 'Kiếm Nanh Sói', 'sword', 3, 1, 9, { relic: true, color: '#c9ced6' }), named('scorpion_blade', 'Dao Bọ Cạp Chúa', 'sword', 3, 1, 10, { relic: true, color: '#e0912e' }),
-  named('frost_axe', 'Rìu Băng Đế', 'axe', 3, 5, 11, { relic: true, color: '#7fd4ff' }), named('swamp_club', 'Chùy Chúa Đầm Lầy', 'sword', 3, 1, 11, { relic: true, color: '#5a9a3a' }),
+  named('frost_axe', 'Rìu Băng Đế', 'axe', 3, 5, 11, { relic: true, color: '#7fd4ff' }), named('swamp_club', 'Chùy Chúa Đầm Lầy', 'sword', 3, 1, 11, { relic: true, color: '#5a9a3a', weapon: { cls: 'club' } }),
   named('magma_blade', 'Kiếm Nham Thạch', 'sword', 4, 1, 13, { relic: true, color: '#ff6a1a' }), named('prism_blade', 'Kiếm Lăng Kính', 'sword', 4, 1, 14, { relic: true, color: '#d8a8ff' }),
   ...armor,
   tool('wood_pick', 'pick', 1, 2, 2), tool('stone_pick', 'pick', 2, 3.5, 3), tool('crystal_pick', 'pick', 3, 5, 4),
@@ -60,6 +60,12 @@ export const ITEMS = Object.fromEntries([
   ['dungeon_key', { name: 'Chìa Hầm', stack: 8, bound: true }], ['boss_key', { name: 'Chìa Chủ Hầm', stack: 8, bound: true }],
   ['heal_potion', { name: 'Bình Hồi Máu', heal: 12, food: 0, stack: 16 }], ['ancient_shard', { name: 'Mảnh Cổ Vật' }],
   named('ancient_pick', 'Cuốc Cổ Vật', 'pick', 3, 6.5, 5, { color: '#e0b04a' }), named('delver_blade', 'Kiếm Người Khai Hầm', 'sword', 3, 1, 12, { relic: true, color: '#f0cf6a' }),
+  // chiến đấu: giáo (tầm 6), chùy, cung + mũi tên, khiên (đeo ở ô tay phụ). weapon: lớp vũ khí (xem sim/rules.js); bow/shield: thông số
+  ['wood_spear', { name: 'Giáo gỗ', dmg: 4, stack: 1, weapon: { cls: 'spear' } }], ['stone_spear', { name: 'Giáo đá', dmg: 5, stack: 1, weapon: { cls: 'spear' } }], ['iron_spear', { name: 'Giáo sắt', dmg: 7, stack: 1, weapon: { cls: 'spear' }, color: '#b7bcc4' }],
+  ['iron_club', { name: 'Chùy sắt', dmg: 8, stack: 1, weapon: { cls: 'club' }, color: '#b7bcc4' }],
+  ['bow', { name: 'Cung gỗ', stack: 1, bow: { draw: 1.0, dmgMin: 3, dmgMax: 10, speedMin: 12, speedMax: 28 } }], ['iron_bow', { name: 'Cung sắt', stack: 1, bow: { draw: 0.8, dmgMin: 4, dmgMax: 14, speedMin: 14, speedMax: 32 }, color: '#b7bcc4' }],
+  ['arrow', { name: 'Mũi tên', stack: 64 }],
+  ['wood_shield', { name: 'Khiên gỗ', stack: 1, shield: { reduce: 0.6, costMul: 2 } }], ['iron_shield', { name: 'Khiên sắt', stack: 1, shield: { reduce: 0.8, costMul: 1.5 }, color: '#b7bcc4' }],
   tool('wood_sword', 'sword', 1, 1, 4), tool('stone_sword', 'sword', 2, 1, 5), tool('crystal_sword', 'sword', 3, 1, 7), tool('gem_sword', 'sword', 4, 1, 10),
 ].map(([id, d]) => [id, { id, stack: 64, ...d }]));
 
