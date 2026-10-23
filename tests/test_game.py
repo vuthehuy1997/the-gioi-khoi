@@ -4948,5 +4948,73 @@ def test_combat2_tester_abuse_dead_spam_nan_and_bad_save(pg):
     assert not r.get('save'), r
 
 
+KEYS_SETUP = r"""
+      const game = __g.game, uid = __g.S.uid, p = game.player(uid), wait = ms => new Promise(r => setTimeout(r, ms));
+      const { B } = await import('/games/the-gioi-khoi/world/blocks.js');
+      const cx = Math.floor(p.x) + 10, cz = Math.floor(p.z), y0 = Math.floor(p.y) - 1;
+      for (let dx = -10; dx <= 10; dx++) for (let dz = -10; dz <= 10; dz++) { game.world.set(cx + dx, y0, cz + dz, B.GRASS); for (let dy = 1; dy <= 5; dy++) game.world.set(cx + dx, y0 + dy, cz + dz, 0); }
+      p.maxHp = p.hp = 1000; p.dead = false; p.stamina = 100; p.offhand = 'wood_shield';
+      p.inv.fill(null); p.inv[0] = { id: 'iron_sword', n: 1 }; p.sel = 0; game.touch(p);
+      game.teleportPlayer(p, cx + 0.5, y0 + 1, cz + 0.5); await wait(900);
+      const st = () => ({ sta: Math.round(p.stamina), guard: p.guardSince !== null && p.guardSince !== undefined, x: __g.local.x, z: __g.local.z, roll: !!__g.local.roll });
+"""
+
+
+@test
+def test_keys_q_rolls_and_f_guards_with_real_keyboard(pg, browser, base):
+    _open_game(pg, base)
+    a = pg.evaluate("async () => {" + KEYS_SETUP + "return { s0: st() }; }")
+    s0 = a['s0']; assert s0['sta'] == 100 and not s0['guard'], a
+    # Q + W: lăn về phía trước, trừ thể lực, người chơi dịch chuyển rõ rệt
+    pg.keyboard.down('KeyW'); pg.wait_for_timeout(150); pg.keyboard.press('KeyQ'); pg.wait_for_timeout(120)
+    mid = pg.evaluate("() => ({ roll: !!__g.local.roll })")
+    pg.wait_for_timeout(700); pg.keyboard.up('KeyW')
+    r = pg.evaluate("() => { const p = __g.game.player(__g.S.uid); return { sta: Math.round(p.stamina), x: __g.local.x, z: __g.local.z }; }")
+    assert mid['roll'], mid                                                       # client bắt đầu lăn ngay khi nhấn Q
+    assert r['sta'] <= 80, r                                                      # host trừ thể lực (ROLL_COST 25, đã hồi một ít)
+    moved = ((r['x'] - s0['x']) ** 2 + (r['z'] - s0['z']) ** 2) ** 0.5
+    assert moved > 2.5, (moved, r, s0)                                            # lăn + đi bộ: dịch > 2,5 block
+    # nhấn giữ Q (lặp phím) chỉ lăn một lần; lăn tiếp trong thời gian hồi chiêu bị bỏ qua
+    pg.wait_for_timeout(1500)
+    pg.evaluate("() => { __g.game.player(__g.S.uid).stamina = 100; }"); pg.wait_for_timeout(200)
+    sta1 = pg.evaluate("() => Math.round(__g.game.player(__g.S.uid).stamina)")
+    pg.keyboard.down('KeyQ'); pg.keyboard.down('KeyQ'); pg.keyboard.down('KeyQ'); pg.keyboard.up('KeyQ'); pg.wait_for_timeout(400)
+    sta2 = pg.evaluate("() => Math.round(__g.game.player(__g.S.uid).stamina)")
+    assert 100 - sta2 < 40, (sta1, sta2)                                          # chỉ một lần trừ (25), không phải ba lần
+    pg.wait_for_timeout(1500)
+    # F: giơ khiên khi giữ, hạ khi thả
+    pg.evaluate("() => { __g.game.player(__g.S.uid).stamina = 100; }")
+    pg.keyboard.down('KeyF'); pg.wait_for_timeout(300)
+    g1 = pg.evaluate("() => __g.game.player(__g.S.uid).guardSince !== null && __g.game.player(__g.S.uid).guardSince !== undefined")
+    pg.keyboard.up('KeyF'); pg.wait_for_timeout(300)
+    g2 = pg.evaluate("() => __g.game.player(__g.S.uid).guardSince !== null && __g.game.player(__g.S.uid).guardSince !== undefined")
+    assert g1 and not g2, (g1, g2)
+    # mở kho (E): Q và F bị bỏ qua; đóng kho thì dùng lại được
+    pg.evaluate("() => { __g.game.player(__g.S.uid).stamina = 100; }")
+    pg.keyboard.press('KeyE'); pg.wait_for_timeout(300)
+    pg.keyboard.press('KeyQ'); pg.keyboard.down('KeyF'); pg.wait_for_timeout(300); pg.keyboard.up('KeyF')
+    ui = pg.evaluate("() => ({ sta: Math.round(__g.game.player(__g.S.uid).stamina), guard: __g.game.player(__g.S.uid).guardSince !== null && __g.game.player(__g.S.uid).guardSince !== undefined })")
+    assert ui['sta'] == 100 and not ui['guard'], ui
+    pg.keyboard.press('KeyE'); pg.wait_for_timeout(300)
+    pg.keyboard.down('KeyF'); pg.wait_for_timeout(300)
+    again = pg.evaluate("() => __g.game.player(__g.S.uid).guardSince !== null && __g.game.player(__g.S.uid).guardSince !== undefined")
+    pg.keyboard.up('KeyF'); assert again, again
+
+
+@test
+def test_keys_q_ignored_when_exhausted_and_f_needs_a_shield(pg, browser, base):
+    _open_game(pg, base)
+    pg.evaluate("async () => {" + KEYS_SETUP + "}")
+    # hết thể lực: Q không làm gì
+    pg.evaluate("() => { const p = __g.game.player(__g.S.uid); p.stamina = 5; }"); pg.wait_for_timeout(250)
+    pg.keyboard.press('KeyQ'); pg.wait_for_timeout(300)
+    r = pg.evaluate("() => ({ roll: !!__g.local.roll })"); assert not r['roll'], r
+    # không có khiên: F không giơ
+    pg.evaluate("() => { const p = __g.game.player(__g.S.uid); p.stamina = 100; p.offhand = null; __g.game.touch(p); }"); pg.wait_for_timeout(300)
+    pg.keyboard.down('KeyF'); pg.wait_for_timeout(300)
+    g = pg.evaluate("() => __g.game.player(__g.S.uid).guardSince !== null && __g.game.player(__g.S.uid).guardSince !== undefined")
+    pg.keyboard.up('KeyF'); assert not g, g
+
+
 if __name__ == '__main__':
     run(TESTS)
