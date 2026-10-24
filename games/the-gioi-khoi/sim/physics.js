@@ -68,3 +68,13 @@ export function stepPlayer(world, p, input, dt) {
   moveBody(world, p, dt);
   return p;
 }
+
+// Đẩy thân người chơi ra khỏi các vật đứng yên (NPC): vòng tròn { x, z, r }; chỉ chỉnh x, z của body, không làm kẹt tường (chỉ dùng khi chỗ mới còn trống).
+export function pushOutOf(world, body, circles) {
+  for (const c of circles) {
+    const dx = body.x - c.x, dz = body.z - c.z, min = c.r + (body.w || 0.6) / 2, dd = Math.hypot(dx, dz);
+    if (dd >= min || Math.abs(body.y - (c.y ?? body.y)) > 1.8) continue;
+    const ux = dd > 1e-3 ? dx / dd : 1, uz = dd > 1e-3 ? dz / dd : 0, nx = c.x + ux * min, nz = c.z + uz * min;
+    if (!world.isSolidAt(nx, body.y + 0.2, nz) && !world.isSolidAt(nx, body.y + 1.2, nz)) { body.x = nx; body.z = nz; }
+  }
+}

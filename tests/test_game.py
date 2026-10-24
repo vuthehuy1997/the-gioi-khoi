@@ -5072,5 +5072,20 @@ def test_qa_damage_direction_arrow_and_hit_kick(pg, browser, base):
     assert not pg.evaluate("() => document.getElementById('dmgdir').classList.contains('on')")   # tự tắt sau ~1 giây
 
 
+
+@test
+def test_qa_player_is_pushed_out_of_npc_body(pg):
+    r = ev(pg, GAME_JS + r"""
+      const { pushOutOf } = await imp('sim/physics.js');
+      const { g, p } = mkGame(); const body = { x: p.x, y: p.y, z: p.z, w: 0.6 };
+      const npc = { x: p.x + 0.1, y: p.y, z: p.z, r: 0.35 };
+      pushOutOf(g.world, body, [npc]);
+      const far = { x: p.x + 5, y: p.y, z: p.z, w: 0.6 }; pushOutOf(g.world, far, [npc]);
+      return { d: Math.hypot(body.x - npc.x, body.z - npc.z), moved: far.x - (p.x + 5) };
+    """)
+    assert r['d'] >= 0.6, r
+    assert r['moved'] == 0, r
+
+
 if __name__ == '__main__':
     run(TESTS)

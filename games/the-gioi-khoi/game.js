@@ -5,7 +5,7 @@ import { mountHomeLink } from '../../platform/ui/bar.js';
 import { cleanName } from '../../platform/net/protocol.js';
 import { World } from './world/world.js';
 import { Game } from './sim/game.js';
-import { makePlayer, stepPlayer } from './sim/physics.js';
+import { makePlayer, stepPlayer, pushOutOf } from './sim/physics.js';
 import { breakTimeFor, nearStations, weaponOf, reachOf, cdOf, costOf, drawForce, ROLL_TIME, ROLL_DIST, ROLL_COST, ROLL_CD, SLOW_MUL, BOW_CD } from './sim/rules.js';
 import { lightLevel } from './sim/daynight.js';
 import { HostSession } from './net/host.js';
@@ -511,6 +511,7 @@ function frameBody(dt) {
   if (!ui && !guardOn && !stunned && !local.roll && y.offhand && (mouse.right || keys.has('KeyF')) && nowS > guardRetry) { guardRetry = nowS + 0.3; startGuard(); }      // giữ nút mà khiên bị hạ (choáng, lăn): giơ lại khi được
   const inp = ui || stunned ? {} : inputNow();                                                // choáng: bỏ input di chuyển
   if (!y.dead) stepPlayer(S.world, local, local.roll ? { ...inp, jump: false, roll: local.roll } : inp, dt);
+  if (!y.dead) pushOutOf(S.world, local, interp.es.filter(e => e.kind === 'npc').map(e => ({ x: e.x, y: e.y, z: e.z, r: 0.35 })));      // NPC là vật cản mềm: không đi xuyên vào thân
   const hs = Math.hypot(local.vx, local.vz), moving = !y.dead && hs > 0.8 && (inp.fx || inp.fz);
   S.sendState({ x: local.x, y: local.y, z: local.z, vx: local.vx, vy: local.vy, vz: local.vz, yaw: local.yaw, pitch: local.pitch, sneak: !!inp.sneak, sprint: !!(inp.sprint && moving && !inp.sneak) });
   sneakK += ((inp.sneak ? 1 : 0) - sneakK) * Math.min(1, dt * 12); $('sneak').hidden = !inp.sneak;
