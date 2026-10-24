@@ -192,7 +192,7 @@ function refreshYou() {
 function handleEvent(ev) {
   switch (ev.t) {
     case 'you': refreshYou(); break;
-    case 'hurt': hud.setHp(ev.hp, S.you.maxHp); if (ev.by !== undefined && ev.by !== null) { hud.flash(); sfx.play('hurt'); camFx.tilt = (Math.random() < 0.5 ? -1 : 1) * 0.1; } break;
+    case 'hurt': hud.setHp(ev.hp, S.you.maxHp); if (ev.by !== undefined && ev.by !== null) { hud.flash(); sfx.play('hurt'); camFx.tilt = (Math.random() < 0.5 ? -1 : 1) * 0.1; const src = interp.es.find(x => x.id === ev.by); if (src) hud.dmgDir(Math.atan2(-(src.x - local.x), -(src.z - local.z)) - local.yaw); } break;
     case 'teleport': local.x = ev.x; local.y = ev.y; local.z = ev.z; local.vx = local.vy = local.vz = 0; break;
     case 'kb': local.vx += ev.vx; local.vz += ev.vz; local.vy = Math.max(local.vy, ev.vy); break;
     case 'toast': hud.toast(ev.text); break;
@@ -219,7 +219,7 @@ function handleEvent(ev) {
     case 'pickup': sfx.play('pickup'); hud.toast(`+${ev.n} ${ITEMS[ev.item].name}`, 1200); break;
     case 'fail': onFail(ev); break;
     case 'block': confirmEdit(ev.x, ev.y, ev.z); break;
-    case 'hit': { const e = interp.es.find(x => x.id === ev.id); if (e) { fx.burst(e.x, e.y + 0.8, e.z, [0.9, 0.12, 0.1], 8, 2.2); const d = Math.hypot(e.x - local.x, e.z - local.z); if (d < 20) sfx.play('hit'); if (e.kind === 'mob' || e.kind === 'boss') director.hurt({ type: e.type, kind: e.kind, dist: d }); } break; }
+    case 'hit': { const e = interp.es.find(x => x.id === ev.id); if (e) { fx.burst(e.x, e.y + 0.8, e.z, [0.9, 0.12, 0.1], 8, 2.2); const d = Math.hypot(e.x - local.x, e.z - local.z); if (d < 20) sfx.play('hit'); if (d < 4.5 && hand.swinging) camFx.kick = -0.025; if (e.kind === 'mob' || e.kind === 'boss') director.hurt({ type: e.type, kind: e.kind, dist: d }); } break; }
     case 'telegraph': { const b = interp.es.find(e => e.id === ev.id); ents.telegraph(ev.x, b ? b.y : local.y, ev.z, ev.r, ev.time); if (Math.hypot(ev.x - local.x, ev.z - local.z) < 40) sfx.play('warn'); break; }
   }
 }
@@ -518,7 +518,7 @@ function frameBody(dt) {
   const bobY = Math.abs(Math.sin(camFx.bob)) * 0.05 * camFx.bobAmp;
   if (Math.abs(scene.camera.fov - camFx.fov) > 0.05) { scene.camera.fov = camFx.fov; scene.camera.updateProjectionMatrix(); }
   scene.camera.position.set(local.x, local.y + 1.62 - bobY - sneakK * 0.3 - camFx.roll * 0.55, local.z);       // lăn: hạ thấp camera
-  scene.camera.rotation.set(local.pitch + camFx.roll * 0.25, local.yaw, camFx.tilt + Math.sin(camFx.bob) * 0.006 * camFx.bobAmp + camFx.roll * 0.3 * camFx.rollSide);
+  scene.camera.rotation.set(local.pitch + camFx.roll * 0.25 + (camFx.kick || 0), local.yaw, camFx.tilt + Math.sin(camFx.bob) * 0.006 * camFx.bobAmp + camFx.roll * 0.3 * camFx.rollSide);
   if (moving && local.onGround) { stepDist += hs * dt; if (stepDist > 2.1) { stepDist = 0; sfx.play('step', { block: S.world.get(local.x, local.y - 0.5, local.z) }); } }
   if (local.onGround && !wasOnGround && local.vy > -1 && lastVy < -9) sfx.play('land');
   wasOnGround = local.onGround; lastVy = local.vy;

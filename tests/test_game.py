@@ -5051,5 +5051,26 @@ def test_qa_guide_hint_without_quests_and_shield_toast_and_ready_filter(pg, brow
     assert n0 > n1, (n0, n1)                           # lọc "chế được" làm danh sách ngắn lại
 
 
+
+@test
+def test_qa_dungeon_mouth_has_arch_with_lintel_and_inner_torches(pg):
+    r = ev(pg, DUNGEON_JS + r"""
+      const { g, site } = mkDg(); const { steps, gy, ox, oz } = site, ax = ox - 2 * steps - 3, w = g.world;
+      return { lintel: [-3, 0, 3].map(lz => w.get(ax, gy + 4, oz + lz)), pillar: w.get(ax, gy + 3, oz + 3), open: w.get(ax, gy + 1, oz), torch: w.get(ax, gy + 2, oz + 2), torch2: w.get(ax, gy + 2, oz - 2), TORCH: B.TORCH };
+    """)
+    assert all(b != 0 for b in r['lintel']) and r['pillar'] != 0, r        # xà ngang và cột
+    assert r['open'] == 0, r                                               # lối đi bên dưới vẫn thông
+    assert r['torch'] == r['TORCH'] and r['torch2'] == r['TORCH'], r
+
+
+@test
+def test_qa_damage_direction_arrow_and_hit_kick(pg, browser, base):
+    _open_game(pg, base)
+    r = pg.evaluate("""() => { __g.hud.dmgDir(1.2); const el = document.getElementById('dmgdir'); return { on: el.classList.contains('on'), t: el.style.transform }; }""")
+    assert r['on'] and 'rotate(-1.2rad)' in r['t'], r
+    pg.wait_for_timeout(1200)
+    assert not pg.evaluate("() => document.getElementById('dmgdir').classList.contains('on')")   # tự tắt sau ~1 giây
+
+
 if __name__ == '__main__':
     run(TESTS)

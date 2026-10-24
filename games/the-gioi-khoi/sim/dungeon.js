@@ -182,7 +182,9 @@ export function buildDungeon(g, id, site) {
     w.set(x, site.y, z, acc);
     for (let y = gy; y <= gy + 5; y++) if (w.get(x, y, z) !== B.AIR) w.set(x, y, z, B.AIR);
   }
-  for (const lz of [-3, 3]) { const x = ox - 2 * steps - 3, z = oz + lz; w.set(x, gy, z, acc); w.set(x, gy + 1, z, acc); w.set(x, gy + 2, z, B.TORCH); }
+  const ax = ox - 2 * steps - 3;                                                         // cổng vòm: hai cột cao 4, xà ngang ở trên, đuốc ngay trong cổng
+  for (const lz of [-3, 3]) { for (let h = 0; h <= 3; h++) w.set(ax, gy + h, oz + lz, acc); w.set(ax, gy + 2, oz + lz * 2 / 3, B.TORCH); }
+  for (let lz = -3; lz <= 3; lz++) w.set(ax, gy + 4, oz + lz, acc);
   for (const [x, y, z] of L.cavList) w.set(x, y, z, B.AIR);
   for (const [x, y, z] of L.floorList) w.set(x, y, z, L.floorBlock);
   for (const [x, y, z] of L.walls) w.set(x, y, z, B.DUNGEON_WALL);

@@ -159,6 +159,8 @@ export function createHud() {
     },
     setRoom(code) { $('roomcode').textContent = code ? 'Phòng ' + code : ''; },
     setProgress(p) { const el = $('dig'); el.hidden = p == null; if (p != null) el.firstElementChild.style.width = Math.min(100, p * 100) + '%'; },
+    // Mũi tên đỏ quanh tâm chỉ hướng kẻ vừa đánh mình (a = góc so với hướng nhìn, 0 = phía trước, dương = bên trái).
+    dmgDir(a) { const el = $('dmgdir'); if (!el) return; el.style.transform = `translate(-50%,-50%) rotate(${-a}rad)`; el.classList.add('on'); clearTimeout(this._dd); this._dd = setTimeout(() => el.classList.remove('on'), 900); },
     flash() { const f = $('flash'); f.classList.add('on'); setTimeout(() => f.classList.remove('on'), 150); },
   };
 }

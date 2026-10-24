@@ -11,12 +11,12 @@ export function stepCameraFx(st, dt, { moving, sprint, onGround, speed, rolling 
   if (moving && onGround) st.bob += dt * (sprint ? 12 : 9) ; else st.bobAmp = st.bobAmp;
   const amp = moving && onGround ? Math.min(1, speed / 4) : 0;
   st.bobAmp += (amp - st.bobAmp) * Math.min(1, dt * 10);
-  st.tilt *= Math.max(0, 1 - dt * 7);
+  st.tilt *= Math.max(0, 1 - dt * 7); st.kick = (st.kick || 0) * Math.max(0, 1 - dt * 12);
   if (rolling) st.rollSide = rolling;
   st.roll += ((rolling ? 1 : 0) - st.roll) * Math.min(1, dt * 14);
   return st;
 }
-export const newCameraFx = () => ({ fov: BASE_FOV, bob: 0, bobAmp: 0, tilt: 0, roll: 0, rollSide: 1 });
+export const newCameraFx = () => ({ fov: BASE_FOV, bob: 0, bobAmp: 0, tilt: 0, kick: 0, roll: 0, rollSide: 1 });
 
 export function createHand(sc) {
   const T = sc.THREE, g = new T.Group();
