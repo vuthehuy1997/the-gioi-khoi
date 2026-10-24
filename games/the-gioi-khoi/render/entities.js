@@ -33,7 +33,7 @@ export function createEntityView(scene, { iconCanvas = null, onDeath = null } = 
     const boss = e.kind === 'boss', text = e.kind === 'npc' ? '❗ ' + (e.name || 'NPC') : e.kind === 'player' ? (e.name || '?') : boss ? BOSSES[e.type].name : MOBS[e.type] ? MOBS[e.type].name : '';
     if (!text) return null;
     const s = new T.Sprite(tagMat(text, boss ? '#ffd35a' : e.kind === 'npc' ? '#9fe3ff' : e.kind === 'player' ? '#ffffff' : '#ffb0a8'));
-    s.scale.set(boss ? 3.6 : 2.4, boss ? 0.68 : 0.45, 1); s.position.y = h + 0.5; s.renderOrder = 10; s.visible = false; return s;
+    s.scale.set(boss ? 3.2 : 1.7, boss ? 0.6 : 0.32, 1); s.position.y = h + 0.35; s.renderOrder = 10; s.visible = false; return s;
   }
 
   // Dấu cảnh giác trên đầu quái: ? vàng (nghi ngờ, đậm dần theo thanh cảnh giác), ! đỏ (đã thấy, đang đuổi), ? cam (đang lục soát).

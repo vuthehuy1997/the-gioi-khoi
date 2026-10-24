@@ -1,7 +1,7 @@
 // Boss: tạo, AI nhiều pha, co giãn độ khó theo số người, đấu trường kích hoạt khi có người bước vào.
 import { BOSSES, SCALE_HP, SCALE_DMG } from '../content/bosses.js';
 import { MOBS } from '../content/mobs.js';
-import { shoot, stepBody, spawnMob } from './mobs.js';
+import { shoot, stepBody, spawnMob, separate } from './mobs.js';
 import { DUNGEONS } from '../content/dungeons.js';
 import { siteOk } from './dungeon.js';
 
@@ -122,6 +122,7 @@ export function stepBosses(g, dt) {
     e.minions = e.minions.filter(id => g.ents.has(id));
     if (!e.frozen) stepBossAI(g, e, d, dt); else { e.vx = e.vz = 0; }
     stepBody(g, e, dt);
+    separate(g, e, dt);
   }
 }
 

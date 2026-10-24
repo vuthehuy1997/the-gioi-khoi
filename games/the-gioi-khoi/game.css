@@ -144,3 +144,21 @@ html,body{margin:0;height:100%;background:#12141a;color:#eeede8;font-family:'Seg
 #fightflash.perfect{opacity:1;box-shadow:inset 0 0 90px 24px #ffe066aa;transition:none}
 #fightflash.broke{opacity:1;box-shadow:inset 0 0 90px 24px #ff3b30aa;transition:none}
 .slot.eq.offhand{border-color:#9fd0ff88}
+
+/* Màn hình nhỏ: kho đồ gọn hơn, HUD không đè nhau */
+#quests .q.guide{border-left:3px solid #e9b949}
+#menu details.hint{margin-top:6px}
+#menu details.hint summary{cursor:pointer}
+.panel button.filter{margin:2px 0 6px;font-size:12px;padding:3px 10px}
+@media (max-height:700px){
+  .panel{max-height:94vh;padding:10px}
+  .panel h2{margin:0 0 4px;font-size:16px}
+  .panel .equip .eqinfo{display:none}
+  .panel .hint{display:none}
+  .panel .grid{grid-template-columns:repeat(9,38px);gap:3px;margin:4px 0}
+  .panel .grid .slot{width:38px;height:38px}
+}
+@media (max-width:900px){
+  #hp{bottom:62px}
+  #food{bottom:94px}
+}

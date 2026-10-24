@@ -149,6 +149,7 @@ export function createHud() {
     },
     setQuests(list) {
       const el = $('quests'); el.textContent = '';
+      if (!list.length) { const d = document.createElement('div'); d.className = 'q guide'; d.textContent = 'Gợi ý: tìm người có dấu ❗ trong làng và bấm chuột phải để nhận nhiệm vụ. E mở kho đồ & chế tạo · Q lăn né.'; el.appendChild(d); return; }
       for (const q of list) {
         const d = document.createElement('div'); d.className = 'q ' + q.state;
         const t = document.createElement('b'); t.textContent = q.name + (q.state === 'ready' ? ' ✔ (về báo)' : ''); d.appendChild(t);

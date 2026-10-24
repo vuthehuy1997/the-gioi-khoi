@@ -307,8 +307,10 @@ function startRoll() {
   rollCdUntil = nowS + ROLL_CD; guardOn = false; cancelDraw(); dig = null; hud.setProgress(null);
   S.act({ t: 'roll', dx: fx, dz: fz }); sfx.play('roll');
 }
+let noShieldToastAt = 0;
 function startGuard() {
-  if (!S || inUi() || guardOn || !S.you.offhand || local.roll) return;
+  if (!S || inUi() || guardOn || local.roll) return;
+  if (!S.you.offhand) { if (nowS > noShieldToastAt) { noShieldToastAt = nowS + 4; hud.toast('Chưa đeo khiên: bấm E, chuột phải vào khiên để đeo vào Tay phụ.', 2600); } return; }
   const h = heldItem(); if (h && (h.food > 0 || h.heal > 0)) return;
   guardOn = true; cancelDraw(); dig = null; hud.setProgress(null); S.act({ t: 'guard', on: true });
 }

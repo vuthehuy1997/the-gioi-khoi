@@ -12,7 +12,7 @@ const btn = (text, fn, cls = '') => { const b = document.createElement('button')
 
 export function createPanels({ act, onClose }) {
   const root = $('panel');
-  let kind = null, invCtx = null, shop = null, chest = null;
+  let kind = null, invCtx = null, shop = null, chest = null, onlyReady = false;
   const groupOpen = new Map();                                    // nhóm công thức người chơi đã mở/đóng: nhớ giữa các lần vẽ lại
   const SLOT_NAME = { head: 'Mũ', chest: 'Áo', legs: 'Quần', feet: 'Giày' }, KIND_NAME = { heat: 'nóng', cold: 'lạnh', toxic: 'độc' };
   const STATION_NAME = { workbench: 'Bàn chế tạo', furnace: 'Lò nung', anvil: 'Đe rèn' };
@@ -64,12 +64,13 @@ export function createPanels({ act, onClose }) {
     const hint = document.createElement('p'); hint.className = 'hint'; hint.textContent = 'Bấm ô trên cùng (1–9) để chọn; bấm ô bên dưới để đổi chỗ với ô đang chọn. Bấm chuột phải vào trang bị hoặc khiên để mặc; bấm vào ô trang bị (kể cả Tay phụ) để cởi.';
     const rec = document.createElement('div'); rec.className = 'recipes';
     const stations = Object.entries(near).filter(([, v]) => v).map(([k]) => STATION_NAME[k]);
-    const rh = document.createElement('h3'); rh.textContent = 'Công thức' + (stations.length ? ` (gần: ${stations.join(', ')})` : ' (cần đứng gần bàn, lò hay đe cho đồ nâng cao)'); rec.appendChild(rh);
+    const flt = btn(onlyReady ? 'Hiện tất cả công thức' : 'Chỉ hiện đồ chế được', () => { onlyReady = !onlyReady; renderInventory(); }, 'filter');
+    const rh = document.createElement('h3'); rh.textContent = 'Công thức' + (stations.length ? ` (gần: ${stations.join(', ')})` : ' (cần đứng gần bàn, lò hay đe cho đồ nâng cao)'); rec.append(rh, flt);
     const groups = [['', 'Thủ công'], ['workbench', 'Bàn chế tạo'], ['furnace', 'Lò nung'], ['anvil', 'Đe rèn']];
     for (const [key, title] of groups) {
-      const list = RECIPES.filter(r => (stationOf(r) || '') === key);
+      const all = RECIPES.filter(r => (stationOf(r) || '') === key), ready = all.filter(r => canCraft(you.inv, r.id, near)).length;
+      const list = onlyReady ? all.filter(r => canCraft(you.inv, r.id, near)) : all;
       if (!list.length) continue;
-      const ready = list.filter(r => canCraft(you.inv, r.id, near)).length;
       const det = document.createElement('details'); det.className = 'recgroup';
       det.open = groupOpen.has(key) ? groupOpen.get(key) : (!key || !!near[key]);          // mặc định: mở nhóm thủ công và nhóm của trạm đang ở gần
       det.ontoggle = () => groupOpen.set(key, det.open);

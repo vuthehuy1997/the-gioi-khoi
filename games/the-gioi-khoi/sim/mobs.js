@@ -99,7 +99,7 @@ export const AI = {
   'chase-melee'(g, e, d, dt) {
     const P = perceive(g, e, d, dt), t = P.target;
     if (P.mode === 'chase' && t) {
-      if (P.seen) { walk(g, e, t.x - e.x, t.z - e.z, d.speed); meleeAttack(g, e, d, { p: t }); }
+      if (P.seen) { if (closeEnough(e, d, t)) { e.vx = 0; e.vz = 0; face(e, t.x - e.x, t.z - e.z); } else walk(g, e, t.x - e.x, t.z - e.z, d.speed); meleeAttack(g, e, d, { p: t }); }
       else if (P.goal) walk(g, e, P.goal.x - e.x, P.goal.z - e.z, d.speed * 0.9);        // mất dấu: tới chỗ thấy cuối
     } else if (P.mode === 'curious' && P.goal) walk(g, e, P.goal.x - e.x, P.goal.z - e.z, d.speed * 0.55);
     else if (P.mode === 'search') lookAround(g, e, 1.4);
@@ -131,7 +131,7 @@ export const AI = {
   'guard'(g, e, d, dt) {
     const P = perceive(g, e, d, dt), t = P.target, fromHome = Math.hypot(e.x - e.home.x, e.z - e.home.z);
     if (P.mode === 'chase' && t && fromHome < d.leash) {
-      if (P.seen) { walk(g, e, t.x - e.x, t.z - e.z, d.speed); meleeAttack(g, e, d, { p: t }); }
+      if (P.seen) { if (closeEnough(e, d, t)) { e.vx = 0; e.vz = 0; face(e, t.x - e.x, t.z - e.z); } else walk(g, e, t.x - e.x, t.z - e.z, d.speed); meleeAttack(g, e, d, { p: t }); }
       else if (P.goal) walk(g, e, P.goal.x - e.x, P.goal.z - e.z, d.speed * 0.9);
     } else if (fromHome > 1) { if (P.mode === 'chase') { e.state = 'idle'; e.target = null; e.alert = 0; } walk(g, e, e.home.x - e.x, e.home.z - e.z, d.speed); }
     else lookAround(g, e, 1.0);                                                           // canh gác: đảo mắt quanh chỗ đứng
@@ -152,6 +152,19 @@ export function stepBody(g, e, dt) {
   moveBody(g.world, e, dt);
 }
 
+// Quái và người không chồng lên nhau: quái bị đẩy ra khỏi người chơi còn sống đang chạm thân (người chơi tự di chuyển nên chỉ đẩy quái).
+export function separate(g, e, dt) {
+  for (const p of alive(g)) {
+    if (p.y > e.y + e.h || e.y > p.y + (p.h || 1.8)) continue;
+    const dx = e.x - p.x, dz = e.z - p.z, min = (e.w + (p.w || 0.6)) / 2 + 0.1, dd = Math.hypot(dx, dz);
+    if (dd >= min) continue;
+    const ux = dd > 1e-3 ? dx / dd : Math.cos(e.id), uz = dd > 1e-3 ? dz / dd : Math.sin(e.id), push = Math.min(min - dd, 6 * dt);
+    e.x += ux * push; e.z += uz * push;
+  }
+}
+// Quái cận chiến dừng lại khi đã sát mục tiêu (không đi xuyên vào thân người chơi).
+const closeEnough = (e, d, t) => Math.hypot(t.x - e.x, t.z - e.z) < Math.max((e.w + (t.w || 0.6)) / 2 + 0.15, d.attack.range * 0.6);
+
 export function stepMobs(g, dt) {
   for (const e of [...g.ents.values()]) {
     if (e.kind !== 'mob' || e.dormant) continue;                          // dormant: thú nuôi xa mọi người, đóng băng hoàn toàn
@@ -162,6 +175,7 @@ export function stepMobs(g, dt) {
     if (e.yawT !== undefined) e.yaw = turnToward(e.yaw, e.yawT, (d.turn || 5) * dt);
     if (e.kbT > 0) { e.kbT -= dt; e.vx = e.kbx; e.vz = e.kbz; }
     stepBody(g, e, dt);
+    if (!d.passive) separate(g, e, dt);
     if (e.y < -10) g.ents.delete(e.id);
   }
 }

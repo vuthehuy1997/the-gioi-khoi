@@ -5016,5 +5016,40 @@ def test_keys_q_ignored_when_exhausted_and_f_needs_a_shield(pg, browser, base):
     pg.keyboard.up('KeyF'); assert not g, g
 
 
+
+@test
+def test_qa_mobs_do_not_overlap_player_and_stop_at_melee_range(pg):
+    r = ev(pg, ARENA_JS + r"""
+      const { g, p, cx, cz, y0 } = mkArena(); const out = {};
+      const z = spawnMob(g, 'xac-song', cx + 0.5, y0 + 1, cz + 0.5);              // chồng đúng lên người chơi
+      z.alert = 1; z.state = 'chase'; z.target = 'u1';
+      for (let i = 0; i < 40; i++) g.tick(0.05);
+      out.d1 = dist(z, p);
+      const w = spawnMob(g, 'soi-xam', cx + 0.5, y0 + 1, cz + 8.5);
+      for (let i = 0; i < 200; i++) { g.tick(0.05); p.hp = p.maxHp; }
+      out.d2 = dist(w, p);
+      return out;
+    """)
+    assert r['d1'] >= 0.55, r                         # bị đẩy ra, không còn ở trong thân người chơi
+    assert r['d2'] >= 0.55, r
+
+
+@test
+def test_qa_guide_hint_without_quests_and_shield_toast_and_ready_filter(pg, browser, base):
+    _open_game(pg, base)
+    r = pg.evaluate("""() => { __g.hud.setQuests([]); const q = document.getElementById('quests'); return q.textContent; }""")
+    assert 'Gợi ý' in r and '❗' in r, r
+    pg.evaluate("() => { const p = __g.game.player(__g.S.uid); p.offhand = null; __g.S.you.offhand = null; }")
+    pg.wait_for_timeout(300)
+    pg.keyboard.down('KeyF'); pg.wait_for_timeout(200); pg.keyboard.up('KeyF')
+    t = pg.evaluate("() => document.getElementById('toast').textContent")
+    assert 'khiên' in t, t
+    pg.keyboard.press('KeyE'); pg.wait_for_timeout(300)
+    n0 = pg.evaluate("() => document.querySelectorAll('#panel .rec').length")
+    pg.click('#panel button.filter'); pg.wait_for_timeout(200)
+    n1 = pg.evaluate("() => document.querySelectorAll('#panel .rec').length")
+    assert n0 > n1, (n0, n1)                           # lọc "chế được" làm danh sách ngắn lại
+
+
 if __name__ == '__main__':
     run(TESTS)
