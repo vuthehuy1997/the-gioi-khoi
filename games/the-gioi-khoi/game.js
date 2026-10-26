@@ -8,6 +8,7 @@ import { Game } from './sim/game.js';
 import { makePlayer, stepPlayer, pushOutOf } from './sim/physics.js';
 import { breakTimeFor, nearStations, weaponOf, reachOf, cdOf, costOf, drawForce, ROLL_TIME, ROLL_DIST, ROLL_COST, ROLL_CD, SLOW_MUL, BOW_CD } from './sim/rules.js';
 import { lightLevel } from './sim/daynight.js';
+import { armorStats } from './sim/armor.js';
 import { HostSession } from './net/host.js';
 import { ClientSession } from './net/client.js';
 import { createScene } from './render/scene.js';
@@ -50,7 +51,9 @@ const ERR = {
 const scene = createScene($('cv'), { aa: params.get('aa') !== '0' && (devicePixelRatio || 1) < 1.75 });   // hi-dpi đã đủ nét, tắt MSAA cho nhẹ
 const hud = createHud();
 const minimap = createMinimap(document.getElementById('minimap'));
-let regionName = '';
+let regionName = '', showPlayers = false;
+window.addEventListener('keyup', e => { if (e.code === 'Tab') showPlayers = false; });
+window.addEventListener('blur', () => { showPlayers = false; });
 const sky = createSky(scene), fx = createEffects(scene), hand = createHand(scene), camFx = newCameraFx();
 const icons = createIcons(scene.atlasCanvas); setIconProvider(id => icons.get(id));
 const glInfo = (() => { try { const gl = scene.renderer.getContext(), ext = gl.getExtension('WEBGL_debug_renderer_info'); return ext ? String(gl.getParameter(ext.UNMASKED_RENDERER_WEBGL)) : ''; } catch (e) { return ''; } })();
@@ -185,7 +188,7 @@ const director = createDirector({ sfx });
 let deathTimer = null;
 function refreshYou() {
   const y = S.you; if (!y) return;
-  hud.setHp(y.hp, y.maxHp); hud.setHotbar(y.inv, y.sel); hud.setFood(y.food); hud.setFx(y.fx);
+  hud.setHp(y.hp, y.maxHp); hud.setArmor(armorStats(y.armor).def); hud.setHotbar(y.inv, y.sel); hud.setFood(y.food); hud.setFx(y.fx);
   if (!y.offhand || y.dead) guardOn = false; if (y.dead) cancelDraw();
   if (y.dead) { if (!deathTimer) { document.exitPointerLock?.(); panels.close(); panels.showDeath(false); deathTimer = setTimeout(() => panels.showDeath(true), 3000); } }
   else if (deathTimer || !$('death').hidden) { clearTimeout(deathTimer); deathTimer = null; panels.hideDeath(); lockPointer(); }
@@ -206,11 +209,14 @@ function handleEvent(ev) {
     case 'quests': hud.setQuests(ev.list); break;
     case 'dungeon': dgLeft[ev.id] = ev.left || 0; break;
     case 'loot': document.exitPointerLock?.(); panels.showLoot(ev); break;
+    case 'chat': hud.chat(ev.sys ? null : ev.name, ev.text, ev.sys); if (!ev.sys && ev.uid !== uid) sfx.play('pickup'); break;
     case 'region': regionName = ev.name; hud.setRegion(ev.name); break;
     case 'swing': { ents.swing('e:' + ev.id); const b = interp.es.find(e => e.id === ev.id); if (b && b.kind === 'boss' && Math.hypot(b.x - local.x, b.z - local.z) < 40) sfx.play('bossSwing'); break; }
-    case 'died': if (ev.uid === uid) sfx.play('die'); hud.toast(ev.uid === uid ? 'Bạn đã gục ngã.' : `${ev.name} đã gục ngã.`); break;
+    case 'died': if (ev.uid === uid) sfx.play('die'); hud.toast(ev.uid === uid ? 'Bạn đã gục ngã.' : `${ev.name} đã gục ngã.`); hud.feed(`☠ ${ev.uid === uid ? 'Bạn' : ev.name} đã gục ngã`); break;
+    case 'killed': { const nm = MOBS[ev.type] ? MOBS[ev.type].name : 'quái'; const k = ev.by ? (ev.by === uid ? 'Bạn' : (interp.ps.find(p => p.uid === ev.by) || {}).name || 'Ai đó') : null; if (k) hud.feed(`⚔ ${k} hạ ${nm}`); break; }
+    case 'fall': sfx.play('hurt'); camFx.tilt = 0.08; break;
     case 'boss-start': sfx.play('boss'); hud.toast(`${ev.name} xuất hiện!`); break;
-    case 'boss-defeated': sfx.play('victory'); hud.toast(`${ev.name} đã bị hạ!`, 5000); break;
+    case 'boss-defeated': sfx.play('victory'); hud.toast(`${ev.name} đã bị hạ!`, 5000); hud.feed(`★ ${ev.name} đã bị hạ!`); break;
     case 'snd': if (ev.x !== undefined && Math.hypot(ev.x - local.x, ev.z - local.z) > 40) break; sfx.play(ev.n); break;
     case 'exhausted': hud.toast('Hết sức!', 1400); sfx.play('exhausted'); cancelDraw(); break;
     case 'shield': if (ev.perfect) { hud.shieldFlash('perfect'); sfx.play('parry'); } else if (ev.broke) { hud.shieldFlash('broke'); sfx.play('shieldbreak'); hud.toast('Khiên vỡ!', 1600); guardOn = false; } else sfx.play('shieldhit'); break;
@@ -228,7 +234,11 @@ function handleEvent(ev) {
 }
 
 // ---------------------------------------------------------------- điều khiển
-const inUi = () => !S || panels.isOpen || paused || S.you.dead || !$('menu').hidden;
+const inUi = () => !S || panels.isOpen || paused || S.you.dead || !$('menu').hidden || chatOpen;
+let chatOpen = false;
+function openChat(prefill = '') { if (!S || chatOpen || paused || !$('menu').hidden) return; chatOpen = true; keys.clear(); document.exitPointerLock?.(); const i = $('chatin'); i.hidden = false; i.value = prefill; i.focus(); }
+function closeChat() { if (!chatOpen) return; chatOpen = false; const i = $('chatin'); i.hidden = true; i.blur(); lockPointer(); }
+$('chatin').addEventListener('keydown', e => { e.stopPropagation(); if (e.code === 'Escape') { closeChat(); } else if (e.code === 'Enter' || e.code === 'NumpadEnter') { const t = $('chatin').value.trim(); if (t) S.act({ t: 'chat', text: t }); $('chatin').value = ''; closeChat(); } });
 function lockPointer() { if (!debugOn() || NET !== 'memory') { try { const r = $('cv').requestPointerLock?.(); if (r && r.catch) r.catch(() => {}); } catch (e) { /* không khoá được: bỏ qua */ } } }
 addEventListener('keydown', e => {
   if (e.target.tagName === 'INPUT') return;
@@ -236,6 +246,9 @@ addEventListener('keydown', e => {
   if (!S) return;
   if (e.code === 'KeyM') { toggleMusic(); return; }
   if (e.code === 'KeyN' && !e.repeat) { minimap.toggle(); return; }
+  if (e.code === 'Tab') { e.preventDefault(); showPlayers = true; return; }
+  if ((e.code === 'KeyT' || e.code === 'Enter') && !e.repeat && !inUi()) { e.preventDefault(); openChat(); return; }
+  if (e.code === 'Slash' && !e.repeat && !inUi()) { e.preventDefault(); openChat('/'); return; }
   if (e.code === 'F3') { e.preventDefault(); const d = $('debug'); d.hidden = !d.hidden; return; }
   if (e.code === 'Escape') { if (panels.isOpen) panels.close(); else if (!paused && !S.you.dead) setPause(true); else if (paused) setPause(false); return; }
   if (inUi() && e.code !== 'KeyE') return;
@@ -530,6 +543,7 @@ function frameBody(dt) {
   const hd = heldItem(), w = weaponOf(hd);
   hand.setHeld(heldId(), heldId() ? icons.get(heldId()) : null); hand.setOff(y.offhand, y.offhand ? icons.get(y.offhand) : null);
   hand.setPose({ guard: guardOn, draw: draw && hd && hd.bow ? drawForce(hd.bow, nowS - draw.t0) : 0 }); hand.update(dt, camFx.bob, camFx.bobAmp);
+  hud.setAir(me.air === undefined ? 12 : me.air); hud.setPlayers(showPlayers ? [...interp.ps].map(p => ({ name: p.name || '?', hp: p.hp, maxHp: p.maxHp, me: p.uid === uid })) : null);
   hud.setStamina(me); hud.setCombo(me.cmb, !!hd && w.cls === 'sword'); hud.setShield(guardOn, !!y.offhand);
   if (!(hd && hd.bow) || ui) hud.setDraw(null, hd && hd.bow ? arrowCount() : null);
   if (!ui) mining(dt, nowS); else { fx.setTarget(null); hud.setTip(null); }

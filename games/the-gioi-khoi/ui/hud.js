@@ -63,9 +63,39 @@ export function createHud() {
   setInterval(fxTick, 250);
   return {
     setHp(hp, max) {
-      const el = $('hp'); if (!el.firstChild) el.innerHTML = '<span class="hpbar"><i></i></span><b></b>';
+      const el = $('hp'); if (!el.firstChild) el.innerHTML = '<span class="hpbar"><i></i></span><b></b><em class="armor" title="Giáp"></em>';
       const r = Math.max(0, Math.min(1, hp / max)); el.querySelector('i').style.width = r * 100 + '%'; el.classList.toggle('low', r <= 0.3);
       el.querySelector('b').textContent = `❤ ${Math.ceil(hp)}/${max}`;
+    },
+    setArmor(def) { const a = document.querySelector('#hp .armor'); if (a) a.textContent = def > 0 ? `🛡 ${def}` : ''; },
+    // Thanh khí khi đầu chìm dưới nước: 10 bong bóng, ẩn khi đầy.
+    setAir(air, max = 12) {
+      const el = $('air'); if (!el) return;
+      if (air >= max - 0.05) { el.hidden = true; return; }
+      el.hidden = false; const n = Math.ceil(air / max * 10); if (el.dataset.n !== String(n)) { el.dataset.n = n; el.textContent = '●'.repeat(n) + '○'.repeat(10 - n); }
+      el.classList.toggle('low', air < 3);
+    },
+    // Dòng tin ở góc trái: ai hạ ai, ai gục ngã, boss bị hạ.
+    feed(text) {
+      const box = $('killfeed'); if (!box) return;
+      const d = document.createElement('div'); d.textContent = text; box.appendChild(d);
+      while (box.children.length > 5) box.removeChild(box.firstChild);
+      setTimeout(() => d.remove(), 7000);
+    },
+    // Giữ Tab: bảng người chơi trong phòng (null để ẩn). list: [{ name, hp, maxHp, me }]
+    setPlayers(list) {
+      const el = $('players'); if (!el) return;
+      if (!list) { el.hidden = true; return; }
+      el.hidden = false; el.textContent = ''; const t = document.createElement('h3'); t.textContent = `Người chơi (${list.length})`; el.appendChild(t);
+      for (const p of list) { const r = document.createElement('div'); r.className = 'prow' + (p.me ? ' me' : ''); const n = document.createElement('span'); n.textContent = p.name + (p.me ? ' (bạn)' : ''); const b = document.createElement('b'); b.textContent = `❤ ${Math.ceil(p.hp)}/${p.maxHp}`; r.append(n, b); el.appendChild(r); }
+    },
+    chat(name, text, sys) {
+      const box = $('chatlog'); if (!box) return;
+      const d = document.createElement('div'); if (sys) d.className = 'sys';
+      if (name) { const n = document.createElement('b'); n.textContent = name + ': '; d.appendChild(n); }
+      d.appendChild(document.createTextNode(text)); box.appendChild(d);
+      while (box.children.length > 8) box.removeChild(box.firstChild);
+      setTimeout(() => d.classList.add('old'), 12000);
     },
     setHotbar(inv, sel) {
       const h = $('hotbar'); h.textContent = '';

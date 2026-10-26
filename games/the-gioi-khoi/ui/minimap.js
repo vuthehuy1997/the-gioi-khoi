@@ -2,7 +2,8 @@
 // miệng hầm ngục, la bàn và tọa độ. Vẽ lại ~3 lần/giây; mũi tên bản thân xoay theo hướng nhìn. Bấm N để phóng to/thu nhỏ.
 import { BLOCKS } from '../world/blocks.js';
 import { MOBS } from '../content/mobs.js';
-import { isNight } from '../sim/daynight.js';
+import { isNight, DAY_LEN } from '../sim/daynight.js';
+const clock = t => { const ph = ((t % DAY_LEN) + DAY_LEN) % DAY_LEN / DAY_LEN, hr = (6 + ph * 24) % 24, h = Math.floor(hr), m = Math.floor((hr - h) * 60); return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`; };
 
 const COLOR = {
   grass: '#5fa84a', leaves: '#2f6b2c', log: '#6b4a2a', sand: '#d9c88a', snow: '#f1f5fa', ice: '#a9d8f2', water: '#3b6fd0', stone: '#8a8d93', dirt: '#8a5e3b',
@@ -73,7 +74,7 @@ export function createMinimap(root) {
       ctx.save(); ctx.translate(S / 2, S / 2); ctx.rotate(-v.yaw);                              // mũi tên bản thân: hướng nhìn
       ctx.beginPath(); ctx.moveTo(0, -7); ctx.lineTo(5, 6); ctx.lineTo(0, 3); ctx.lineTo(-5, 6); ctx.closePath(); ctx.fillStyle = '#ffd23a'; ctx.fill(); ctx.lineWidth = 1.5; ctx.strokeStyle = '#000'; ctx.stroke(); ctx.restore();
       ctx.beginPath(); ctx.arc(S / 2, S / 2, S / 2 - 1, 0, Math.PI * 2); ctx.lineWidth = 2; ctx.strokeStyle = '#e9b949'; ctx.stroke();
-      info.textContent = `${Math.floor(v.x)}, ${Math.floor(v.y)}, ${Math.floor(v.z)} · ${isNight(v.time) ? '☾ đêm' : '☀ ngày'}${v.region ? ' · ' + v.region : ''}`;
+      info.textContent = `${Math.floor(v.x)}, ${Math.floor(v.y)}, ${Math.floor(v.z)} · ${isNight(v.time) ? '☾' : '☀'} ${clock(v.time)} · ngày ${Math.floor(v.time / DAY_LEN) + 1}${v.region ? ' · ' + v.region : ''}`;
     },
   };
 }

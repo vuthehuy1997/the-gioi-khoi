@@ -32,6 +32,8 @@ const ENV_TEXT = {
 };
 export const REACH = 6.5, EYE = 1.62, MAX_HP = 20, RESPAWN_S = 3, CHEST_SLOTS = 27, ENV_TICK = 4;
 
+export const FALL_SAFE = 3.5, AIR_MAX = 12;           // rơi quá 3,5 block bắt đầu mất máu; 12 giây khí dưới nước
+
 export class Game {
   constructor({ seed, world, spawning = true, env = true, hunger = true } = {}) {
     this.seed = seed; this.spawning = spawning; this.env = env;       // env: false tắt nóng/lạnh/độc của vùng (dùng khi thử nghiệm)
@@ -135,11 +137,34 @@ export class Game {
     return false;
   }
 
+  // Chat: tin thường phát cho cả phòng; lệnh bắt đầu bằng / chỉ trả lời riêng người gõ. Giới hạn 120 ký tự, 1 tin / 0,7 giây.
+  actChat(p, a) {
+    const text = [...String(a.text == null ? '' : a.text).replace(/[\u0000-\u001f\u007f]/g, ' ').trim()].slice(0, 120).join('');
+    if (!text) return { ok: false, reason: 'empty' };
+    if (this.time - (p.chatAt === undefined ? -99 : p.chatAt) < 0.7) return { ok: false, reason: 'too-soon' };
+    p.chatAt = this.time;
+    const sys = t => { this.emit(p.uid, { t: 'chat', sys: true, text: t }); return { ok: true }; };
+    if (text[0] === '/') {
+      const cmd = text.slice(1).split(/\s+/)[0].toLowerCase();
+      if (cmd === 'help') return sys('Lệnh: /help · /home (về giường hoặc điểm hồi sinh) · /time (giờ trong game) · /pos (tọa độ) · /players (ai đang trong phòng)');
+      if (cmd === 'time') { const ph = ((this.time % 600) + 600) % 600 / 600, hr = (6 + ph * 24) % 24; return sys(`Ngày ${Math.floor(this.time / 600) + 1}, ${String(Math.floor(hr)).padStart(2, '0')}:${String(Math.floor((hr % 1) * 60)).padStart(2, '0')}`); }
+      if (cmd === 'pos') return sys(`Bạn ở ${Math.floor(p.x)}, ${Math.floor(p.y)}, ${Math.floor(p.z)}`);
+      if (cmd === 'players') return sys('Trong phòng: ' + [...this.players.values()].map(q => q.name).join(', '));
+      if (cmd === 'home') {
+        if (this.time - (p.lastHurt === undefined ? -99 : p.lastHurt) < 10) return sys('Vừa bị thương, chờ 10 giây rồi thử lại.');
+        const r = this.respawnPoint(p); this.teleportPlayer(p, r.x, r.y, r.z); return sys('Đã về điểm hồi sinh.');
+      }
+      return sys('Không có lệnh đó. Gõ /help để xem danh sách.');
+    }
+    this.emit(null, { t: 'chat', uid: p.uid, name: p.name, text });
+    return { ok: true };
+  }
+
   // ---- hành động của người chơi. Trả { ok, reason? } ----
   act(uid, a) {
     const p = this.player(uid);
     if (!p) return { ok: false, reason: 'no-player' };
-    if (p.dead && a.t !== 'respawn') return { ok: false, reason: 'dead' };
+    if (p.dead && a.t !== 'respawn' && a.t !== 'chat') return { ok: false, reason: 'dead' };
     switch (a.t) {
       case 'sel': if (a.i >= 0 && a.i < HOTBAR) { p.sel = a.i | 0; fight.afterHeldChange(this, p); this.touch(p); return { ok: true }; } return { ok: false, reason: 'bad-slot' };
       case 'dig': return this.actDig(p, a);
@@ -167,6 +192,7 @@ export class Game {
       case 'gate': return dungeon.actGate(this, p, a);
       case 'dchest': return dungeon.actDChest(this, p, a);
       case 'respawn': return combat.actRespawn(this, p);
+      case 'chat': return this.actChat(p, a);
       case 'interact': return dialogue.interact(this, p, a);
       case 'dlg': return dialogue.choose(this, p, a);
       case 'buy': return dialogue.buy(this, p, a);
@@ -318,7 +344,7 @@ export class Game {
   // ---- trạng thái người chơi do client báo (vị trí do client mô phỏng, host chỉ kiểm tra tốc độ) ----
   // Dịch chuyển người chơi do máy chủ quyết định. seq tăng để loại các gói vị trí cũ còn đang bay.
   teleportPlayer(p, x, y, z) {
-    p.x = x; p.y = y; p.z = z; p.vx = p.vy = p.vz = 0; p.lastState = this.time; p.tpSeq++; p.fallVy = 0; p.yRef = y; p.yRefT = this.time;
+    p.x = x; p.y = y; p.z = z; p.vx = p.vy = p.vz = 0; p.lastState = this.time; p.tpSeq++; p.fallVy = 0; p.fallTop = undefined; p.yRef = y; p.yRefT = this.time;
     this.emit(p.uid, { t: 'teleport', x, y, z, seq: p.tpSeq });
   }
 
@@ -332,6 +358,13 @@ export class Game {
     if (dist > 14 * dt + 3) { this.teleportPlayer(p, p.x, p.y, p.z); return false; }          // di chuyển quá nhanh: kéo về
     if (p.yRefT === undefined || this.time - p.yRefT >= 0.05) {                                // vận tốc rơi do host tự đo từ chênh độ cao (không tin st.vy): dùng cho đòn rơi
       p.fallVy = p.yRefT === undefined ? 0 : (st.y - p.yRef) / (this.time - p.yRefT); p.yRef = st.y; p.yRefT = this.time;
+    }
+    const inWater = this.world.get(Math.floor(st.x), Math.floor(st.y + 0.4), Math.floor(st.z)) === B.WATER;       // rơi: host tự đo từ chênh độ cao, rơi vào nước thì an toàn
+    if (inWater) p.fallTop = undefined;
+    else if (st.y < p.y - 0.01) p.fallTop = Math.max(p.fallTop === undefined ? p.y : p.fallTop, p.y);
+    else if (p.fallTop !== undefined) {
+      const drop = p.fallTop - st.y; p.fallTop = undefined;
+      if (drop > FALL_SAFE) { this.hurtPlayer(p, Math.min(20, Math.floor(drop - FALL_SAFE)), null, { pure: true }); this.emit(p.uid, { t: 'fall', drop }); }
     }
     p.x = st.x; p.y = st.y; p.z = st.z; p.yaw = st.yaw; p.pitch = st.pitch;
     p.sneak = st.sneak === true; p.sprint = st.sprint === true && !p.sneak;
@@ -376,6 +409,10 @@ export class Game {
     for (const p of this.players.values()) {
       if (p.dead) continue;
       const r = REGIONS.find(x => x.id === this.world.regionAt(p.x, p.z));
+      const head = this.world.get(Math.floor(p.x), Math.floor(p.y + 1.6), Math.floor(p.z)) === B.WATER;        // ngạt thở: đầu chìm trong nước hết khí thì mất máu
+      if (p.air === undefined) p.air = AIR_MAX;
+      if (head) { p.air = Math.max(0, p.air - dt); if (p.air <= 0) { p.drownT = (p.drownT || 0) + dt; if (p.drownT >= 1) { p.drownT -= 1; this.hurtPlayer(p, 2, null, { pure: true }); } } }
+      else { p.air = Math.min(AIR_MAX, p.air + dt * 4); p.drownT = 0; }
       if (p.region !== r.id) { p.region = r.id; this.emit(p.uid, { t: 'region', id: r.id, name: r.name }); quests.creditRegion(this, p, r.id); this.touch(p); }
       if (r.requires && !this.flags[r.requires]) {
         p.hazT = (p.hazT || 0) + dt;

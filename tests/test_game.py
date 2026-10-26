@@ -5113,5 +5113,79 @@ def test_hud_minimap_health_bars_and_damage_numbers(pg, browser, base):
     assert pg.evaluate("() => document.getElementById('hp').classList.contains('low')")
 
 
+
+@test
+def test_survival_fall_damage_and_drowning(pg):
+    r = ev(pg, ARENA_JS + r"""
+      const { B } = await imp('world/blocks.js'); const out = {};
+      const { g, p, cx, cz, y0 } = mkArena(); p.maxHp = p.hp = 20;
+      const st = (y, i) => g.applyState('u1', { x: cx + 0.5, y, z: cz + 0.5, yaw: 0, pitch: 0, seq: p.tpSeq });
+      const fall = (from, to) => { g.time += 1; g.teleportPlayer(p, cx + 0.5, from, cz + 0.5); p.lastState = g.time; for (let y = from; y > to; y -= 0.4) { g.time += 0.05; p.lastState = g.time - 0.05; st(Math.max(to, y)); } g.time += 0.05; p.lastState = g.time - 0.05; st(to); };
+      st(y0 + 1);
+      fall(y0 + 3, y0 + 1); out.small = p.hp;                         // 2 block: không sao
+      fall(y0 + 9, y0 + 1); out.big = p.hp;                           // 8 block: mất máu
+      // rơi vào nước thì an toàn
+      for (let dx = -1; dx <= 1; dx++) for (let dz = -1; dz <= 1; dz++) for (let dy = 1; dy <= 4; dy++) g.world.set(cx + dx, y0 + dy, cz + dz, B.WATER);
+      p.hp = 20; fall(y0 + 14, y0 + 1); out.water = p.hp;
+      // ngạt: đầu chìm dưới nước 12 giây hết khí rồi mất máu
+      p.x = cx + 0.5; p.y = y0 + 1; p.z = cz + 0.5; p.hp = 20; p.air = undefined;
+      for (let i = 0; i < 20 * 5; i++) g.regionTick(0.05); out.air5 = p.air; out.hpEarly = p.hp;
+      for (let i = 0; i < 20 * 12; i++) g.regionTick(0.05); out.hpLate = p.hp; out.airLate = p.air;
+      for (let dy = 1; dy <= 4; dy++) g.world.set(cx, y0 + dy, cz, 0);
+      for (let i = 0; i < 20 * 5; i++) g.regionTick(0.05); out.airBack = p.air;
+      return out;
+    """)
+    assert r['small'] == 20, r
+    assert r['big'] < 20, r                                     # 8 block ~ 4 máu
+    assert r['water'] == 20, r
+    assert 6.5 < r['air5'] < 7.5 and r['hpEarly'] == 20, r      # còn khí, chưa mất máu
+    assert r['hpLate'] < 20 and r['airLate'] == 0, r
+    assert r['airBack'] > 11, r                                 # lên khỏi nước thì hồi khí
+
+
+@test
+def test_hud_kill_feed_tab_list_armor_and_air(pg, browser, base):
+    _open_game(pg, base)
+    r = pg.evaluate("() => { __g.hud.feed('⚔ Bạn hạ Xác Sống'); __g.hud.setAir(4); __g.hud.setArmor(7); return { feed: document.getElementById('killfeed').textContent, air: !document.getElementById('air').hidden, armor: document.querySelector('#hp .armor').textContent }; }")
+    assert 'hạ Xác Sống' in r['feed'] and r['air'] and '7' in r['armor'], r
+    pg.keyboard.down('Tab'); pg.wait_for_timeout(400)
+    t = pg.evaluate("() => ({ shown: !document.getElementById('players').hidden, txt: document.getElementById('players').textContent })")
+    pg.keyboard.up('Tab'); pg.wait_for_timeout(300)
+    assert t['shown'] and '(bạn)' in t['txt'], t
+    assert pg.evaluate("() => document.getElementById('players').hidden")
+    assert 'ngày' in pg.evaluate("() => document.querySelector('#minimap .mminfo').textContent")
+
+
+
+@test
+def test_chat_real_keyboard_commands_and_rate_limit(pg, browser, base):
+    _open_game(pg, base)
+    pg.keyboard.press('KeyT'); pg.wait_for_timeout(200)
+    assert pg.evaluate("() => !document.getElementById('chatin').hidden && document.activeElement.id === 'chatin'")
+    x0 = pg.evaluate("() => __g.local.x")
+    pg.keyboard.type('xin chào mọi người'); pg.keyboard.press('Enter'); pg.wait_for_timeout(400)
+    log = pg.evaluate("() => document.getElementById('chatlog').textContent")
+    assert 'xin chào mọi người' in log, log                                  # tin gửi qua host rồi phát lại
+    assert pg.evaluate("() => document.getElementById('chatin').hidden")
+    assert not pg.evaluate("() => document.getElementById('minimap').classList.contains('big')")   # gõ chữ n/m không kích hoạt phím tắt
+    pg.keyboard.press('Slash'); pg.wait_for_timeout(200)
+    pg.keyboard.type('pos'); pg.wait_for_timeout(100); pg.keyboard.press('Enter'); pg.wait_for_timeout(500)
+    assert 'Bạn ở' in pg.evaluate("() => document.getElementById('chatlog').textContent")
+    r = ev(pg, GAME_JS + r"""
+      const { g, p } = mkGame(); const out = [];
+      g.on && 0; const ev1 = []; const orig = g.emit.bind(g); g.emit = (to, e) => { ev1.push(e); return orig(to, e); };
+      out.push(g.act('u1', { t: 'chat', text: '  hi  ' }).ok);
+      out.push(g.act('u1', { t: 'chat', text: 'spam' }).reason);           // quá nhanh
+      g.time += 1; out.push(g.act('u1', { t: 'chat', text: '   ' }).reason);   // rỗng
+      g.time += 1; out.push(g.act('u1', { t: 'chat', text: 'x'.repeat(500) }).ok);
+      g.time += 1; g.act('u1', { t: 'chat', text: '/help' });
+      g.time += 1; g.act('u1', { t: 'chat', text: '/bogus' });
+      return { out, chats: ev1.filter(e => e.t === 'chat').map(e => ({ sys: !!e.sys, len: e.text.length, name: e.name })) };
+    """)
+    assert r['out'] == [True, 'too-soon', 'empty', True], r
+    assert r['chats'][0]['name'] == 'Tester' and r['chats'][1]['len'] == 120, r   # cắt 120 ký tự
+    assert r['chats'][2]['sys'] and r['chats'][3]['sys'], r
+
+
 if __name__ == '__main__':
     run(TESTS)
