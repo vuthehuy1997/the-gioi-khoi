@@ -16,7 +16,7 @@ import { ChunkView } from './render/chunkview.js';
 import { createEntityView } from './render/entities.js';
 import { createSky } from './render/sky.js';
 import { createEffects } from './render/effects.js';
-import { stepCameraFx, newCameraFx, createHand } from './render/camerafx.js';
+import { stepCameraFx, newCameraFx, createHand, setBaseFov } from './render/camerafx.js';
 import { createIcons } from './ui/icons.js';
 import { LEVELS, PRESETS, presetOf, defaultPreset, governLevel, isSoftwareRenderer } from './render/quality.js';
 import { sfx } from './sfx.js';
@@ -24,6 +24,7 @@ import { createDirector } from './audio/director.js';
 import { SETTINGS, saveSettings } from '../../platform/core/settings.js';
 import { createHud, setIconProvider } from './ui/hud.js';
 import { createMinimap } from './ui/minimap.js';
+import { createWorldMap } from './ui/worldmap.js';
 import { createPanels } from './ui/panels.js';
 import { regionById } from './world/regions.js';
 import { REGIONS } from './content/regions.js';
@@ -50,8 +51,9 @@ const ERR = {
 
 const scene = createScene($('cv'), { aa: params.get('aa') !== '0' && (devicePixelRatio || 1) < 1.75 });   // hi-dpi đã đủ nét, tắt MSAA cho nhẹ
 const hud = createHud();
-const minimap = createMinimap(document.getElementById('minimap'));
-let regionName = '', showPlayers = false;
+let worldmap = null;
+const minimap = createMinimap(document.getElementById('minimap'), { onSample: (cv, x, z) => worldmap && worldmap.record(cv, x, z) });
+let regionName = '', showPlayers = false, fpsAcc = 0, fpsN = 0;
 window.addEventListener('keyup', e => { if (e.code === 'Tab') showPlayers = false; });
 window.addEventListener('blur', () => { showPlayers = false; });
 const sky = createSky(scene), fx = createEffects(scene), hand = createHand(scene), camFx = newCameraFx();
@@ -148,7 +150,7 @@ async function begin(session) {
   S.on('closed', reason => { if (reason !== 'left') { try { sessionStorage.setItem('tgk-msg', reason === 'host-left' ? 'Chủ phòng đã thoát.' : reason === 'replaced' ? 'Bạn đã vào phòng này từ nơi khác.' : 'Mất kết nối.'); } catch (e) { /* bỏ qua */ } location.reload(); } });
   if (S.onSave !== undefined) S.onSave = save => { saveWorld('main', save).catch(() => {}); };
   $('menu').hidden = true; $('hud').hidden = false;
-  hud.setRoom(S.code); refreshYou(); lockPointer();
+  hud.setRoom(S.code); worldmap = createWorldMap($('worldmap'), { seed: S.world.seed }); refreshYou(); lockPointer();
   if (S instanceof HostSession && game) hud.setQuests(game.questSummary(uid));
 }
 
@@ -198,7 +200,7 @@ function refreshYou() {
 function handleEvent(ev) {
   switch (ev.t) {
     case 'you': refreshYou(); break;
-    case 'hurt': hud.setHp(ev.hp, S.you.maxHp); if (ev.by !== undefined && ev.by !== null) { hud.flash(); sfx.play('hurt'); camFx.tilt = (Math.random() < 0.5 ? -1 : 1) * 0.1; const src = interp.es.find(x => x.id === ev.by); if (src) hud.dmgDir(Math.atan2(-(src.x - local.x), -(src.z - local.z)) - local.yaw); } break;
+    case 'hurt': hud.setHp(ev.hp, S.you.maxHp); if (ev.by !== undefined && ev.by !== null) { hud.flash(); sfx.play('hurt'); if (SETTINGS.shake) camFx.tilt = (Math.random() < 0.5 ? -1 : 1) * 0.1; const src = interp.es.find(x => x.id === ev.by); if (src) hud.dmgDir(Math.atan2(-(src.x - local.x), -(src.z - local.z)) - local.yaw); } break;
     case 'teleport': local.x = ev.x; local.y = ev.y; local.z = ev.z; local.vx = local.vy = local.vz = 0; break;
     case 'kb': local.vx += ev.vx; local.vz += ev.vz; local.vy = Math.max(local.vy, ev.vy); break;
     case 'toast': hud.toast(ev.text); break;
@@ -214,7 +216,7 @@ function handleEvent(ev) {
     case 'swing': { ents.swing('e:' + ev.id); const b = interp.es.find(e => e.id === ev.id); if (b && b.kind === 'boss' && Math.hypot(b.x - local.x, b.z - local.z) < 40) sfx.play('bossSwing'); break; }
     case 'died': if (ev.uid === uid) sfx.play('die'); hud.toast(ev.uid === uid ? 'Bạn đã gục ngã.' : `${ev.name} đã gục ngã.`); hud.feed(`☠ ${ev.uid === uid ? 'Bạn' : ev.name} đã gục ngã`); break;
     case 'killed': { const nm = MOBS[ev.type] ? MOBS[ev.type].name : 'quái'; const k = ev.by ? (ev.by === uid ? 'Bạn' : (interp.ps.find(p => p.uid === ev.by) || {}).name || 'Ai đó') : null; if (k) hud.feed(`⚔ ${k} hạ ${nm}`); break; }
-    case 'fall': sfx.play('hurt'); camFx.tilt = 0.08; break;
+    case 'fall': sfx.play('hurt'); if (SETTINGS.shake) camFx.tilt = 0.08; break;
     case 'boss-start': sfx.play('boss'); hud.toast(`${ev.name} xuất hiện!`); break;
     case 'boss-defeated': sfx.play('victory'); hud.toast(`${ev.name} đã bị hạ!`, 5000); hud.feed(`★ ${ev.name} đã bị hạ!`); break;
     case 'snd': if (ev.x !== undefined && Math.hypot(ev.x - local.x, ev.z - local.z) > 40) break; sfx.play(ev.n); break;
@@ -228,14 +230,16 @@ function handleEvent(ev) {
     case 'pickup': sfx.play('pickup'); hud.toast(`+${ev.n} ${ITEMS[ev.item].name}`, 1200); break;
     case 'fail': onFail(ev); break;
     case 'block': confirmEdit(ev.x, ev.y, ev.z); break;
-    case 'hit': { const e = interp.es.find(x => x.id === ev.id); if (e) { fx.burst(e.x, e.y + 0.8, e.z, [0.9, 0.12, 0.1], 8, 2.2); const d = Math.hypot(e.x - local.x, e.z - local.z); if (d < 20) sfx.play('hit'); if (d < 4.5 && hand.swinging) camFx.kick = -0.025; if (e.kind === 'mob' || e.kind === 'boss') director.hurt({ type: e.type, kind: e.kind, dist: d }); } break; }
+    case 'hit': { const e = interp.es.find(x => x.id === ev.id); if (e) { fx.burst(e.x, e.y + 0.8, e.z, [0.9, 0.12, 0.1], 8, 2.2); const d = Math.hypot(e.x - local.x, e.z - local.z); if (d < 20) sfx.play('hit'); if (d < 4.5 && hand.swinging && SETTINGS.shake) camFx.kick = -0.025; if (e.kind === 'mob' || e.kind === 'boss') director.hurt({ type: e.type, kind: e.kind, dist: d }); } break; }
     case 'telegraph': { const b = interp.es.find(e => e.id === ev.id); ents.telegraph(ev.x, b ? b.y : local.y, ev.z, ev.r, ev.time); if (Math.hypot(ev.x - local.x, ev.z - local.z) < 40) sfx.play('warn'); break; }
   }
 }
 
 // ---------------------------------------------------------------- điều khiển
-const inUi = () => !S || panels.isOpen || paused || S.you.dead || !$('menu').hidden || chatOpen;
+const inUi = () => !S || panels.isOpen || paused || S.you.dead || !$('menu').hidden || chatOpen || (worldmap !== null && worldmap.open);
 let chatOpen = false;
+function openMap() { if (!S || !worldmap) return; keys.clear(); cancelDraw(); stopGuard(); mouse.left = mouse.right = false; dig = null; hud.setProgress(null); document.exitPointerLock?.(); worldmap.toggle(true); }
+function closeMap() { if (worldmap) worldmap.toggle(false); lockPointer(); }
 function openChat(prefill = '') { if (!S || chatOpen || paused || !$('menu').hidden) return; chatOpen = true; keys.clear(); document.exitPointerLock?.(); const i = $('chatin'); i.hidden = false; i.value = prefill; i.focus(); }
 function closeChat() { if (!chatOpen) return; chatOpen = false; const i = $('chatin'); i.hidden = true; i.blur(); lockPointer(); }
 $('chatin').addEventListener('keydown', e => { e.stopPropagation(); if (e.code === 'Escape') { closeChat(); } else if (e.code === 'Enter' || e.code === 'NumpadEnter') { const t = $('chatin').value.trim(); if (t) S.act({ t: 'chat', text: t }); $('chatin').value = ''; closeChat(); } });
@@ -244,7 +248,12 @@ addEventListener('keydown', e => {
   if (e.target.tagName === 'INPUT') return;
   keys.add(e.code);
   if (!S) return;
-  if (e.code === 'KeyM') { toggleMusic(); return; }
+  if (e.code === 'KeyU') { toggleMusic(); return; }
+  if (e.code === 'KeyM' && !e.repeat && worldmap) { if (worldmap.open) closeMap(); else if (!inUi()) openMap(); return; }
+  if (worldmap && worldmap.open) {
+    if (e.code === 'Equal' || e.code === 'NumpadAdd') worldmap.zoomBy(1.25); else if (e.code === 'Minus' || e.code === 'NumpadSubtract') worldmap.zoomBy(0.8); else if (e.code === 'Escape') closeMap();
+    return;
+  }
   if (e.code === 'KeyN' && !e.repeat) { minimap.toggle(); return; }
   if (e.code === 'Tab') { e.preventDefault(); showPlayers = true; return; }
   if ((e.code === 'KeyT' || e.code === 'Enter') && !e.repeat && !inUi()) { e.preventDefault(); openChat(); return; }
@@ -263,7 +272,7 @@ addEventListener('blur', () => { cancelDraw(); stopGuard(); keys.clear(); mouse.
 addEventListener('wheel', e => { if (!S || inUi()) return; S.act({ t: 'sel', i: (S.you.sel + (e.deltaY > 0 ? 1 : 8)) % 9 }); }, { passive: true });
 addEventListener('mousemove', e => {
   if (!S || document.pointerLockElement !== $('cv') || inUi()) return;
-  local.yaw -= e.movementX * 0.0025; local.pitch = clamp(local.pitch - e.movementY * 0.0025, -1.55, 1.55);
+  local.yaw -= e.movementX * 0.0025 * GS.sens / 100; local.pitch = clamp(local.pitch - e.movementY * 0.0025 * GS.sens / 100, -1.55, 1.55);
 });
 document.addEventListener('pointerlockchange', () => {
   const locked = document.pointerLockElement === $('cv');
@@ -288,8 +297,23 @@ $('btn-resume').onclick = () => setPause(false);
 let musicBeforeMute = 60;
 function toggleMusic() {
   if (SETTINGS.music > 0) { musicBeforeMute = SETTINGS.music; SETTINGS.music = 0; } else SETTINGS.music = musicBeforeMute || 60;
-  saveSettings(); $('vol-music').value = SETTINGS.music; hud.toast(SETTINGS.music ? 'Bật nhạc nền.' : 'Tắt nhạc nền (M để bật lại).', 1500);
+  saveSettings(); $('vol-music').value = SETTINGS.music; hud.toast(SETTINGS.music ? 'Bật nhạc nền.' : 'Tắt nhạc nền (U để bật lại).', 1500);
 }
+// Cài đặt riêng của game (lưu trong trình duyệt): độ nhạy, FOV, bản đồ nhỏ, FPS. Rung camera dùng cài đặt chung của nền tảng (SETTINGS.shake).
+const GS_KEY = 'tgk-settings-v1', GS_DEF = { sens: 100, fov: 72, map: true, fps: false };
+const GS = { ...GS_DEF, ...(() => { try { return JSON.parse(localStorage.getItem(GS_KEY)) || {}; } catch (e) { return {}; } })() };
+const saveGS = () => { try { localStorage.setItem(GS_KEY, JSON.stringify(GS)); } catch (e) { /* bỏ qua */ } };
+function applyGS() {
+  setBaseFov(GS.fov); $('minimap').style.display = GS.map ? '' : 'none'; $('fps').hidden = !GS.fps;
+  $('set-sens').value = GS.sens; $('set-fov').value = GS.fov; $('fov-val').textContent = GS.fov + '°'; $('set-map').checked = GS.map; $('set-shake').checked = !!SETTINGS.shake; $('set-fps').checked = GS.fps;
+}
+$('set-sens').oninput = e => { GS.sens = Number(e.target.value); saveGS(); };
+$('set-fov').oninput = e => { GS.fov = Number(e.target.value); $('fov-val').textContent = GS.fov + '°'; setBaseFov(GS.fov); saveGS(); };
+$('set-map').onchange = e => { GS.map = e.target.checked; applyGS(); saveGS(); };
+$('set-fps').onchange = e => { GS.fps = e.target.checked; applyGS(); saveGS(); };
+$('set-shake').onchange = e => { SETTINGS.shake = e.target.checked; saveSettings(); };
+$('set-reset').onclick = () => { Object.assign(GS, GS_DEF); SETTINGS.shake = true; saveSettings(); saveGS(); applyGS(); };
+applyGS();
 for (const k of ['music', 'sfx']) { const el = $('vol-' + k); el.value = SETTINGS[k]; el.oninput = () => { SETTINGS[k] = Number(el.value); saveSettings(); if (k === 'sfx') sfx.play('click'); }; }
 for (const k of Object.keys(PRESETS)) $('q-' + k).onclick = () => { applyQuality(k); rawDts.length = 0; };
 $('btn-save').onclick = async () => { await saveWorld('main', game.toSave()); $('pause-msg').textContent = 'Đã lưu.'; };
@@ -554,7 +578,10 @@ function frameBody(dt) {
   for (const p of interp.ps) if (p.uid !== uid && !p.dead) list.push({ key: 'p:' + p.uid, kind: 'player', ...p });
   for (const e of interp.es) list.push({ key: 'e:' + e.id, ...e });
   ents.update(list, nowS, dt, [...interp.ps.filter(p => p.uid !== uid), { x: local.x, z: local.z }], scene.camera.position);
-  minimap.update(dt, { world: S.world, x: local.x, y: local.y, z: local.z, yaw: local.yaw, es: interp.es, ps: interp.ps, uid, sites: S.flags.sites && S.flags.sites.dungeon, time: S.time, region: regionName });
+  const mv = { world: S.world, x: local.x, y: local.y, z: local.z, yaw: local.yaw, es: interp.es, ps: interp.ps, uid, sites: S.flags.sites && S.flags.sites.dungeon, time: S.time, region: regionName, waypoint: worldmap && worldmap.waypoint, home: y.home };
+  if (GS.map || (worldmap && worldmap.open)) minimap.update(dt, mv);
+  if (worldmap) { worldmap.seeNpcs(interp.es); worldmap.draw(mv); }
+  if (GS.fps) { fpsAcc += dt; fpsN++; if (fpsAcc >= 0.5) { $('fps').textContent = Math.round(fpsN / fpsAcc) + ' FPS'; fpsAcc = 0; fpsN = 0; } }
   const boss = interp.es.filter(e => e.kind === 'boss').sort((a, b) => Math.hypot(a.x - local.x, a.z - local.z) - Math.hypot(b.x - local.x, b.z - local.z))[0];
   hud.setBoss(boss && Math.hypot(boss.x - local.x, boss.z - local.z) < 70 ? { name: BOSSES[boss.type].name, hp: boss.hp, maxHp: boss.maxHp, phase: boss.phase } : null);
   dgPoll -= dt; if (dgPoll <= 0) { dgPoll = 0.25; dungeonHud(); }

@@ -1,7 +1,8 @@
 // Hiệu ứng camera kiểu Minecraft: nhún khi đi, FOV rộng ra khi chạy, nghiêng khi trúng đòn; và cánh tay + vật đang cầm vung khi đào/đánh.
 import { ITEMS } from '../content/items.js';
 
-const BASE_FOV = 72, SPRINT_FOV = 80;
+let BASE_FOV = 72, SPRINT_FOV = 80;
+export function setBaseFov(v) { BASE_FOV = v; SPRINT_FOV = v + 8; }
 
 // Hàm thuần để test: trạng thái -> trạng thái mới.
 // rolling: 0 hoặc ±1 (bên lăn); camera hạ thấp và nghiêng nhẹ trong lúc lăn.

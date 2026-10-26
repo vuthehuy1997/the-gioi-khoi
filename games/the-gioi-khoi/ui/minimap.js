@@ -18,7 +18,7 @@ function blockRgb(id) {
   return colorOf.get(id);
 }
 
-export function createMinimap(root) {
+export function createMinimap(root, { onSample = null } = {}) {
   const R = 24, PX = 3;                                   // bán kính (block) và số điểm ảnh mỗi block khi thu nhỏ
   let big = false, acc = 99, last = { x: 1e9, z: 1e9 };
   root.textContent = '';
@@ -46,6 +46,7 @@ export function createMinimap(root) {
       for (let c = 0; c < 3; c++) img.data[k + c] = Math.max(0, Math.min(255, img.data[k + c] * f));
     }
     tctx.putImageData(img, 0, 0);
+    if (onSample) onSample(terrain, Math.floor(px) - R, Math.floor(pz) - R);
   }
 
   return {
@@ -64,6 +65,11 @@ export function createMinimap(root) {
       const at = (x, z) => [S / 2 + (x - v.x) * cell, S / 2 + (z - v.z) * cell];
       const dot = (x, z, col, r, ring) => { const [sx, sy] = at(x, z); if (Math.hypot(sx - S / 2, sy - S / 2) > S / 2 - 2) return; ctx.beginPath(); ctx.arc(sx, sy, r, 0, 7); ctx.fillStyle = col; ctx.fill(); if (ring) { ctx.lineWidth = 1.5; ctx.strokeStyle = '#000b'; ctx.stroke(); } };
       for (const s of Object.values(v.sites || {})) { const [sx, sy] = at(s.x, s.z); if (Math.hypot(sx - S / 2, sy - S / 2) < S / 2 - 6) { ctx.save(); ctx.translate(sx, sy); ctx.rotate(Math.PI / 4); ctx.fillStyle = '#c58bf2'; ctx.strokeStyle = '#000c'; ctx.lineWidth = 1.5; ctx.fillRect(-4, -4, 8, 8); ctx.strokeRect(-4, -4, 8, 8); ctx.restore(); } }
+      if (v.waypoint) {                                                                          // điểm đánh dấu: chấm hồng, dính vào viền khi ở ngoài bản đồ
+        let [wx, wy] = at(v.waypoint.x, v.waypoint.z); const dx = wx - S / 2, dy = wy - S / 2, d = Math.hypot(dx, dy), lim = S / 2 - 7;
+        if (d > lim) { wx = S / 2 + dx / d * lim; wy = S / 2 + dy / d * lim; }
+        ctx.beginPath(); ctx.arc(wx, wy, 5, 0, 7); ctx.fillStyle = '#ff4fd8'; ctx.fill(); ctx.lineWidth = 2; ctx.strokeStyle = '#000'; ctx.stroke();
+      }
       for (const e of v.es) {
         if (e.kind === 'mob') { const d = MOBS[e.type]; dot(e.x, e.z, d && d.passive ? '#f1e27a' : '#ff4a3d', 3, true); }
         else if (e.kind === 'boss') dot(e.x, e.z, '#ff2a2a', 6, true);
@@ -74,7 +80,7 @@ export function createMinimap(root) {
       ctx.save(); ctx.translate(S / 2, S / 2); ctx.rotate(-v.yaw);                              // mũi tên bản thân: hướng nhìn
       ctx.beginPath(); ctx.moveTo(0, -7); ctx.lineTo(5, 6); ctx.lineTo(0, 3); ctx.lineTo(-5, 6); ctx.closePath(); ctx.fillStyle = '#ffd23a'; ctx.fill(); ctx.lineWidth = 1.5; ctx.strokeStyle = '#000'; ctx.stroke(); ctx.restore();
       ctx.beginPath(); ctx.arc(S / 2, S / 2, S / 2 - 1, 0, Math.PI * 2); ctx.lineWidth = 2; ctx.strokeStyle = '#e9b949'; ctx.stroke();
-      info.textContent = `${Math.floor(v.x)}, ${Math.floor(v.y)}, ${Math.floor(v.z)} · ${isNight(v.time) ? '☾' : '☀'} ${clock(v.time)} · ngày ${Math.floor(v.time / DAY_LEN) + 1}${v.region ? ' · ' + v.region : ''}`;
+      info.textContent = `${Math.floor(v.x)}, ${Math.floor(v.y)}, ${Math.floor(v.z)} · ${isNight(v.time) ? '☾' : '☀'} ${clock(v.time)} · ngày ${Math.floor(v.time / DAY_LEN) + 1}${v.region ? ' · ' + v.region : ''}${v.waypoint ? ` · ◆ ${Math.round(Math.hypot(v.waypoint.x - v.x, v.waypoint.z - v.z))} m` : ''}`;
     },
   };
 }

@@ -40,6 +40,8 @@
     <div id="hotbar"></div>
     <div id="region"></div>
     <div id="roomcode"></div>
+    <div id="worldmap" hidden></div>
+    <div id="fps" hidden></div>
     <div id="minimap" aria-label="Bản đồ nhỏ (N để phóng to)"></div>
     <div id="quests"></div>
     <div id="toast"></div>
@@ -47,7 +49,9 @@
     <div id="panel" class="panel" hidden></div>
     <div id="death" hidden><h2>Bạn đã gục ngã</h2><button id="btn-respawn">Hồi sinh</button></div>
     <div id="pause" hidden><h2>Tạm dừng</h2><div class="quality">Chất lượng: <button id="q-low">Thấp</button><button id="q-medium">Vừa</button><button id="q-high">Cao</button></div>
-    <div class="vols"><label>Nhạc nền <input id="vol-music" type="range" min="0" max="100" step="5"></label> <label>Âm thanh <input id="vol-sfx" type="range" min="0" max="100" step="5"></label> <small>(M: bật/tắt nhạc)</small></div>
+    <div class="vols"><label>Nhạc nền <input id="vol-music" type="range" min="0" max="100" step="5"></label> <label>Âm thanh <input id="vol-sfx" type="range" min="0" max="100" step="5"></label> </div><div class="hint" style="text-align:center;font-size:12px;opacity:.7">U: bật/tắt nhạc · M: bản đồ lớn · N: phóng to bản đồ nhỏ · Tab: danh sách người chơi · T: chat</div>
+    <div class="opts"><label>Độ nhạy chuột <input id="set-sens" type="range" min="30" max="250" step="5"></label> <label>Góc nhìn (FOV) <input id="set-fov" type="range" min="60" max="100" step="2"><span id="fov-val"></span></label>
+    <label><input id="set-map" type="checkbox"> Bản đồ nhỏ</label> <label><input id="set-shake" type="checkbox"> Rung camera</label> <label><input id="set-fps" type="checkbox"> Hiện FPS</label> <button id="set-reset">Mặc định</button></div>
     <button id="btn-resume">Tiếp tục</button> <button id="btn-save">Lưu thế giới</button> <button id="btn-export">Xuất file</button> <button id="btn-leave">Lưu và thoát</button><p id="pause-msg"></p></div>
   </div>
   <div id="menu">

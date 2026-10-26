@@ -2164,8 +2164,8 @@ def test_game_runs_music_for_region_and_volume_controls(pg, browser, base):
       const before = JSON.parse(localStorage.getItem('game-hub-settings-v1') || '{}');
       const el = document.getElementById('vol-music'); el.value = 20; el.dispatchEvent(new Event('input'));
       out.saved = JSON.parse(localStorage.getItem('game-hub-settings-v1') || '{}').music;
-      window.dispatchEvent(new KeyboardEvent('keydown', { code: 'KeyM' })); out.muted = JSON.parse(localStorage.getItem('game-hub-settings-v1')).music;
-      window.dispatchEvent(new KeyboardEvent('keydown', { code: 'KeyM' })); out.unmuted = JSON.parse(localStorage.getItem('game-hub-settings-v1')).music;
+      window.dispatchEvent(new KeyboardEvent('keydown', { code: 'KeyU' })); out.muted = JSON.parse(localStorage.getItem('game-hub-settings-v1')).music;
+      window.dispatchEvent(new KeyboardEvent('keydown', { code: 'KeyU' })); out.unmuted = JSON.parse(localStorage.getItem('game-hub-settings-v1')).music;
       g.sfx.play('voice', { type: 'soi-xam', intent: 'alert', dist: 3 }); out.voiceStat = g.sfx.stats['voice:alert'];
       return out;
     }""")
@@ -5185,6 +5185,56 @@ def test_chat_real_keyboard_commands_and_rate_limit(pg, browser, base):
     assert r['out'] == [True, 'too-soon', 'empty', True], r
     assert r['chats'][0]['name'] == 'Tester' and r['chats'][1]['len'] == 120, r   # cắt 120 ký tự
     assert r['chats'][2]['sys'] and r['chats'][3]['sys'], r
+
+
+
+@test
+def test_worldmap_key_m_explored_waypoint_and_close(pg, browser, base):
+    _open_game(pg, base)
+    pg.wait_for_timeout(1500)
+    pg.keyboard.press('KeyM'); pg.wait_for_timeout(500)
+    assert pg.evaluate("() => !document.getElementById('worldmap').hidden")
+    assert pg.evaluate("() => __g.local && document.querySelector('#worldmap canvas').width > 300")
+    r = pg.evaluate("""() => { const c = document.querySelector('#worldmap canvas'), d = c.getContext('2d').getImageData(0, 0, c.width, c.height).data; let lit = 0; for (let i = 0; i < d.length; i += 16) if (d[i] + d[i + 1] + d[i + 2] > 60) lit++; return { lit, total: d.length / 16 }; }""")
+    assert 0.02 < r['lit'] / r['total'] < 0.9, r                      # có vùng đã khám phá, phần còn lại là sương đen
+    x0 = pg.evaluate("() => __g.local.x")
+    pg.keyboard.down('KeyW'); pg.wait_for_timeout(300); pg.keyboard.up('KeyW')
+    assert abs(pg.evaluate("() => __g.local.x") - x0) < 0.5                # mở bản đồ thì không đi được
+    box = pg.evaluate("() => { const r = document.querySelector('#worldmap canvas').getBoundingClientRect(); return [r.left, r.top, r.width, r.height]; }")
+    pg.mouse.click(box[0] + box[2] * 0.7, box[1] + box[3] * 0.3); pg.wait_for_timeout(300)
+    pg.keyboard.press('Equal'); pg.keyboard.press('Minus'); pg.wait_for_timeout(100)      # thu phóng rồi trả về cũ
+    pg.keyboard.press('Escape'); pg.wait_for_timeout(400)
+    assert pg.evaluate("() => document.getElementById('worldmap').hidden")
+    assert not pg.evaluate("() => document.getElementById('pause').hidden === false")   # Esc chỉ đóng bản đồ, không mở menu tạm dừng
+    info = pg.evaluate("() => document.querySelector('#minimap .mminfo').textContent")
+    assert '◆' in info, info                                         # điểm đánh dấu hiện khoảng cách trên bản đồ nhỏ
+    assert pg.evaluate("() => localStorage.getItem('tgk-waypoint-777') !== null")
+    pg.keyboard.press('KeyM'); pg.wait_for_timeout(300)
+    pg.mouse.click(box[0] + box[2] * 0.7, box[1] + box[3] * 0.3); pg.wait_for_timeout(200)  # bấm lại đúng chỗ: bỏ điểm
+    pg.keyboard.press('KeyM'); pg.wait_for_timeout(200)
+    assert '◆' not in pg.evaluate("() => document.querySelector('#minimap .mminfo').textContent")
+
+
+@test
+def test_settings_sensitivity_fov_toggles_persist(pg, browser, base):
+    _open_game(pg, base)
+    pg.keyboard.press('Escape'); pg.wait_for_timeout(300)
+    assert pg.evaluate("() => !document.getElementById('pause').hidden")
+    pg.evaluate("""() => { const s = document.getElementById('set-fov'); s.value = 90; s.dispatchEvent(new Event('input')); const m = document.getElementById('set-map'); m.checked = false; m.dispatchEvent(new Event('change')); const f = document.getElementById('set-fps'); f.checked = true; f.dispatchEvent(new Event('change')); const v = document.getElementById('set-sens'); v.value = 200; v.dispatchEvent(new Event('input')); }""")
+    pg.wait_for_timeout(400)
+    st = pg.evaluate("() => ({ gs: JSON.parse(localStorage.getItem('tgk-settings-v1')), mm: document.getElementById('minimap').style.display, fps: !document.getElementById('fps').hidden, fovTxt: document.getElementById('fov-val').textContent })")
+    assert st['gs']['fov'] == 90 and st['gs']['sens'] == 200 and st['gs']['map'] is False and st['gs']['fps'] is True, st
+    assert st['mm'] == 'none' and st['fps'] and st['fovTxt'] == '90°', st
+    pg.keyboard.press('Escape'); pg.wait_for_timeout(1200)
+    pg.evaluate("() => Object.defineProperty(document, 'pointerLockElement', { get: () => document.getElementById('cv'), configurable: true })")
+    y0 = pg.evaluate("() => __g.local.yaw")
+    pg.evaluate("() => window.dispatchEvent(new MouseEvent('mousemove', { movementX: -100, movementY: 0 }))"); pg.wait_for_timeout(100)
+    y1 = pg.evaluate("() => __g.local.yaw")
+    assert 0.35 < abs(y1 - y0) < 0.65, (y0, y1)                       # 100 px * 0.0025 * 2.0 = 0.5 rad (độ nhạy x2)
+    fov = pg.evaluate("() => __g.scene ? __g.scene.camera.fov : null")
+    pg.evaluate("() => { document.getElementById('set-reset').click(); }")
+    st2 = pg.evaluate("() => JSON.parse(localStorage.getItem('tgk-settings-v1'))")
+    assert st2['fov'] == 72 and st2['sens'] == 100 and st2['map'] is True, st2
 
 
 if __name__ == '__main__':

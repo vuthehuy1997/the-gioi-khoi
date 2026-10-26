@@ -205,3 +205,13 @@ html,body{margin:0;height:100%;background:#12141a;color:#eeede8;font-family:'Seg
 #chatlog div.old{opacity:.0}
 #chatin{position:absolute;left:12px;bottom:112px;width:min(380px,45vw);font:inherit;font-size:14px;padding:6px 10px;border-radius:6px;border:1px solid #e9b949;background:#0b0e14ee;color:#fff;pointer-events:auto}
 @media (max-width:900px){#chatlog{bottom:160px}#chatin{bottom:132px}}
+
+/* bản đồ lớn, cài đặt, FPS */
+#worldmap{position:absolute;inset:0;background:#000b;display:grid;place-content:center;justify-items:center;gap:6px;pointer-events:auto;z-index:20}
+#worldmap[hidden]{display:none}
+#worldmap canvas{border:2px solid #e9b949;border-radius:6px;cursor:crosshair;max-width:96vw}
+#worldmap .wmbar{font-size:14px;color:#fff;text-shadow:0 0 3px #000}
+#worldmap .wmhint{font-size:12px;color:#a3a8b8}
+#fps{position:absolute;left:12px;top:70px;font-size:12px;color:#9fff9f;text-shadow:0 0 3px #000;pointer-events:none}
+#pause .opts{display:flex;flex-wrap:wrap;gap:10px 18px;justify-content:center;margin:10px 0;font-size:13px}
+#pause .opts label{display:flex;align-items:center;gap:6px}
