@@ -62,7 +62,11 @@ export function createHud() {
   };
   setInterval(fxTick, 250);
   return {
-    setHp(hp, max) { $('hp').textContent = `❤ ${Math.ceil(hp)}/${max}`; $('hp').style.color = hp <= max * 0.3 ? '#ff4d4d' : '#ff8a8a'; },
+    setHp(hp, max) {
+      const el = $('hp'); if (!el.firstChild) el.innerHTML = '<span class="hpbar"><i></i></span><b></b>';
+      const r = Math.max(0, Math.min(1, hp / max)); el.querySelector('i').style.width = r * 100 + '%'; el.classList.toggle('low', r <= 0.3);
+      el.querySelector('b').textContent = `❤ ${Math.ceil(hp)}/${max}`;
+    },
     setHotbar(inv, sel) {
       const h = $('hotbar'); h.textContent = '';
       for (let i = 0; i < 9; i++) { const d = slotEl(inv[i], { sel: i === sel }); const k = document.createElement('i'); k.textContent = i + 1; d.appendChild(k); h.appendChild(d); }

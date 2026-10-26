@@ -22,6 +22,7 @@ import { sfx } from './sfx.js';
 import { createDirector } from './audio/director.js';
 import { SETTINGS, saveSettings } from '../../platform/core/settings.js';
 import { createHud, setIconProvider } from './ui/hud.js';
+import { createMinimap } from './ui/minimap.js';
 import { createPanels } from './ui/panels.js';
 import { regionById } from './world/regions.js';
 import { REGIONS } from './content/regions.js';
@@ -48,6 +49,8 @@ const ERR = {
 
 const scene = createScene($('cv'), { aa: params.get('aa') !== '0' && (devicePixelRatio || 1) < 1.75 });   // hi-dpi đã đủ nét, tắt MSAA cho nhẹ
 const hud = createHud();
+const minimap = createMinimap(document.getElementById('minimap'));
+let regionName = '';
 const sky = createSky(scene), fx = createEffects(scene), hand = createHand(scene), camFx = newCameraFx();
 const icons = createIcons(scene.atlasCanvas); setIconProvider(id => icons.get(id));
 const glInfo = (() => { try { const gl = scene.renderer.getContext(), ext = gl.getExtension('WEBGL_debug_renderer_info'); return ext ? String(gl.getParameter(ext.UNMASKED_RENDERER_WEBGL)) : ''; } catch (e) { return ''; } })();
@@ -203,7 +206,7 @@ function handleEvent(ev) {
     case 'quests': hud.setQuests(ev.list); break;
     case 'dungeon': dgLeft[ev.id] = ev.left || 0; break;
     case 'loot': document.exitPointerLock?.(); panels.showLoot(ev); break;
-    case 'region': hud.setRegion(ev.name); break;
+    case 'region': regionName = ev.name; hud.setRegion(ev.name); break;
     case 'swing': { ents.swing('e:' + ev.id); const b = interp.es.find(e => e.id === ev.id); if (b && b.kind === 'boss' && Math.hypot(b.x - local.x, b.z - local.z) < 40) sfx.play('bossSwing'); break; }
     case 'died': if (ev.uid === uid) sfx.play('die'); hud.toast(ev.uid === uid ? 'Bạn đã gục ngã.' : `${ev.name} đã gục ngã.`); break;
     case 'boss-start': sfx.play('boss'); hud.toast(`${ev.name} xuất hiện!`); break;
@@ -232,6 +235,7 @@ addEventListener('keydown', e => {
   keys.add(e.code);
   if (!S) return;
   if (e.code === 'KeyM') { toggleMusic(); return; }
+  if (e.code === 'KeyN' && !e.repeat) { minimap.toggle(); return; }
   if (e.code === 'F3') { e.preventDefault(); const d = $('debug'); d.hidden = !d.hidden; return; }
   if (e.code === 'Escape') { if (panels.isOpen) panels.close(); else if (!paused && !S.you.dead) setPause(true); else if (paused) setPause(false); return; }
   if (inUi() && e.code !== 'KeyE') return;
@@ -536,6 +540,7 @@ function frameBody(dt) {
   for (const p of interp.ps) if (p.uid !== uid && !p.dead) list.push({ key: 'p:' + p.uid, kind: 'player', ...p });
   for (const e of interp.es) list.push({ key: 'e:' + e.id, ...e });
   ents.update(list, nowS, dt, [...interp.ps.filter(p => p.uid !== uid), { x: local.x, z: local.z }], scene.camera.position);
+  minimap.update(dt, { world: S.world, x: local.x, y: local.y, z: local.z, yaw: local.yaw, es: interp.es, ps: interp.ps, uid, sites: S.flags.sites && S.flags.sites.dungeon, time: S.time, region: regionName });
   const boss = interp.es.filter(e => e.kind === 'boss').sort((a, b) => Math.hypot(a.x - local.x, a.z - local.z) - Math.hypot(b.x - local.x, b.z - local.z))[0];
   hud.setBoss(boss && Math.hypot(boss.x - local.x, boss.z - local.z) < 70 ? { name: BOSSES[boss.type].name, hp: boss.hp, maxHp: boss.maxHp, phase: boss.phase } : null);
   dgPoll -= dt; if (dgPoll <= 0) { dgPoll = 0.25; dungeonHud(); }

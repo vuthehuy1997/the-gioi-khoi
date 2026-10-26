@@ -29,6 +29,30 @@ export function createEntityView(scene, { iconCanvas = null, onDeath = null } = 
     }
     return tagMats.get(k);
   }
+  // Thanh máu trên đầu: vật liệu dùng chung theo (loại, bậc 0..20); số sát thương nổi lên rồi mờ dần.
+  const barMats = new Map(), popups = [];
+  const BAR_COLOR = { player: '#4fd35a', boss: '#ffc83a', mob: '#e8483c' };
+  function barMat(kind, ratio) {
+    const step = Math.max(0, Math.min(20, Math.ceil(ratio * 20))), k = kind + step;
+    if (!barMats.has(k)) {
+      const c = document.createElement('canvas'); c.width = 128; c.height = 16; const x = c.getContext('2d');
+      x.fillStyle = '#000b'; x.fillRect(0, 0, 128, 16); x.fillStyle = '#3a1210'; x.fillRect(3, 3, 122, 10);
+      x.fillStyle = step <= 6 && kind !== 'boss' ? '#ff9f1c' : BAR_COLOR[kind] || BAR_COLOR.mob; x.fillRect(3, 3, Math.round(122 * step / 20), 10);
+      const t = new T.CanvasTexture(c); t.colorSpace = T.SRGBColorSpace;
+      barMats.set(k, new T.SpriteMaterial({ map: t, depthTest: false, transparent: true }));
+    }
+    return barMats.get(k);
+  }
+  function makeBar(boss) { const s = new T.Sprite(barMat('mob', 1)); s.scale.set(boss ? 2.6 : 1.1, boss ? 0.3 : 0.14, 1); s.renderOrder = 10; s.visible = false; return s; }
+  function popup(x, y, z, n, big) {
+    if (popups.length > 24) { const old = popups.shift(); group.remove(old.s); old.s.material.map.dispose(); old.s.material.dispose(); }
+    const c = document.createElement('canvas'); c.width = 128; c.height = 48; const cx = c.getContext('2d');
+    cx.font = 'bold 36px sans-serif'; cx.textAlign = 'center'; cx.textBaseline = 'middle'; cx.lineWidth = 6; cx.strokeStyle = '#000d'; cx.fillStyle = big ? '#ffd23a' : '#ffffff';
+    cx.strokeText('-' + n, 64, 24); cx.fillText('-' + n, 64, 24);
+    const t = new T.CanvasTexture(c); t.colorSpace = T.SRGBColorSpace;
+    const s = new T.Sprite(new T.SpriteMaterial({ map: t, depthTest: false, transparent: true })); s.scale.set(big ? 1.5 : 1.1, big ? 0.56 : 0.41, 1); s.renderOrder = 12; s.position.set(x + (Math.random() - 0.5) * 0.4, y, z + (Math.random() - 0.5) * 0.4);
+    group.add(s); popups.push({ s, life: 0.9, total: 0.9 });
+  }
   function makeTag(e, h) {
     const boss = e.kind === 'boss', text = e.kind === 'npc' ? '❗ ' + (e.name || 'NPC') : e.kind === 'player' ? (e.name || '?') : boss ? BOSSES[e.type].name : MOBS[e.type] ? MOBS[e.type].name : '';
     if (!text) return null;
@@ -75,6 +99,7 @@ export function createEntityView(scene, { iconCanvas = null, onDeath = null } = 
       const h = o.lib.model.scale * 2.1; o.h = e.kind === 'boss' ? o.lib.model.scale * 2.4 : h;
       const d = e.kind === 'boss' ? BOSSES[e.type] : e.kind === 'mob' ? MOBS[e.type] : null;
       o.radius = d ? d.w * 0.75 : 0.45; o.tag = makeTag(e, o.h); if (o.tag) g.add(o.tag);
+      if (e.kind !== 'npc') { o.bar = makeBar(e.kind === 'boss'); o.bar.position.y = o.h + 0.12; o.barKind = e.kind === 'boss' ? 'boss' : e.kind === 'player' ? 'player' : 'mob'; g.add(o.bar); }
     } else if (e.kind === 'item') { g.add(itemObject(e)); o.radius = 0.2; o.item = true; }
     else { const mk = PROJ[e.style] || PROJ.arrow; o.proj = true; g.add(mk()); o.radius = 0; }
     group.add(g);
@@ -128,8 +153,13 @@ export function createEntityView(scene, { iconCanvas = null, onDeath = null } = 
           const far = dist > 56;
           if (!far || ((t * 60) | 0) % 3 === 0) animate(o.rig, { phase: o.phase, k: Math.min(1, o.speed / 2.2), t, pitch: e.pitch || 0, swing: o.swing > 0 ? o.swing / 0.25 : 0, act: e.kind === 'player' ? e.act | 0 : 0 });
           if (e.kind === 'player') setShieldMesh(o, e.off || null, e.act === 1);
-          if (e.hp !== undefined && o.hp !== undefined && e.hp < o.hp) o.flash = 0.16;
+          if (e.hp !== undefined && o.hp !== undefined && e.hp < o.hp) { o.flash = 0.16; o.hurtAt = t; if (e.kind !== 'player' || o.hp - e.hp >= 1) popup(e.x, e.y + o.h + 0.55, e.z, Math.round(o.hp - e.hp), o.hp - e.hp >= 8); }
           o.hp = e.hp;
+          if (o.bar) {
+            const ratio = e.maxHp ? e.hp / e.maxHp : 1, recent = o.hurtAt !== undefined && t - o.hurtAt < 6;
+            const show = e.maxHp && ((o.barKind === 'player' && dist < 30) || (o.barKind === 'boss' && dist < 70) || (o.barKind === 'mob' && dist < 22 && (ratio < 1 || recent)));
+            o.bar.visible = !!show; if (show) { const m = barMat(o.barKind, ratio); if (o.bar.material !== m) o.bar.material = m; }
+          }
           if (o.flash > 0) { o.flash -= dt; setFlash(o, true); } else setFlash(o, false);
           if (o.swing > 0) o.swing -= dt;
           if (o.wind) {                                                                  // báo hiệu đòn: ngả người ra sau rồi nhoài tới
@@ -173,7 +203,7 @@ export function createEntityView(scene, { iconCanvas = null, onDeath = null } = 
           }
           const shrink = f > 0.65 ? 1 - (f - 0.65) / 0.35 : 1;                        // 35% cuối: co lại và tan
           g.scale.setScalar(Math.max(0.001, shrink) * o.baseScale);
-          if (o.tag) o.tag.visible = false;
+          if (o.tag) o.tag.visible = false; if (o.bar) o.bar.visible = false;
           setFlash(o, f < 0.25 || (f > 0.65 && ((f * 30) | 0) % 2 === 0));
           if (sh < MAX_SHADOWS) { ps.set(g.position.x, o.baseY + 0.03, g.position.z); sc.set(o.radius * shrink, 1, o.radius * shrink); mtx.compose(ps, q, sc); shadows.setMatrixAt(sh++, mtx); }
           if (f > 0.65 && !o.puffed) { o.puffed = true; if (onDeath) onDeath(g.position.x, o.baseY + o.h * 0.3, g.position.z, o.h, o.kind === 'boss'); }
@@ -181,6 +211,7 @@ export function createEntityView(scene, { iconCanvas = null, onDeath = null } = 
         } else { group.remove(o.g); objs.delete(k); dead.delete(k); }
       }
       shadows.count = sh; shadows.instanceMatrix.needsUpdate = true;
+      for (let i = popups.length - 1; i >= 0; i--) { const q2 = popups[i]; q2.life -= dt; q2.s.position.y += 1.3 * dt; q2.s.material.opacity = Math.max(0, Math.min(1, q2.life / 0.4)); if (q2.life <= 0) { group.remove(q2.s); q2.s.material.map.dispose(); q2.s.material.dispose(); popups.splice(i, 1); } }
       for (let i = rings.length - 1; i >= 0; i--) { const r = rings[i]; r.life -= dt; r.m.material.opacity = 0.25 + 0.4 * (1 - Math.max(0, r.life) / r.total); if (r.life <= 0) { group.remove(r.m); rings.splice(i, 1); } }
     },
     swing(key) { const o = objs.get(key); if (o) o.swing = 0.25; },
@@ -193,6 +224,8 @@ export function createEntityView(scene, { iconCanvas = null, onDeath = null } = 
     },
     // dùng cho test: tư thế chiến đấu (xoay thân, khiên đeo, đang báo hiệu đòn)
     poseOf(key) { const o = objs.get(key); return o ? { rx: o.g.rotation.x, shield: !!(o.shield && o.shield.visible), shieldUp: !!(o.shield && o.shield.position.z < -0.1), wind: !!o.wind } : null; },
+    barOf(key) { const o = objs.get(key); return o && o.bar ? { visible: o.bar.visible, kind: o.barKind } : null; },       // dùng cho test: thanh máu trên đầu
+    popupCount() { return popups.length; },
     deathPose(key) { const o = objs.get(key); return o && dead.has(key) ? { rz: o.g.rotation.z, rx: o.g.rotation.x, scale: o.g.scale.x, spin: o.spin, left: o.dying } : null; },
     telegraph(x, y, z, r, time) {
       const m = new T.Mesh(new T.CircleGeometry(r, 40), new T.MeshBasicMaterial({ color: '#ff3b3b', transparent: true, opacity: 0.3, depthWrite: false, side: T.DoubleSide }));

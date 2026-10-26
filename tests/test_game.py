@@ -5087,5 +5087,31 @@ def test_qa_player_is_pushed_out_of_npc_body(pg):
     assert r['moved'] == 0, r
 
 
+
+@test
+def test_hud_minimap_health_bars_and_damage_numbers(pg, browser, base):
+    _open_game(pg, base)
+    pg.evaluate("""async () => { const M = await import('./sim/mobs.js'), g = __g.game, p = g.player(__g.S.uid); g.env = false; p.maxHp = p.hp = 50;
+      const m = M.spawnMob(g, 'xac-song', p.x + 0.5, p.y, p.z - 3.5); m.frozen = true; window.__m = m; window.__full = M.spawnMob(g, 'xac-song', p.x + 3.5, p.y, p.z - 3.5); window.__full.frozen = true; }""")
+    pg.wait_for_timeout(1200)
+    r = pg.evaluate("""() => { const c = document.querySelector('#minimap canvas'), d = c.getContext('2d').getImageData(0, 0, c.width, c.height).data; let n = 0; for (let i = 3; i < d.length; i += 4) if (d[i] > 0) n++;
+      return { w: c.width, painted: n, info: document.querySelector('#minimap .mminfo').textContent, hpw: document.querySelector('#hp i').style.width }; }""")
+    assert r['w'] >= 100 and r['painted'] > 3000, r                         # bản đồ có vẽ địa hình
+    assert ',' in r['info'] and ('ngày' in r['info'] or 'đêm' in r['info']), r   # tọa độ và giờ
+    assert r['hpw'] == '100%', r                                            # thanh máu bản thân
+    # quái nguyên máu: chưa hiện thanh; bị đánh: hiện thanh + số sát thương
+    pg.evaluate("() => { window.__m.hp -= 7; }"); pg.wait_for_timeout(500)
+    q = pg.evaluate("""() => ({ a: __g.ents.barOf('e:' + window.__m.id), b: __g.ents.barOf('e:' + window.__full.id), pop: __g.ents.popupCount() })""")
+    assert q['a'] and q['a']['visible'] and q['a']['kind'] == 'mob', q
+    assert q['b'] and not q['b']['visible'], q
+    assert q['pop'] >= 1, q
+    pg.keyboard.press('KeyN'); pg.wait_for_timeout(300)
+    assert pg.evaluate("() => document.getElementById('minimap').classList.contains('big')")
+    pg.keyboard.press('KeyN'); pg.wait_for_timeout(200)
+    assert not pg.evaluate("() => document.getElementById('minimap').classList.contains('big')")
+    pg.evaluate("() => { const p = __g.game.player(__g.S.uid); p.hp = 5; __g.game.touch(p); }"); pg.wait_for_timeout(600)
+    assert pg.evaluate("() => document.getElementById('hp').classList.contains('low')")
+
+
 if __name__ == '__main__':
     run(TESTS)

@@ -166,3 +166,17 @@ html,body{margin:0;height:100%;background:#12141a;color:#eeede8;font-family:'Seg
 #dmgdir{position:absolute;left:50%;top:50%;width:160px;height:160px;margin:0;pointer-events:none;opacity:0;transition:opacity .6s}
 #dmgdir::before{content:'';position:absolute;left:50%;top:0;transform:translateX(-50%);border:14px solid transparent;border-bottom:26px solid #ff3b30;border-top:0;filter:drop-shadow(0 0 4px #000)}
 #dmgdir.on{opacity:.95;transition:opacity .05s}
+
+/* Bản đồ nhỏ + thanh máu bản thân */
+#minimap{position:absolute;right:12px;top:34px;pointer-events:none}
+#minimap canvas{display:block;border-radius:50%;background:#0008;box-shadow:0 0 6px #000a}
+#minimap .mmn{position:absolute;left:50%;top:2px;transform:translateX(-50%);font:700 11px sans-serif;font-style:normal;color:#fff;text-shadow:0 0 3px #000}
+#minimap .mminfo{margin-top:4px;text-align:center;font-size:11px;color:#dfe6f0;text-shadow:0 0 3px #000;white-space:nowrap}
+#minimap ~ #quests{top:215px}
+#minimap.big ~ #quests{top:325px}
+#hp{display:flex;align-items:center;gap:8px}
+#hp .hpbar{display:block;width:160px;height:14px;border:2px solid #000a;border-radius:4px;background:#3a1210cc;overflow:hidden}
+#hp .hpbar i{display:block;height:100%;background:linear-gradient(#ff6b5c,#d92c2c);transition:width .15s}
+#hp.low .hpbar i{background:linear-gradient(#ffb347,#e8590c);animation:starve .8s infinite}
+#hp b{font-size:15px;text-shadow:0 0 4px #000}
+@media (max-width:900px){#minimap canvas{width:110px!important;height:110px!important}#minimap ~ #quests{top:170px}}
