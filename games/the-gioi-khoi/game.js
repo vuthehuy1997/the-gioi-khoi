@@ -16,6 +16,8 @@ import { ChunkView } from './render/chunkview.js';
 import { createEntityView } from './render/entities.js';
 import { createSky } from './render/sky.js';
 import { createEffects } from './render/effects.js';
+import { createWeather } from './render/weather.js';
+import { exposed } from './sim/weather.js';
 import { stepCameraFx, newCameraFx, createHand, setBaseFov } from './render/camerafx.js';
 import { createIcons } from './ui/icons.js';
 import { LEVELS, PRESETS, presetOf, defaultPreset, governLevel, isSoftwareRenderer } from './render/quality.js';
@@ -56,7 +58,7 @@ const minimap = createMinimap(document.getElementById('minimap'), { onSample: (c
 let regionName = '', showPlayers = false, fpsAcc = 0, fpsN = 0;
 window.addEventListener('keyup', e => { if (e.code === 'Tab') showPlayers = false; });
 window.addEventListener('blur', () => { showPlayers = false; });
-const sky = createSky(scene), fx = createEffects(scene), hand = createHand(scene), camFx = newCameraFx();
+const sky = createSky(scene), fx = createEffects(scene), weatherFx = createWeather(scene), hand = createHand(scene), camFx = newCameraFx();
 const icons = createIcons(scene.atlasCanvas); setIconProvider(id => icons.get(id));
 const glInfo = (() => { try { const gl = scene.renderer.getContext(), ext = gl.getExtension('WEBGL_debug_renderer_info'); return ext ? String(gl.getParameter(ext.UNMASKED_RENDERER_WEBGL)) : ''; } catch (e) { return ''; } })();
 const software = isSoftwareRenderer(glInfo) && params.get('hw') !== '1';
@@ -92,7 +94,7 @@ function applyLevel(i, setRadius = true) {
   const L = LEVELS[level];
   if (setRadius && view) { view.setRadius(L.r); maxRadius = LEVELS[maxLevel].r; }
   scene.renderer.setPixelRatio(Math.min(devicePixelRatio || 1, L.pr)); scene.resize();
-  sky.clouds.visible = L.clouds; fx.density = L.particles;
+  sky.clouds.visible = L.clouds; fx.density = L.particles; weatherFx.density = Math.min(1, L.particles * 1.6);
 }
 function applyQuality(key, setRadius = true, user = true) {
   quality = key; store.set('tgk-quality', key); if (user) store.set('tgk-quality-user', '1');
@@ -208,6 +210,9 @@ function handleEvent(ev) {
     case 'dialog-end': panels.endDialog(); break;
     case 'shop': document.exitPointerLock?.(); panels.showShop(ev, S.you); break;
     case 'chest': document.exitPointerLock?.(); panels.showChest(ev, { you: S.you, near: nearStations(S.world, local.x, local.y, local.z) }); break;
+    case 'weather': hud.toast(ev.k === 'storm' ? 'Bão đang kéo đến! Tránh chỗ trống trải kẻo sét đánh.' : ev.k === 'rain' ? 'Trời bắt đầu mưa.' : 'Trời đã tạnh.', 3000); break;
+    case 'bolt': { weatherFx.strike(ev.x, ev.y, ev.z); const d = Math.hypot(ev.x - local.x, ev.z - local.z); const f = $('bolt'); f.className = 'on'; requestAnimationFrame(() => requestAnimationFrame(() => { f.className = 'fade'; })); setTimeout(() => sfx.play('thunder', { k: Math.max(0.15, 1 - d / 90) }), Math.min(2500, d * 12)); break; }
+    case 'sleep': if (ev.on) { sleeping = { x: ev.x, y: ev.y, z: ev.z }; document.exitPointerLock?.(); $('sleepfade').hidden = false; } else { sleeping = null; $('sleepfade').hidden = true; if (ev.skipped) hud.feed('☀ Bạn ngủ dậy, một ngày mới bắt đầu'); lockPointer(); } break;
     case 'quests': hud.setQuests(ev.list); if (panels.journalOpen) S.act({ t: 'journal' }); break;
     case 'journal': document.exitPointerLock?.(); panels.showJournal(ev); break;
     case 'ach': hud.toast(`🏆 Thành tựu: ${ev.name}`, 5000); hud.feed(`🏆 Bạn đạt thành tựu «${ev.name}»`); sfx.play('victory'); if (panels.journalOpen) S.act({ t: 'journal' }); break;
@@ -238,7 +243,9 @@ function handleEvent(ev) {
 }
 
 // ---------------------------------------------------------------- điều khiển
-const inUi = () => !S || panels.isOpen || paused || S.you.dead || !$('menu').hidden || chatOpen || (worldmap !== null && worldmap.open);
+let sleeping = null;                                              // { x, y, z } của giường khi đang ngủ
+const wakeUp = () => { if (sleeping) S.act({ t: 'sleep', x: sleeping.x, y: sleeping.y, z: sleeping.z }); };
+const inUi = () => !S || sleeping || panels.isOpen || paused || S.you.dead || !$('menu').hidden || chatOpen || (worldmap !== null && worldmap.open);
 let chatOpen = false;
 function openMap() { if (!S || !worldmap) return; keys.clear(); cancelDraw(); stopGuard(); mouse.left = mouse.right = false; dig = null; hud.setProgress(null); document.exitPointerLock?.(); worldmap.toggle(true); }
 function closeMap() { if (worldmap) worldmap.toggle(false); lockPointer(); }
@@ -250,6 +257,7 @@ addEventListener('keydown', e => {
   if (e.target.tagName === 'INPUT') return;
   keys.add(e.code);
   if (!S) return;
+  if (sleeping && (['KeyW', 'KeyA', 'KeyS', 'KeyD', 'Space', 'ShiftLeft'].includes(e.code))) { e.preventDefault(); wakeUp(); return; }
   if (e.code === 'KeyU') { toggleMusic(); return; }
   if (e.code === 'KeyJ' && !e.repeat && S) { if (panels.journalOpen) panels.close(); else if (!inUi()) S.act({ t: 'journal' }); return; }
   if (e.code === 'KeyM' && !e.repeat && worldmap) { if (worldmap.open) closeMap(); else if (!inUi()) openMap(); return; }
@@ -285,6 +293,7 @@ document.addEventListener('pointerlockchange', () => {
 const onCanvas = e => !e.target.closest('#panel,#pause,#death,#menu,button,input,label');
 addEventListener('mousedown', e => {
   if (!S || !onCanvas(e)) return;
+  if (sleeping) { wakeUp(); return; }
   if (!paused && !panels.isOpen && !S.you.dead && document.pointerLockElement !== $('cv') && !(debugOn() && NET === 'memory')) { lockPointer(); return; }
   if (inUi()) return;
   if (e.button === 0) { mouse.left = true; } else if (e.button === 2) { if (!useItem()) { mouse.right = true; startGuard(); } }      // chuột phải: việc khác trước, không có việc thì giơ khiên
@@ -581,7 +590,7 @@ function frameBody(dt) {
   for (const p of interp.ps) if (p.uid !== uid && !p.dead) list.push({ key: 'p:' + p.uid, kind: 'player', ...p });
   for (const e of interp.es) list.push({ key: 'e:' + e.id, ...e });
   ents.update(list, nowS, dt, [...interp.ps.filter(p => p.uid !== uid), { x: local.x, z: local.z }], scene.camera.position);
-  const mv = { world: S.world, x: local.x, y: local.y, z: local.z, yaw: local.yaw, es: interp.es, ps: interp.ps, uid, sites: S.flags.sites && S.flags.sites.dungeon, time: S.time, region: regionName, waypoint: worldmap && worldmap.waypoint, home: y.home };
+  const mv = { world: S.world, x: local.x, y: local.y, z: local.z, yaw: local.yaw, es: interp.es, ps: interp.ps, uid, sites: S.flags.sites && S.flags.sites.dungeon, time: S.time, weather: (S.snap && S.snap.wx) || 'clear', region: regionName, waypoint: worldmap && worldmap.waypoint, home: y.home };
   if (GS.map || (worldmap && worldmap.open)) minimap.update(dt, mv);
   if (worldmap) { worldmap.seeNpcs(interp.es); worldmap.draw(mv); }
   if (GS.fps) { fpsAcc += dt; fpsN++; if (fpsAcc >= 0.5) { $('fps').textContent = Math.round(fpsN / fpsAcc) + ' FPS'; fpsAcc = 0; fpsN = 0; } }
@@ -590,7 +599,14 @@ function frameBody(dt) {
   dgPoll -= dt; if (dgPoll <= 0) { dgPoll = 0.25; dungeonHud(); }
   { const tv = trapView(S.flags, S.world, S.time, local, 40); fx.setTraps(tv, nowS); trapSounds(tv); }
   const r = regionById(S.world.regionAt(local.x, local.z));
-  const light = lightLevel(S.time);
+  const light0 = lightLevel(S.time);
+  const wx = (S.snap && S.snap.wx) || 'clear', wet = !DRY_REGIONS.includes(r.id), cold = COLD_REGIONS_UI.includes(r.id);
+  wxDark += ((wet ? (wx === 'storm' ? 0.5 : wx === 'rain' ? 0.25 : 0) : 0) - wxDark) * Math.min(1, dt * 0.5);
+  const light = light0 * (1 - wxDark);
+  if (wet && wx !== 'clear') wxKind = cold ? 'snow' : 'rain';
+  covAcc -= dt; if (covAcc <= 0) { covAcc = 0.25; covered = !exposed(S.world, local.x, local.y, local.z); }
+  weatherFx.update(dt, scene.camera.position, wxKind, wet && wx !== 'clear' ? (wx === 'storm' ? 1 : 0.6) : 0, covered);
+  rainAcc += dt; if (rainAcc > 0.3) { rainAcc = 0; if (wxKind === 'rain' && weatherFx.level > 0.08) sfx.play('rain', { k: weatherFx.level * (covered ? 0.35 : 1) }); }
   scene.setEnvironment({ sky: r.sky, fog: r.fog, light }); ents.setLight(light);
   const mobs = []; for (const e of interp.es) if (e.kind === 'mob') mobs.push({ id: e.id, type: e.type, st: e.st || 0, hp: e.hp, dist: Math.hypot(e.x - local.x, e.z - local.z) });
   stationPoll -= dt;                                                // đang mở kho đồ: cập nhật bàn/lò/đe ở gần khi người chơi đi hoặc đặt block
@@ -599,7 +615,7 @@ function frameBody(dt) {
     if (sig !== stationSig) { stationSig = sig; panels.refresh({ you: S.you, near }); }
   }
   director.update(dt, { region: r.id, night: light < 0.6, boss: !!(boss && boss.hp > 0 && Math.hypot(boss.x - local.x, boss.z - local.z) < 45), mobs });
-  const far = view.radius * 16 - 6; scene.setFog(far * 0.5, far);
+  const far = (view.radius * 16 - 6) * (1 - wxDark * 0.9); scene.setFog(far * 0.5, far);
   const eyeWater = S.world.get(local.x, local.y + 1.62, local.z) === B.WATER;
   $('water').hidden = !eyeWater; if (eyeWater) scene.setFog(0.5, 22);
   if (loadingPhase) { if (pending <= 8) { loadingPhase = false; $('loading').hidden = true; } else $('loading').hidden = false; }
@@ -609,6 +625,8 @@ function frameBody(dt) {
   if (!$('debug').hidden) { dbgT -= dt; if (dbgT <= 0) { dbgT = 0.25; $('debug').textContent = debugText(); } }
 }
 
+const DRY_REGIONS = ['sa-mac-lua', 'hoa-son'], COLD_REGIONS_UI = ['nui-bang', 'vuc-pha-le'];
+let wxDark = 0, wxKind = 'rain', covered = false, covAcc = 0, rainAcc = 0;
 function loop(now) {
   const raw = (now - last) / 1000, dt = Math.min(0.05, raw); last = now;
   if (S && (!debugOn() || params.get('gov') === '1')) {              // tự hạ/nâng mức chất lượng theo độ mượt thực tế
@@ -632,7 +650,7 @@ if (debugOn()) {
   window.__g = {
     get S() { return S; }, get game() { return game; }, get local() { return local; }, get view() { return view; }, scene, hud, get panels() { return panels; }, get ents() { return ents; },
     optimistic, handleEvent, get pendingEdits() { return pendingEdits; }, applyQuality, get quality() { return quality; }, get level() { return level; }, get software() { return software; }, applyLevel, glInfo,
-    get pending() { return pending; }, perf, sky, fx, hand, camFx, sfx, icons, gov, get interp() { return interp; }, mouse, keys, director,
+    get pending() { return pending; }, perf, sky, fx, weatherFx, hand, camFx, sfx, icons, gov, get interp() { return interp; }, mouse, keys, director,
     renderNow: () => frame(0.0001),
     lookAt(x, y, z) { const dx = x - local.x, dy = y - (local.y + 1.62), dz = z - local.z; local.yaw = Math.atan2(-dx, -dz); local.pitch = Math.atan2(dy, Math.hypot(dx, dz)); },
   };

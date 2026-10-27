@@ -5294,5 +5294,107 @@ def test_journal_key_j_tabs_and_achievement_toast(pg, browser, base):
     assert pg.evaluate("() => document.getElementById('panel').hidden")
 
 
+
+SLEEP_JS = GAME_JS + """
+const { B } = await imp('world/blocks.js'), W = await imp('sim/weather.js'), SL = await imp('sim/sleep.js'), { DAY_LEN } = await imp('sim/daynight.js');
+const withBed = (g, p) => { const x = Math.floor(p.x) + 1, z = Math.floor(p.z), y = g.world.surfaceY(x, z) + 1; g.setBlock(x, y, z, B.BED); return { x, y, z }; };
+"""
+
+
+@test
+def test_sleep_skips_night_only_when_everyone_sleeps(pg, browser, base):
+    r = ev(pg, SLEEP_JS + """
+      const { g, p } = mkGame(); const q = g.addPlayer('u2', 'Hai'); q.x = p.x; q.y = p.y; q.z = p.z;
+      const bed = withBed(g, p); const evs = []; g.emit = (u, e) => evs.push(e);
+      g.spawning = false; g.time = 100; const day = g.act('u1', { t: 'sleep', ...bed });      // ban ngày: chỉ đặt giường
+      const dayOk = !p.sleep && p.home.x === bed.x;
+      g.time = DAY_LEN * 0.75; p.hp = 5;
+      const a = g.act('u1', { t: 'sleep', ...bed });
+      for (let i = 0; i < 40; i++) g.tick(0.1);                                                  // mới một người ngủ: chưa sáng
+      const stillNight = g.time > DAY_LEN * 0.75 && g.time < DAY_LEN * 0.9, oneSleeping = !!p.sleep;
+      const b = g.act('u2', { t: 'sleep', ...bed });
+      for (let i = 0; i < 40; i++) g.tick(0.1);
+      return { dayOk, a: a.sleeping, b: b.sleeping, stillNight, oneSleeping, time: g.time, hp: p.hp, awake: !p.sleep && !q.sleep, dawn: evs.some(e => e.t === 'dawn'), sleepOn: evs.filter(e => e.t === 'sleep' && e.on).length };
+    """)
+    assert r['dayOk'] and r['a'] and r['b'] and r['stillNight'] and r['oneSleeping'], r
+    assert abs(r['time'] - 600) < 5 and r['hp'] == 20 and r['awake'] and r['dawn'] and r['sleepOn'] == 2, r
+
+
+@test
+def test_sleep_refused_near_monsters_and_woken_by_damage_or_walking(pg, browser, base):
+    r = ev(pg, SLEEP_JS + """
+      const { g, p } = mkGame(); const bed = withBed(g, p); const evs = []; g.emit = (u, e) => evs.push(e);
+      const M = await imp('sim/mobs.js'); g.spawning = false; g.time = DAY_LEN * 0.75;
+      const m = M.spawnMob(g, 'soi-xam', p.x + 6, p.y, p.z); m.frozen = true;
+      const near = g.act('u1', { t: 'sleep', ...bed }), refused = !p.sleep;
+      g.ents.delete(m.id);
+      g.act('u1', { t: 'sleep', ...bed }); const sleepingNow = !!p.sleep;
+      g.tick(0.1); g.hurtPlayer(p, 1, null, { pure: true }); g.tick(0.1); const wokeHurt = !p.sleep;
+      p.lastHurt = -99; g.act('u1', { t: 'sleep', ...bed }); const again = !!p.sleep;
+      p.x += 8; g.tick(0.1); const wokeWalk = !p.sleep;
+      p.x -= 8; p.lastHurt = -99; g.act('u1', { t: 'sleep', ...bed }); g.act('u1', { t: 'sleep', ...bed }); const toggled = !p.sleep;
+      return { refused, reason: near.reason, sleepingNow, wokeHurt, again, wokeWalk, toggled, toast: evs.some(e => e.t === 'toast' && /quái/.test(e.text)) };
+    """)
+    assert r['refused'] and r['reason'] == 'monsters' and r['toast'] and r['sleepingNow'] and r['wokeHurt'] and r['again'] and r['wokeWalk'] and r['toggled'], r
+
+
+@test
+def test_weather_cycles_storms_strike_and_snapshot_reports_it(pg, browser, base):
+    r = ev(pg, SLEEP_JS + """
+      const { g, p } = mkGame(); g.spawning = false; g.weatherOn = true; const evs = []; g.emit = (u, e) => evs.push(e);
+      const seen = new Set(); for (let i = 0; i < 6000; i++) { g.tick(1); seen.add(W.weatherOf(g)); if (seen.size === 3) break; }
+      W.setWeather(g, 'storm', 400); const t0 = evs.length; for (let i = 0; i < 200; i++) g.tick(1);
+      const bolts = evs.slice(t0).filter(e => e.t === 'bolt').length;
+      const { snapshotFor } = await imp('net/snapshot.js');
+      W.setWeather(g, 'rain', 50); const wx = snapshotFor(g, 'u1').wx; W.setWeather(g, 'clear', 50); const clear = snapshotFor(g, 'u1').wx;
+      // người đứng dưới mái che không bị sét; ngoài trời đứng ngay chân tia thì bị
+      p.hp = p.maxHp = 20; const x = Math.floor(p.x), z = Math.floor(p.z), y = g.world.surfaceY(x, z) + 1;
+      p.x = x + 0.5; p.z = z + 0.5; p.y = y; const open = W.exposed(g.world, p.x, p.y, p.z);
+      g.setBlock(x, y + 3, z, 1); const covered = !W.exposed(g.world, p.x, p.y, p.z);
+      const farm = await imp('sim/farm.js'); const rg = W.rainGrowth(g); W.setWeather(g, 'rain', 50); const rg2 = W.rainGrowth(g);
+      return { seen: [...seen].sort(), bolts, wx, clear: clear === undefined, open, covered, rg, rg2 };
+    """)
+    assert r['seen'] == ['clear', 'rain', 'storm'], r
+    assert r['bolts'] >= 5, r
+    assert r['wx'] == 'rain' and r['clear'] and r['open'] and r['covered'] and r['rg'] == 1 and r['rg2'] == 1.5, r
+
+
+@test
+def test_weather_and_sleep_in_the_browser(pg, browser, base):
+    _open_game(pg, base)
+    pg.wait_for_timeout(500)
+    r = pg.evaluate("""async () => {
+      const g = __g.game, p = g.player(__g.S.uid), root = '/' + location.pathname.split('/').slice(1, -1).join('/') + '/';
+      const W = await import(root + 'sim/weather.js'); g.env = false;
+      W.setWeather(g, 'storm', 300);
+      await new Promise(r => setTimeout(r, 4500));
+      const lvl = __g.weatherFx.level, info = document.querySelector('#minimap .mminfo').textContent;
+      return { lvl, info, region: __g.S.world.regionAt(p.x, p.z) };
+    }""")
+    if r['region'] not in ('sa-mac-lua', 'hoa-son'):
+        assert r['lvl'] > 0.3 and '⛈' in r['info'], r
+    pg.evaluate("() => __g.weatherFx.strike(__g.local.x + 3, 30, __g.local.z)")
+    assert pg.evaluate("() => __g.weatherFx.boltVisible")
+    pg.wait_for_timeout(600)
+    assert not pg.evaluate("() => __g.weatherFx.boltVisible")
+    # ngủ: đặt giường, chuyển sang đêm, bấm chuột phải
+    pg.evaluate("""async () => {
+      const g = __g.game, p = g.player(__g.S.uid), root = '/' + location.pathname.split('/').slice(1, -1).join('/') + '/';
+      const { B } = await import(root + 'world/blocks.js'); const W = await import(root + 'sim/weather.js');
+      W.setWeather(g, 'clear', 999); g.spawning = false; for (const e of [...g.ents.values()]) if (e.kind === 'mob') g.ents.delete(e.id);
+      const x = Math.floor(p.x) + 1, z = Math.floor(p.z), y = g.world.surfaceY(x, z) + 1; g.setBlock(x, y, z, B.BED); g.time = 450;
+      window.__bed = { x, y, z }; __g.S.act({ t: 'sleep', ...window.__bed });
+    }""")
+    pg.wait_for_timeout(500)
+    assert pg.evaluate("() => !document.getElementById('sleepfade').hidden")
+    pg.wait_for_timeout(3500)
+    assert pg.evaluate("() => document.getElementById('sleepfade').hidden && __g.game.time >= 600 && __g.game.time < 620")
+    pg.evaluate("() => { __g.game.time = 450; __g.S.act({ t: 'sleep', ...window.__bed }); }")
+    pg.wait_for_timeout(400)
+    assert pg.evaluate("() => !document.getElementById('sleepfade').hidden")
+    pg.keyboard.press('KeyW'); pg.wait_for_timeout(500)
+    assert pg.evaluate("() => document.getElementById('sleepfade').hidden && __g.game.player(__g.S.uid).sleep === null")
+
+
 if __name__ == '__main__':
     run(TESTS)

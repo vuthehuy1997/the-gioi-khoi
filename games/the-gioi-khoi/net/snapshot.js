@@ -27,6 +27,7 @@ export function snapshotFor(g, uid) {
     es.push(o);
   }
   const out = { time: r2(g.time), ps, es };
+  if (g.wx && g.wx.k !== 'clear') out.wx = g.wx.k;
   if (me) out.me = { air: Math.round((me.air === undefined ? 12 : me.air) * 10) / 10, sta: Math.round(me.stamina), exh: me.exh ? Math.max(0.1, Math.round((me.exhUntil - g.time) * 10) / 10) : 0, stn: me.stunUntil > g.time ? Math.round((me.stunUntil - g.time) * 10) / 10 : 0, cmb: me.combo.n > 0 && g.time - me.combo.at <= COMBO_WINDOW ? me.combo.n : 0 };     // thể lực, kiệt sức, chuỗi kiếm của người nhận (đổi liên tục nên không đi qua you)
   return out;
 }

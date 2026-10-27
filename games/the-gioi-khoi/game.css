@@ -224,3 +224,10 @@ html,body{margin:0;height:100%;background:#12141a;color:#eeede8;font-family:'Seg
 .panel .jq small{opacity:.7}.panel .step{font-size:12px;opacity:.9;margin-top:2px}.panel .step.why{color:#e99}.panel .reward{font-size:12px;color:#9fd1ff;margin-top:3px}
 .panel .ach{display:flex;gap:10px;align-items:center;background:#0006;border-radius:4px;padding:6px 8px;margin:4px 0;opacity:.55;font-size:13px}
 .panel .ach.done{opacity:1;border-left:3px solid #e9b949}.panel .ach .aic{font-size:22px;width:30px;text-align:center}
+
+/* thời tiết + ngủ */
+#bolt{position:absolute;inset:0;background:#e8e6ff;opacity:0;pointer-events:none}
+#bolt.on{opacity:.75;transition:none}#bolt.fade{transition:opacity .5s ease-out}
+#sleepfade{position:absolute;inset:0;background:#000d;display:grid;place-items:center;color:#cfd6ff;font-size:24px;text-align:center;pointer-events:none;animation:sleepin 2s ease-out}
+#sleepfade[hidden]{display:none}#sleepfade small{display:block;font-size:13px;opacity:.7;margin-top:8px}
+@keyframes sleepin{from{opacity:0}to{opacity:1}}

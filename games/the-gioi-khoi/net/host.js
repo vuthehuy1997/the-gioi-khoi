@@ -10,6 +10,7 @@ const REPORT = new Set(['break', 'dig', 'place', 'buy', 'sell', 'craft', 'use', 
 
 export class HostSession {
   constructor(game, room, uid, name) {
+    game.weatherOn = true;                                 // thời tiết chỉ chạy khi có phòng thật (bài thử mô phỏng thuần không bị mưa làm lệch thời gian)
     this.game = game; this.room = room; this.uid = uid; this.name = cleanName(name);
     this.world = game.world; this.flags = game.flags;
     this.you = null; this.snap = null; this.time = 0;

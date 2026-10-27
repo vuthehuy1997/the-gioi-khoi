@@ -91,6 +91,8 @@ const sounds = {
   crit: () => { noise(0.12, 0.1, 2600); tone(660, 0.14, 'sawtooth', 0.06, 380); tone(1200, 0.1, 'sine', 0.04); },
   windup: () => { tone(180, 0.14, 'sawtooth', 0.03, 140); },
   die: () => { tone(260, 0.6, 'sawtooth', 0.08, -200); },
+  rain: o => { noise(0.35, 0.025 * (o.k === undefined ? 1 : o.k), 3200); },
+  thunder: o => { const v = 0.12 * (o.k === undefined ? 1 : o.k); noise(1.4, v, 180); tone(48, 1.2, 'sawtooth', v * 0.5, -20); },
 };
 
 export const sfx = {

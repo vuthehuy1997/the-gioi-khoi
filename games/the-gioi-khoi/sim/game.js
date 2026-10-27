@@ -25,6 +25,8 @@ import * as animals from './animals.js';
 import * as dungeon from './dungeon.js';
 import * as fight from './fight.js';
 import * as ach from './achievements.js';
+import * as weather from './weather.js';
+import * as sleep from './sleep.js';
 
 const ENV_TEXT = {
   heat: n => `Cái nóng ở ${n} thiêu đốt bạn. Mặc đồ chống nóng (vỏ bọ cạp, than hồng) để chịu được.`,
@@ -148,8 +150,9 @@ export class Game {
     const sys = t => { this.emit(p.uid, { t: 'chat', sys: true, text: t }); return { ok: true }; };
     if (text[0] === '/') {
       const cmd = text.slice(1).split(/\s+/)[0].toLowerCase();
-      if (cmd === 'help') return sys('Lệnh: /help · /home (về giường hoặc điểm hồi sinh) · /time (giờ trong game) · /pos (tọa độ) · /players (ai đang trong phòng)');
+      if (cmd === 'help') return sys('Lệnh: /help · /home (về giường hoặc điểm hồi sinh) · /time (giờ trong game) · /pos (tọa độ) · /weather (thời tiết) · /players (ai đang trong phòng)');
       if (cmd === 'time') { const ph = ((this.time % 600) + 600) % 600 / 600, hr = (6 + ph * 24) % 24; return sys(`Ngày ${Math.floor(this.time / 600) + 1}, ${String(Math.floor(hr)).padStart(2, '0')}:${String(Math.floor((hr % 1) * 60)).padStart(2, '0')}`); }
+      if (cmd === 'weather') return sys(`Thời tiết: ${weather.WX_NAME[weather.weatherOf(this)]}`);
       if (cmd === 'pos') return sys(`Bạn ở ${Math.floor(p.x)}, ${Math.floor(p.y)}, ${Math.floor(p.z)}`);
       if (cmd === 'players') return sys('Trong phòng: ' + [...this.players.values()].map(q => q.name).join(', '));
       if (cmd === 'home') {
@@ -305,9 +308,11 @@ export class Game {
   actSleep(p, a) {
     if (!this.inReach(p, a.x, a.y, a.z)) return { ok: false, reason: 'reach' };
     if (this.world.get(a.x, a.y, a.z) !== B.BED) return { ok: false, reason: 'not-bed' };
+    if (p.sleep) return sleep.trySleep(this, p, a);                     // đang ngủ: bấm lần nữa để dậy
     p.home = { x: a.x, y: a.y, z: a.z }; this.touch(p);
-    this.emit(p.uid, { t: 'toast', text: 'Đã đặt điểm hồi sinh ở giường này.' });
-    return { ok: true };
+    const r = sleep.trySleep(this, p, a);                               // ban đêm, không quái: đi ngủ; ngược lại báo lý do
+    if (r.sleeping) this.emit(p.uid, { t: 'toast', text: 'Đã đặt điểm hồi sinh. Bạn đi ngủ…' });
+    return { ok: true, home: true, sleeping: !!r.sleeping, reason: r.reason };
   }
 
   // Điểm hồi sinh: giường còn nguyên thì lên trên giường, không thì điểm gốc của thế giới.
@@ -462,6 +467,8 @@ export class Game {
     stepBosses(this, dt);
     stepArenas(this, dt);
     this.regionTick(dt);
+    weather.weatherTick(this, dt);
+    sleep.sleepTick(this);
     this.questTick(dt);
     if (this.spawning) spawnTick(this, dt);
     combat.updateItems(this, dt);

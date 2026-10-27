@@ -80,7 +80,7 @@ export function createMinimap(root, { onSample = null } = {}) {
       ctx.save(); ctx.translate(S / 2, S / 2); ctx.rotate(-v.yaw);                              // mũi tên bản thân: hướng nhìn
       ctx.beginPath(); ctx.moveTo(0, -7); ctx.lineTo(5, 6); ctx.lineTo(0, 3); ctx.lineTo(-5, 6); ctx.closePath(); ctx.fillStyle = '#ffd23a'; ctx.fill(); ctx.lineWidth = 1.5; ctx.strokeStyle = '#000'; ctx.stroke(); ctx.restore();
       ctx.beginPath(); ctx.arc(S / 2, S / 2, S / 2 - 1, 0, Math.PI * 2); ctx.lineWidth = 2; ctx.strokeStyle = '#e9b949'; ctx.stroke();
-      info.textContent = `${Math.floor(v.x)}, ${Math.floor(v.y)}, ${Math.floor(v.z)} · ${isNight(v.time) ? '☾' : '☀'} ${clock(v.time)} · ngày ${Math.floor(v.time / DAY_LEN) + 1}${v.region ? ' · ' + v.region : ''}${v.waypoint ? ` · ◆ ${Math.round(Math.hypot(v.waypoint.x - v.x, v.waypoint.z - v.z))} m` : ''}`;
+      info.textContent = `${Math.floor(v.x)}, ${Math.floor(v.y)}, ${Math.floor(v.z)} · ${v.weather === 'storm' ? '⛈' : v.weather === 'rain' ? '🌧' : isNight(v.time) ? '☾' : '☀'} ${clock(v.time)} · ngày ${Math.floor(v.time / DAY_LEN) + 1}${v.region ? ' · ' + v.region : ''}${v.waypoint ? ` · ◆ ${Math.round(Math.hypot(v.waypoint.x - v.x, v.waypoint.z - v.z))} m` : ''}`;
     },
   };
 }

@@ -1,6 +1,7 @@
 // Trồng trọt: cuốc đất, gieo, thu hoạch, cây lớn theo thời gian, đất ướt/khô, lưu/nạp. Chỉ host chạy.
 // Mỗi giai đoạn cây là một id block riêng (delta chỉ lưu id). Bộ đếm là "giây tích luỹ" nên đóng băng được khi không có ai ở gần (R-26).
 import * as ach from './achievements.js';
+import { rainGrowth } from './weather.js';
 import { B, BLOCKS, BLOCK_BY_NAME, CROP_BLOCKS, cropOf, isFarmland, isPlant, isSolid } from '../world/blocks.js';
 import { CROPS, SOIL, COLD_REGIONS, CROP_STAGES } from '../content/farming.js';
 import { ITEMS } from '../content/items.js';
@@ -132,7 +133,7 @@ export function farmTick(g, dt) {
     refreshWet(c.x, c.y - 1, c.z, below);
     if (c.cold === undefined) c.cold = COLD_REGIONS.includes(w.regionAt(c.x, c.z));
     const wet = w.get(c.x, c.y - 1, c.z) === B.FARMLAND_WET;
-    c.g += step * (wet ? 2 : 1) * (c.cold ? 0.5 : 1);
+    c.g += step * (wet ? 2 : 1) * (c.cold ? 0.5 : 1) * rainGrowth(g);
     const s = Math.min(CROP_STAGES - 1, Math.floor(c.g * (CROP_STAGES - 1) / CROPS[c.k].secs + 1e-9));
     if (s > c.s && sets < CROP_SETS_PER_PASS) { c.s = s; sets++; g.setBlock(c.x, c.y, c.z, CROP_BLOCKS[c.k][s], true); }
   }
