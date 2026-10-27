@@ -215,3 +215,12 @@ html,body{margin:0;height:100%;background:#12141a;color:#eeede8;font-family:'Seg
 #fps{position:absolute;left:12px;top:70px;font-size:12px;color:#9fff9f;text-shadow:0 0 3px #000;pointer-events:none}
 #pause .opts{display:flex;flex-wrap:wrap;gap:10px 18px;justify-content:center;margin:10px 0;font-size:13px}
 #pause .opts label{display:flex;align-items:center;gap:6px}
+
+/* sổ tay: nhiệm vụ + thành tựu */
+.panel .tabs{margin:0 0 6px}.panel button.tab{background:#333a4a;color:#ddd}.panel button.tab.on{background:#e9b949;color:#1b1d24}
+.panel .jbody{min-width:min(460px,80vw);max-height:60vh;overflow:auto}.panel .jbody h3{margin:10px 0 4px;font-size:14px;color:#e9b949}
+.panel .jq{background:#0006;border-left:3px solid #556;border-radius:4px;padding:6px 8px;margin:4px 0;font-size:13px}
+.panel .jq.ready{border-color:#7fe07f}.panel .jq.active{border-color:#e9b949}.panel .jq.done{opacity:.55}.panel .jq.locked{opacity:.7}
+.panel .jq small{opacity:.7}.panel .step{font-size:12px;opacity:.9;margin-top:2px}.panel .step.why{color:#e99}.panel .reward{font-size:12px;color:#9fd1ff;margin-top:3px}
+.panel .ach{display:flex;gap:10px;align-items:center;background:#0006;border-radius:4px;padding:6px 8px;margin:4px 0;opacity:.55;font-size:13px}
+.panel .ach.done{opacity:1;border-left:3px solid #e9b949}.panel .ach .aic{font-size:22px;width:30px;text-align:center}

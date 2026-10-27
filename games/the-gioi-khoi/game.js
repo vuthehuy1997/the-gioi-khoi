@@ -208,7 +208,9 @@ function handleEvent(ev) {
     case 'dialog-end': panels.endDialog(); break;
     case 'shop': document.exitPointerLock?.(); panels.showShop(ev, S.you); break;
     case 'chest': document.exitPointerLock?.(); panels.showChest(ev, { you: S.you, near: nearStations(S.world, local.x, local.y, local.z) }); break;
-    case 'quests': hud.setQuests(ev.list); break;
+    case 'quests': hud.setQuests(ev.list); if (panels.journalOpen) S.act({ t: 'journal' }); break;
+    case 'journal': document.exitPointerLock?.(); panels.showJournal(ev); break;
+    case 'ach': hud.toast(`🏆 Thành tựu: ${ev.name}`, 5000); hud.feed(`🏆 Bạn đạt thành tựu «${ev.name}»`); sfx.play('victory'); if (panels.journalOpen) S.act({ t: 'journal' }); break;
     case 'dungeon': dgLeft[ev.id] = ev.left || 0; break;
     case 'loot': document.exitPointerLock?.(); panels.showLoot(ev); break;
     case 'chat': hud.chat(ev.sys ? null : ev.name, ev.text, ev.sys); if (!ev.sys && ev.uid !== uid) sfx.play('pickup'); break;
@@ -249,6 +251,7 @@ addEventListener('keydown', e => {
   keys.add(e.code);
   if (!S) return;
   if (e.code === 'KeyU') { toggleMusic(); return; }
+  if (e.code === 'KeyJ' && !e.repeat && S) { if (panels.journalOpen) panels.close(); else if (!inUi()) S.act({ t: 'journal' }); return; }
   if (e.code === 'KeyM' && !e.repeat && worldmap) { if (worldmap.open) closeMap(); else if (!inUi()) openMap(); return; }
   if (worldmap && worldmap.open) {
     if (e.code === 'Equal' || e.code === 'NumpadAdd') worldmap.zoomBy(1.25); else if (e.code === 'Minus' || e.code === 'NumpadSubtract') worldmap.zoomBy(0.8); else if (e.code === 'Escape') closeMap();

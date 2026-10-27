@@ -1,6 +1,7 @@
 // Nhiệm vụ: nhận, tiến độ, trả. Trạng thái mỗi người chơi: p.quests = { active: { id: { prog: [..] } }, done: { id: true } }.
 import { QUESTS } from '../content/quests.js';
 import { BOSSES } from '../content/bosses.js';
+import { NPCS } from '../content/npcs.js';
 import { addItem, removeItem, countItem, canFit } from './inventory.js';
 
 export const questDef = id => QUESTS[id];
@@ -70,4 +71,18 @@ export function creditRegion(g, p, region) {
 
 export function summary(g, p) {
   return Object.keys(p.quests.active).map(id => ({ id, name: QUESTS[id].name, state: questState(g, p, id), steps: progress(g, p, id) }));
+}
+
+// Sổ nhiệm vụ: đang làm (có tiến độ), có thể nhận, bị khóa (kèm điều kiện) và đã xong.
+export function journal(g, p) {
+  const row = (id, state, extra = {}) => { const q = QUESTS[id], n = NPCS[q.giver]; return { id, name: q.name, giver: n ? n.name : q.giver, state, reward: q.reward.items.map(r => ({ item: r.item, n: r.n })), ...extra }; };
+  const out = [];
+  for (const id of Object.keys(QUESTS)) {
+    const st = questState(g, p, id);
+    if (st === 'active' || st === 'ready') out.push(row(id, st, { steps: progress(g, p, id) }));
+    else if (st === 'done') out.push(row(id, 'done'));
+    else if (requirementsMet(g, p, QUESTS[id])) out.push(row(id, 'available', { steps: QUESTS[id].steps.map(s => ({ text: s.text, n: 0, need: s.n || 1 })) }));
+    else { const r = QUESTS[id].requires || {}; out.push(row(id, 'locked', { why: r.quest && QUESTS[r.quest] ? 'Cần hoàn thành: ' + QUESTS[r.quest].name : 'Chưa đủ điều kiện (hạ trùm hoặc mở khóa vùng)' })); }
+  }
+  return out;
 }

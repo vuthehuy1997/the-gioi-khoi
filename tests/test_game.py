@@ -5237,5 +5237,62 @@ def test_settings_sensitivity_fov_toggles_persist(pg, browser, base):
     assert st2['fov'] == 72 and st2['sens'] == 100 and st2['map'] is True, st2
 
 
+
+
+@test
+def test_achievements_unlock_persist_and_sanitize(pg, browser, base):
+    r = ev(pg, GAME_JS + """
+      const { g, p } = mkGame(); const evs = []; g.emit = (u, e) => { if (u === 'u1' || u === null) evs.push(e); };
+      g.tick(0.6);
+      const before = Object.keys(p.ach).length;
+      const A = await imp('sim/achievements.js');
+      A.bump(g, p, 'kill', 1); A.bump(g, p, 'craft', 1); g.tick(0.6);
+      const got = Object.keys(p.ach), toasts = evs.filter(e => e.t === 'ach').map(e => e.id);
+      g.tick(1.2); const again = evs.filter(e => e.t === 'ach').length;          // không báo lặp
+      A.bump(g, p, 'kill', 49); g.tick(0.6);
+      const saved = JSON.parse(JSON.stringify(g.playerSave(p)));
+      const g2 = new Game({ seed: 777, hunger: false }); const q = g2.addPlayer('u1', 'T', saved);
+      const bad = new Game({ seed: 777, hunger: false }); const b = bad.addPlayer('u1', 'T', { ...saved, stats: { kill: -5, mine: 'x', reg: [1, 'a'] }, ach: { hunter: true, fake: true } });
+      return { before, got, toasts, again, kills: q.stats.kill, hunter: !!q.ach.hunter, badKill: b.stats.kill, badMine: b.stats.mine, badReg: b.stats.reg, badAch: Object.keys(b.ach) };
+    """)
+    assert r['before'] == 0, r
+    assert set(r['got']) == {'first-kill', 'crafter'} and sorted(r['toasts']) == ['crafter', 'first-kill'] and r['again'] == 2, r
+    assert r['kills'] == 50 and r['hunter'], r
+    assert r['badKill'] == 0 and r['badMine'] == 0 and r['badReg'] == ['a'] and r['badAch'] == ['hunter'], r
+
+
+@test
+def test_achievement_counters_from_real_actions(pg, browser, base):
+    r = ev(pg, GAME_JS + """
+      const { g, p } = mkGame(); g.tick(0.1);
+      const c = groundCell(g, p);
+      g.act('u1', { t: 'dig', x: c.x, y: c.y, z: c.z }); g.time += 5; const br = g.act('u1', { t: 'break', x: c.x, y: c.y, z: c.z });
+      p.inv[0] = { id: 'log', n: 4 }; g.act('u1', { t: 'craft', id: 'planks' });
+      const mined = p.stats.mine, crafted = p.stats.craft, br_ok = br.ok;
+      const j = []; g.emit = (u, e) => { if (e.t === 'journal') j.push(e); }; g.act('u1', { t: 'journal' });
+      return { mined, crafted, br_ok, journal: j.length, ach: j[0] && j[0].ach.length, q: j[0] && j[0].quests.map(x => x.id + ':' + x.state) };
+    """)
+    assert r['br_ok'] and r['mined'] == 1 and r['crafted'] == 1, r
+    assert r['journal'] == 1 and r['ach'] >= 15, r
+    assert any(s.startswith('chao-lang:available') for s in r['q']) and any(s.startswith('harvest-1:locked') for s in r['q']), r
+
+
+@test
+def test_journal_key_j_tabs_and_achievement_toast(pg, browser, base):
+    _open_game(pg, base)
+    pg.wait_for_timeout(800)
+    pg.keyboard.press('KeyJ'); pg.wait_for_timeout(600)
+    assert pg.evaluate("() => !document.getElementById('panel').hidden && /Sổ tay/.test(document.getElementById('panel').textContent)")
+    assert pg.evaluate("() => /Chào làng/.test(document.getElementById('panel').textContent)")
+    pg.click('#panel button.tab:nth-of-type(2)'); pg.wait_for_timeout(200)
+    assert pg.evaluate("() => /Máu đầu tiên/.test(document.getElementById('panel').textContent)")
+    pg.evaluate("""async () => { const g = __g.game, p = g.player(__g.S.uid); const A = await import('/' + location.pathname.split('/').slice(1, -1).join('/') + '/sim/achievements.js'); A.bump(g, p, 'kill', 1); }""")
+    pg.wait_for_timeout(1500)
+    assert pg.evaluate("() => /Thành tựu: Máu đầu tiên/.test(document.getElementById('toast').textContent)")
+    assert pg.evaluate("() => /1\\/\\d+/.test(document.querySelector('#panel .tab.on').textContent)")      # tab cập nhật số đã đạt
+    pg.keyboard.press('KeyJ'); pg.wait_for_timeout(300)
+    assert pg.evaluate("() => document.getElementById('panel').hidden")
+
+
 if __name__ == '__main__':
     run(TESTS)

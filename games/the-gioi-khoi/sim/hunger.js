@@ -1,5 +1,6 @@
 // Đói, ăn, hiệu ứng thức ăn, ngộ độc. Chỉ host chạy (Game.tick); khách chỉ nhận food/fx qua `you`.
 // Mọi bộ đếm là bộ tích luỹ nên chịu được dt lớn (R-34); hiệu ứng lưu dạng thời điểm hết hạn tuyệt đối trong RAM (p.fx[id] = g.time + giây còn lại).
+import * as ach from './achievements.js';
 import { ITEMS } from '../content/items.js';
 import { EFFECTS } from '../content/farming.js';
 import { removeItem } from './inventory.js';
@@ -60,6 +61,7 @@ export function eat(g, p) {
   g.touch(p);
   g.emit(p.uid, { t: 'hurt', hp: p.hp, by: null });
   g.emit(p.uid, { t: 'snd', n: 'eat' });
+  ach.bump(g, p, 'eat');
   return { ok: true };
 }
 

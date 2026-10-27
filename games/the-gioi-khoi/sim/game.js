@@ -24,6 +24,7 @@ import * as farm from './farm.js';
 import * as animals from './animals.js';
 import * as dungeon from './dungeon.js';
 import * as fight from './fight.js';
+import * as ach from './achievements.js';
 
 const ENV_TEXT = {
   heat: n => `Cái nóng ở ${n} thiêu đốt bạn. Mặc đồ chống nóng (vỏ bọ cạp, than hồng) để chịu được.`,
@@ -61,7 +62,7 @@ export class Game {
   }
 
   // Người đang gục lưu ở điểm hồi sinh (không để họ hiện lại ngay tại xác).
-  playerSave(p) { const at = p.dead ? { x: this.spawn.x + 0.5, y: this.world.surfaceY(this.spawn.x, this.spawn.z) + 1, z: this.spawn.z + 0.5 } : p; return { name: p.name, x: at.x, y: at.y, z: at.z, hp: p.dead ? p.maxHp : p.hp, maxHp: p.maxHp, inv: p.inv, sel: p.sel, quests: p.quests, armor: p.armor, home: p.home || null, region: null, offhand: p.offhand || null, ...serializePlayerState(this, p) }; }
+  playerSave(p) { const at = p.dead ? { x: this.spawn.x + 0.5, y: this.world.surfaceY(this.spawn.x, this.spawn.z) + 1, z: this.spawn.z + 0.5 } : p; return { name: p.name, x: at.x, y: at.y, z: at.z, hp: p.dead ? p.maxHp : p.hp, maxHp: p.maxHp, inv: p.inv, sel: p.sel, quests: p.quests, stats: p.stats, ach: p.ach, armor: p.armor, home: p.home || null, region: null, offhand: p.offhand || null, ...serializePlayerState(this, p) }; }
 
   static fromSave(save, opts = {}) {
     const g = new Game({ seed: save.seed, ...opts });
@@ -92,6 +93,7 @@ export class Game {
     fight.resetFight(p);
     saved = saved || (Object.hasOwn(this.savedPlayers, uid) ? this.savedPlayers[uid] : null);
     if (saved) { const { food, fatigue, fx, poison, offhand, ...rest } = JSON.parse(JSON.stringify(saved)); Object.assign(p, rest, { uid, dead: false, name: p.name, offhand: typeof offhand === 'string' && ITEMS[offhand] && ITEMS[offhand].shield ? offhand : null }); }
+    ach.sanitize(p);
     restorePlayerState(this, p, saved || {});                // đói, mệt, hiệu ứng, ngộ độc: kẹp giá trị, đổi "giây còn lại" thành thời điểm hết hạn
     this.players.set(uid, p);
     return p;
@@ -193,6 +195,7 @@ export class Game {
       case 'dchest': return dungeon.actDChest(this, p, a);
       case 'respawn': return combat.actRespawn(this, p);
       case 'chat': return this.actChat(p, a);
+      case 'journal': this.emit(uid, { t: 'journal', quests: quests.journal(this, p), ach: ach.list(this, p) }); return { ok: true };
       case 'interact': return dialogue.interact(this, p, a);
       case 'dlg': return dialogue.choose(this, p, a);
       case 'buy': return dialogue.buy(this, p, a);
@@ -223,6 +226,7 @@ export class Game {
     if (id === B.CHEST) this.spillChest(a.x, a.y, a.z);
     farm.onBreak(this, p, a.x, a.y, a.z, id);              // cây trồng (sản lượng theo giai đoạn), hạt từ cỏ cao
     dungeon.onBreak(this, p, a.x, a.y, a.z, id);           // tấm áp lực / ống phun: sàn không thủng
+    ach.bump(this, p, 'mine');
     this.onBlockBroken?.(p, id);
     return { ok: true };
   }
@@ -258,7 +262,7 @@ export class Game {
     if (dr) return dr;
     this.setBlock(a.x, a.y, a.z, BLOCK_BY_NAME[it.block].id);
     this.makeNoise(a.x + 0.5, a.y + 0.5, a.z + 0.5, 7);
-    removeItem(p.inv, s.id, 1); this.touch(p);
+    removeItem(p.inv, s.id, 1); this.touch(p); ach.bump(this, p, 'place');
     return { ok: true };
   }
 
@@ -274,7 +278,7 @@ export class Game {
 
   actCraft(p, a) {
     if (!craft(p.inv, a.id, this.nearStations(p))) return { ok: false, reason: 'cannot-craft' };
-    this.touch(p);
+    this.touch(p); ach.bump(this, p, 'craft');
     return { ok: true };
   }
 
@@ -390,7 +394,7 @@ export class Game {
   nearbyPlayers(e, r) { return [...this.players.values()].filter(p => !p.dead && Math.hypot(p.x - e.x, p.z - e.z) <= r); }
 
   onKill(e, src) {
-    if (e.kind === 'mob') for (const p of this.nearbyPlayers(e, 24)) quests.creditKill(this, p, e.type);
+    if (e.kind === 'mob') for (const p of this.nearbyPlayers(e, 24)) { quests.creditKill(this, p, e.type); ach.bump(this, p, 'kill'); }
     if (e.kind === 'boss') {
       const d = BOSSES[e.type];
       this.flags[d.flag] = true;
@@ -403,7 +407,7 @@ export class Game {
     }
   }
 
-  onBossDefeated(bossId, players) { for (const p of players) { quests.creditBoss(this, p, bossId); this.touch(p); } }
+  onBossDefeated(bossId, players) { for (const p of players) { quests.creditBoss(this, p, bossId); ach.bump(this, p, 'boss'); if (BOSSES[bossId] && BOSSES[bossId].dungeon) ach.bump(this, p, 'dungeon'); this.touch(p); } }
 
   regionTick(dt) {
     for (const p of this.players.values()) {
@@ -413,7 +417,7 @@ export class Game {
       if (p.air === undefined) p.air = AIR_MAX;
       if (head) { p.air = Math.max(0, p.air - dt); if (p.air <= 0) { p.drownT = (p.drownT || 0) + dt; if (p.drownT >= 1) { p.drownT -= 1; this.hurtPlayer(p, 2, null, { pure: true }); } } }
       else { p.air = Math.min(AIR_MAX, p.air + dt * 4); p.drownT = 0; }
-      if (p.region !== r.id) { p.region = r.id; this.emit(p.uid, { t: 'region', id: r.id, name: r.name }); quests.creditRegion(this, p, r.id); this.touch(p); }
+      if (p.region !== r.id) { p.region = r.id; this.emit(p.uid, { t: 'region', id: r.id, name: r.name }); quests.creditRegion(this, p, r.id); ach.visit(this, p, r.id); this.touch(p); }
       if (r.requires && !this.flags[r.requires]) {
         p.hazT = (p.hazT || 0) + dt;
         if (p.hazT >= 2) {
@@ -448,6 +452,7 @@ export class Game {
     for (const p of this.players.values()) {
       const sig = JSON.stringify(quests.summary(this, p));
       if (sig !== p.qsig) { p.qsig = sig; this.emit(p.uid, { t: 'quests', list: quests.summary(this, p) }); }
+      ach.check(this, p);
     }
   }
 

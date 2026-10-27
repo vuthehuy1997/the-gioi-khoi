@@ -1,5 +1,6 @@
 // Trồng trọt: cuốc đất, gieo, thu hoạch, cây lớn theo thời gian, đất ướt/khô, lưu/nạp. Chỉ host chạy.
 // Mỗi giai đoạn cây là một id block riêng (delta chỉ lưu id). Bộ đếm là "giây tích luỹ" nên đóng băng được khi không có ai ở gần (R-26).
+import * as ach from './achievements.js';
 import { B, BLOCKS, BLOCK_BY_NAME, CROP_BLOCKS, cropOf, isFarmland, isPlant, isSolid } from '../world/blocks.js';
 import { CROPS, SOIL, COLD_REGIONS, CROP_STAGES } from '../content/farming.js';
 import { ITEMS } from '../content/items.js';
@@ -72,6 +73,7 @@ export function actHarvest(g, p, a) {
   if (e) { e.s = 0; e.g = 0; } else g.crops.set(ck(a.x, a.y, a.z), { k: c.kind, s: 0, g: 0, x: a.x, y: a.y, z: a.z });
   g.makeNoise(a.x + 0.5, a.y + 0.5, a.z + 0.5, 5);
   g.emit(p.uid, { t: 'snd', n: 'harvest' });
+  ach.bump(g, p, 'harvest');
   return { ok: true };
 }
 

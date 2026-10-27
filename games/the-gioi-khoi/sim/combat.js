@@ -1,4 +1,5 @@
 // Chiến đấu: sát thương, cái chết, rơi đồ, vật phẩm rơi, đạn, hồi máu. Hàm nhận đối tượng game g.
+import * as ach from './achievements.js';
 import { MOBS } from '../content/mobs.js';
 import { ITEMS, HAND_DAMAGE } from '../content/items.js';
 import { addItem, removeItem, canFit } from './inventory.js';
@@ -39,6 +40,7 @@ export function hurtPlayer(g, p, dmg, src, opts = {}) {
   g.emit(p.uid, { t: 'hurt', hp: p.hp, by: src ? src.id : null });
   if (p.hp <= 0) {
     p.dead = true; p.respawnAt = g.time + 3; p.dig = null; p.guardSince = null; p.drawSince = null; clearFx(g, p);
+    ach.bump(g, p, 'die');
     g.emit(null, { t: 'died', uid: p.uid, name: p.name });
     g.onPlayerDeath?.(p);
   }

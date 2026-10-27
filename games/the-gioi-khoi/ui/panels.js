@@ -103,7 +103,45 @@ export function createPanels({ act, onClose }) {
     root.append(top, h2, grid, hint);
   }
 
+  // Sổ nhiệm vụ & thành tựu (J). ev = { quests: [...], ach: [...] } từ máy chủ; tab nhớ giữa các lần mở.
+  let jTab = 'quests', jData = null;
+  function renderJournal() {
+    const ev = jData; root.textContent = ''; head('Sổ tay');
+    const tabs = document.createElement('div'); tabs.className = 'tabs';
+    const doneN = ev.ach.filter(a => a.done).length;
+    for (const [k, t] of [['quests', 'Nhiệm vụ'], ['ach', `Thành tựu ${doneN}/${ev.ach.length}`]]) tabs.appendChild(btn(t, () => { jTab = k; renderJournal(); }, 'tab' + (jTab === k ? ' on' : '')));
+    root.appendChild(tabs);
+    const box = document.createElement('div'); box.className = 'jbody'; root.appendChild(box);
+    const rw = q => q.reward.map(r => `${itemName(r.item)} ×${r.n}`).join(', ');
+    if (jTab === 'quests') {
+      const groups = [['ready', 'Sẵn sàng trả'], ['active', 'Đang làm'], ['available', 'Có thể nhận'], ['locked', 'Chưa mở khóa'], ['done', 'Đã hoàn thành']];
+      for (const [st, title] of groups) {
+        const list = ev.quests.filter(q => q.state === st); if (!list.length) continue;
+        const h = document.createElement('h3'); h.textContent = `${title} (${list.length})`; box.appendChild(h);
+        for (const q of list) {
+          const d = document.createElement('div'); d.className = 'jq ' + st;
+          const t = document.createElement('b'); t.textContent = q.name; d.appendChild(t);
+          const who = document.createElement('small'); who.textContent = ` · ${st === 'ready' ? 'Về báo' : 'Nhận'} ở ${q.giver}`; d.appendChild(who);
+          if (q.steps && st !== 'done') for (const s of q.steps) { const l = document.createElement('div'); l.className = 'step'; l.textContent = `${st === 'available' ? '•' : s.n >= s.need ? '✔' : '•'} ${s.text}${s.need > 1 && st !== 'available' ? ` (${s.n}/${s.need})` : ''}`; d.appendChild(l); }
+          if (q.why) { const l = document.createElement('div'); l.className = 'step why'; l.textContent = q.why; d.appendChild(l); }
+          if (st !== 'done' && st !== 'locked') { const l = document.createElement('div'); l.className = 'reward'; l.textContent = 'Thưởng: ' + rw(q); d.appendChild(l); }
+          box.appendChild(d);
+        }
+      }
+      if (!ev.quests.length) { const p = document.createElement('p'); p.className = 'hint'; p.textContent = 'Chưa có nhiệm vụ nào.'; box.appendChild(p); }
+    } else {
+      for (const a of ev.ach) {
+        const d = document.createElement('div'); d.className = 'ach' + (a.done ? ' done' : '');
+        const ic = document.createElement('span'); ic.className = 'aic'; ic.textContent = a.done ? a.icon : '🔒';
+        const tx = document.createElement('div'); const t = document.createElement('b'); t.textContent = a.name; const s = document.createElement('div'); s.className = 'step'; s.textContent = a.desc + (!a.done && a.need > 1 ? ` (${a.n}/${a.need})` : '');
+        tx.append(t, s); d.append(ic, tx); box.appendChild(d);
+      }
+    }
+  }
+
   return {
+    get journalOpen() { return kind === 'journal'; },
+    showJournal(ev) { jData = ev; if (kind !== 'journal') open('journal'); renderJournal(); },
     get kind() { return kind; },
     get isOpen() { return kind !== null; },
     close,
