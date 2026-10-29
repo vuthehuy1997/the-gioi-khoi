@@ -6,6 +6,7 @@ import { addItem, removeItem, canFit } from './inventory.js';
 import { stepBody } from './mobs.js';
 import { B, isSolid } from '../world/blocks.js';
 
+export const SAFE_AFTER_RESPAWN = 4, CLEAR_RESPAWN_R = 20;
 export const REGEN_AFTER = 8, REGEN_EVERY = 4;
 // Hồi máu theo đói: no (>= 18) hồi nhanh, vừa (7..17) như luật cũ, đói (<= 6) không tự hồi.
 export const REGEN_FAST_AFTER = 4, REGEN_FAST_EVERY = 2, FOOD_FAST = 18, FOOD_NONE = 6;
@@ -23,6 +24,7 @@ import { isInvuln, guardResult, applyGuard, spendStamina, resetFight, isRolling,
 // Trả { dealt, how } (how: null | 'roll' | 'shield' | 'perfect' | 'broke').
 export function hurtPlayer(g, p, dmg, src, opts = {}) {
   if (p.dead || dmg <= 0) return { dealt: 0, how: null };
+  if (g.time < (p.safeUntil || 0)) return { dealt: 0, how: 'safe' };        // vừa hồi sinh: vài giây bất khả xâm phạm
   let how = null;
   if (src && !opts.pure) {
     if (isInvuln(g, p)) return { dealt: 0, how: 'roll' };
@@ -41,7 +43,8 @@ export function hurtPlayer(g, p, dmg, src, opts = {}) {
   if (p.hp <= 0) {
     p.dead = true; p.respawnAt = g.time + 3; p.dig = null; p.guardSince = null; p.drawSince = null; clearFx(g, p);
     ach.bump(g, p, 'die');
-    g.emit(null, { t: 'died', uid: p.uid, name: p.name });
+    const killer = src ? (src.kind === 'boss' ? g.bossDef?.(src)?.name : MOBS[src.type]?.name) || null : null;
+    g.emit(null, { t: 'died', uid: p.uid, name: p.name, by: killer });
     g.onPlayerDeath?.(p);
   }
   return { dealt: dmg, how };
@@ -129,6 +132,8 @@ export function actRespawn(g, p) {
   if (g.time < p.respawnAt) return { ok: false, reason: 'too-soon' };
   p.dead = false; p.hp = p.maxHp; p.lastHurt = -99; p.food = FOOD_ON_RESPAWN; p.fat = 0; resetFight(p); g.touch(p);
   const at = g.respawnPoint(p); g.teleportPlayer(p, at.x, at.y, at.z);
+  p.safeUntil = g.time + SAFE_AFTER_RESPAWN;
+  for (const e of [...g.ents.values()]) if (e.kind === 'mob' && !e.persist && !MOBS[e.type]?.passive && Math.hypot(e.x - at.x, e.z - at.z) < CLEAR_RESPAWN_R) g.ents.delete(e.id);   // dọn quái đang chờ sẵn chỗ hồi sinh
   g.emit(p.uid, { t: 'hurt', hp: p.hp, by: null });
   return { ok: true };
 }

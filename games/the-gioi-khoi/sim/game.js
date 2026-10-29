@@ -16,6 +16,7 @@ import { stepBosses, stepArenas, bossDef } from './boss.js';
 import { buildStructures, ensureNpcs } from './structures.js';
 import { BOSSES } from '../content/bosses.js';
 import { REGIONS } from '../content/regions.js';
+import { DUNGEONS } from '../content/dungeons.js';
 import { breakTimeFor, canHarvest, nearBench, nearStations } from './rules.js';
 import { makeNoise } from './perception.js';
 import { SAVE_VERSION } from './version.js';
@@ -226,6 +227,7 @@ export class Game {
     p.dig = null;
     this.makeNoise(a.x + 0.5, a.y + 0.5, a.z + 0.5, def.tool === 'pick' ? 14 : def.tool === 'axe' ? 12 : id === B.LEAVES || isPlant(id) ? 4 : 7);
     if (canHarvest(id, hs ? hs.id : null) && def.drop) this.collect(p, def.drop, 1, a.x + 0.5, a.y + 0.5, a.z + 0.5);
+    else if (def.drop) this.emit(p.uid, { t: 'toast', text: `Công cụ này chưa đủ bậc: ${ITEMS[def.drop]?.name || def.drop} vỡ mà không rơi gì. Hãy chế công cụ tốt hơn.` });
     if (id === B.CHEST) this.spillChest(a.x, a.y, a.z);
     farm.onBreak(this, p, a.x, a.y, a.z, id);              // cây trồng (sản lượng theo giai đoạn), hạt từ cỏ cao
     dungeon.onBreak(this, p, a.x, a.y, a.z, id);           // tấm áp lực / ống phun: sàn không thủng
@@ -417,7 +419,8 @@ export class Game {
   regionTick(dt) {
     for (const p of this.players.values()) {
       if (p.dead) continue;
-      const r = REGIONS.find(x => x.id === this.world.regionAt(p.x, p.z));
+      const dg = dungeon.dungeonAt(this.flags, p.x, p.y, p.z);                       // trong hầm thì tính theo vùng của hầm (hầm cũ có thể vắt qua biên vùng)
+      const r = REGIONS.find(x => x.id === (dg ? DUNGEONS[dg.id].region : this.world.regionAt(p.x, p.z)));
       const head = this.world.get(Math.floor(p.x), Math.floor(p.y + 1.6), Math.floor(p.z)) === B.WATER;        // ngạt thở: đầu chìm trong nước hết khí thì mất máu
       if (p.air === undefined) p.air = AIR_MAX;
       if (head) { p.air = Math.max(0, p.air - dt); if (p.air <= 0) { p.drownT = (p.drownT || 0) + dt; if (p.drownT >= 1) { p.drownT -= 1; this.hurtPlayer(p, 2, null, { pure: true }); } } }

@@ -517,6 +517,7 @@ def test_combat_player_death_respawn_regen_and_food(pg):
       g.tick(3.1);
       const respawn = g.act('u1', { t: 'respawn' });
       const hpBack = p.hp;
+      p.safeUntil = 0;                                              // hết bất khả xâm phạm sau hồi sinh (xem test_combat_respawn_*)
       g.hurtPlayer(p, 5, null); const low = p.hp; run(g, 6); const noRegen = p.hp; run(g, 12);
       return { hurt, ate: ate.ok, afterEat, meatLeft, dead, blocked, earlyRespawn, respawn: respawn.ok, hpBack, alive: !p.dead, low, noRegen, regen: p.hp };
     """)
@@ -4200,7 +4201,7 @@ def test_dungeon_tester_abuse_dead_players_spam_reach_full_inventory_and_key_los
       T = mkDg(); ({ g, p, L, id, site } = T);
       T.stand(L.p2c.x, L.p2c.z); T.secs(0.3); out.waveBefore = dgMobs(g, id).length;
       g.damagePlayer ? g.damagePlayer(p, 99999, null) : (p.hp = 0);
-      T.secs(0.5); out.deadAlive = p.dead; out.waveAfterDeath = dgMobs(g, id).length; out.clearedAfterDeath = !!(g.flags.dungeons && g.flags.dungeons[id] && g.flags.dungeons[id].rooms.p2);
+      T.secs(1.5); out.deadAlive = p.dead; out.waveAfterDeath = dgMobs(g, id).length; out.clearedAfterDeath = !!(g.flags.dungeons && g.flags.dungeons[id] && g.flags.dungeons[id].rooms.p2);
       // 6) chìa khi chết
       T = mkDg(); ({ g, p, L, id, site } = T); T.give('dungeon_key', 2); T.give('boss_key', 1);
       T.stand(L.p2c.x, L.p2c.z); g.damagePlayer ? g.damagePlayer(p, 99999, null) : (p.hp = 0); T.secs(0.2);
@@ -5038,6 +5039,8 @@ def test_qa_mobs_do_not_overlap_player_and_stop_at_melee_range(pg):
 def test_qa_guide_hint_without_quests_and_shield_toast_and_ready_filter(pg, browser, base):
     _open_game(pg, base)
     r = pg.evaluate("""() => { __g.hud.setQuests([]); const q = document.getElementById('quests'); return q.textContent; }""")
+    assert 'Bước 1' in r, r                                       # kho trống: gợi ý chặt gỗ
+    r = pg.evaluate("""() => { __g.hud.setGuide(null); __g.hud.setQuests([]); return document.getElementById('quests').textContent; }""")
     assert 'Gợi ý' in r and '❗' in r, r
     pg.evaluate("() => { const p = __g.game.player(__g.S.uid); p.offhand = null; __g.S.you.offhand = null; }")
     pg.wait_for_timeout(300)
@@ -5394,6 +5397,85 @@ def test_weather_and_sleep_in_the_browser(pg, browser, base):
     assert pg.evaluate("() => !document.getElementById('sleepfade').hidden")
     pg.keyboard.press('KeyW'); pg.wait_for_timeout(500)
     assert pg.evaluate("() => document.getElementById('sleepfade').hidden && __g.game.player(__g.S.uid).sleep === null")
+
+
+@test
+def test_combat_respawn_protection_clears_nearby_mobs_and_names_killer(pg):
+    r = ev(pg, ARENA_JS + r"""
+      const { g, p, cx, cz, y0 } = mkArena();
+      const wolf = spawnMob(g, 'soi-xam', cx + 0.5 + 30, y0 + 1, cz + 0.5); wolf.frozen = true;
+      const evs = []; const emit = g.emit.bind(g); g.emit = (to, e) => { evs.push(e); emit(to, e); };
+      g.hurtPlayer(p, 99, wolf);
+      const died = evs.find(e => e.t === 'died');
+      // quái chờ sẵn chỗ hồi sinh (gần điểm hồi sinh, đi tới cho hợp lệ)
+      const at = g.respawnPoint(p);
+      const camper = spawnMob(g, 'xac-song', at.x + 3, g.world.surfaceY(Math.floor(at.x) + 3, Math.floor(at.z)) + 1, at.z); camper.frozen = true;
+      g.tick(3.1); g.act('u1', { t: 'respawn' });
+      const camperGone = !g.ents.has(camper.id);
+      const hp0 = p.hp; g.hurtPlayer(p, 5, wolf); const during = p.hp;
+      run(g, 4.2); g.hurtPlayer(p, 5, wolf);
+      return { killer: died && died.by, camperGone, hp0, during, after: p.hp };
+    """)
+    assert r['killer'] == 'Sói Xám', r
+    assert r['camperGone'], r
+    assert r['during'] == r['hp0'] and r['after'] < r['hp0'], r
+
+
+@test
+def test_region_inside_dungeon_uses_dungeon_region(pg):
+    r = ev(pg, GAME_JS + r"""
+      const D = await imp('sim/dungeon.js');
+      const g = new Game({ seed: 777, spawning: false, env: false, hunger: false }); const p = g.addPlayer('u1', 'T');
+      const site = D.forceSite(g, 'ham-re-muc', 2000, 2000), L = D.layoutOf(site, 'ham-re-muc');
+      const c = L.cav ? null : null;
+      const inside = { x: site.ox + 5.5, y: site.fy + 1, z: site.oz - 12.5 };
+      // dù địa hình bên trên thuộc vùng nào, trong hầm phải tính theo vùng của hầm
+      p.x = inside.x; p.y = inside.y; p.z = inside.z; g.tick(0.1);
+      return { in: !!D.dungeonAt(g.flags, inside.x, inside.y, inside.z), region: p.region };
+    """)
+    assert r['in'] and r['region'] == 'rung-suong', r
+
+
+@test
+def test_boss_melee_has_windup_and_can_be_dodged(pg):
+    r = ev(pg, BOSS_JS + r"""
+      const out = {};
+      {  // đứng yên trong tầm: không mất máu ngay, mất máu sau khi hết báo hiệu
+        const { g, p, b } = mkBossFight('thu-linh-soi', 2);
+        const evs = []; const emit = g.emit.bind(g); g.emit = (to, e) => { evs.push(e); emit(to, e); };
+        const hp0 = p.hp; let firstHurt = null, t0 = null;
+        for (let i = 0; i < 80; i++) { g.tick(0.05); if (t0 === null && evs.some(e => e.t === 'telegraph')) t0 = g.time; if (firstHurt === null && p.hp < hp0) firstHurt = g.time; }
+        out.hurtAfterTelegraph = t0 !== null && firstHurt !== null ? firstHurt - t0 : null;
+      }
+      {  // lùi ra khỏi tầm trong lúc báo hiệu thì trượt
+        const { g, p, b } = mkBossFight('thu-linh-soi', 2);
+        const hp0 = p.hp; let moved = false, done = false;
+        for (let i = 0; i < 80 && !done; i++) { g.tick(0.05); if (!moved && b.act && b.act.type === 'melee') { p.x += 6; moved = true; } else if (moved && !b.act) done = true; }
+        out.dodged = moved && done && p.hp === hp0;
+      }
+      return out;
+    """)
+    assert r['hurtAfterTelegraph'] is not None and r['hurtAfterTelegraph'] >= 0.4, r
+    assert r['dodged'], r
+
+
+@test
+def test_archer_draws_bow_before_shooting(pg):
+    r = ev(pg, ARENA_JS + r"""
+      const { g, p, cx, cz, y0 } = mkArena();
+      p.hp = p.maxHp = 9999;
+      const a = spawnMob(g, 'xuong-cung', cx + 0.5 + 10, y0 + 1, cz + 0.5);
+      faceTo(a, p);
+      const evs = []; const emit = g.emit.bind(g); g.emit = (to, e) => { evs.push(e); emit(to, e); };
+      let tWind = null, tShot = null;
+      for (let i = 0; i < 200; i++) {
+        g.tick(0.05);
+        if (tWind === null && evs.some(e => e.t === 'windup' && e.id === a.id)) tWind = g.time;
+        if (tShot === null && [...g.ents.values()].some(e => e.kind === 'proj' && e.owner === a.id)) tShot = g.time;
+      }
+      return { tWind, tShot, gap: tWind !== null && tShot !== null ? tShot - tWind : null };
+    """)
+    assert r['tWind'] is not None and r['tShot'] is not None and r['gap'] >= 0.45, r
 
 
 if __name__ == '__main__':

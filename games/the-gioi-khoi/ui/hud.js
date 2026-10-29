@@ -54,7 +54,7 @@ export function slotEl(s, { sel = false, small = false } = {}) {
 }
 
 export function createHud() {
-  let toastTimer = null;
+  let toastTimer = null, guide = null, lastQuests = [];
   const fxLeft = new Map();                                              // id -> thời điểm (performance.now) hết hạn, khách tự đếm lùi giữa các lần host đẩy
   const fxTick = () => {
     const bar = $('fxbar'); if (!bar) return;
@@ -181,9 +181,12 @@ export function createHud() {
       el.hidden = false; $('boss-name').textContent = b.name + (b.phase ? ` · Pha ${b.phase + 1}` : '');
       $('boss-fill').style.width = Math.max(0, Math.min(100, b.hp / b.maxHp * 100)) + '%';
     },
+    // Gợi ý theo tiến độ (game.js tính từ kho đồ); chỉ hiện khi chưa có nhiệm vụ nào đang làm.
+    setGuide(text) { if (text === guide) return; guide = text; this.setQuests(lastQuests); },
     setQuests(list) {
+      lastQuests = list;
       const el = $('quests'); el.textContent = '';
-      if (!list.length) { const d = document.createElement('div'); d.className = 'q guide'; d.textContent = 'Gợi ý: tìm người có dấu ❗ trong làng và bấm chuột phải để nhận nhiệm vụ. E mở kho đồ & chế tạo · Q lăn né.'; el.appendChild(d); return; }
+      if (!list.length) { const d = document.createElement('div'); d.className = 'q guide'; d.textContent = guide || 'Gợi ý: tìm người có dấu ❗ trong làng và bấm chuột phải để nhận nhiệm vụ. E mở kho đồ & chế tạo · Q lăn né.'; el.appendChild(d); return; }
       for (const q of list) {
         const d = document.createElement('div'); d.className = 'q ' + q.state;
         const t = document.createElement('b'); t.textContent = q.name + (q.state === 'ready' ? ' ✔ (về báo)' : ''); d.appendChild(t);

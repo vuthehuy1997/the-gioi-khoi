@@ -18,7 +18,7 @@ export class HostSession {
     this.peers = new Map();            // peerId -> uid
     this.revSent = new Map();          // uid -> rev
     this.acts = new Map();             // uid -> { t0, n }
-    this.seq = 0; this.closed = false; this.paused = false; this.tickNo = 0; this.saveEvery = 30; this.saveAcc = 0;
+    this.seq = 0; this.closed = false; this.paused = false; this.tickNo = 0; this.saveEvery = 15; this.saveAcc = 0;
     this.sts = new Map();               // uid -> { t0, n } giới hạn tần suất gói vị trí
     this.onSave = null;
   }

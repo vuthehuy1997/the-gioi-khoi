@@ -1,21 +1,25 @@
 // Kho khoá-giá trị tối giản trên IndexedDB cho dữ liệu lớn (localStorage không đủ cho thế giới đã lưu).
 const DB = 'game-hub-kv', STORE = 'kv';
 
+// Giữ kết nối mở sẵn: ghi lúc đóng tab (pagehide) không phải chờ mở DB nên kịp hoàn tất hơn.
+let conn = null;
 function open() {
-  return new Promise((resolve, reject) => {
+  if (conn) return conn;
+  conn = new Promise((resolve, reject) => {
     const r = indexedDB.open(DB, 1);
     r.onupgradeneeded = () => r.result.createObjectStore(STORE);
-    r.onsuccess = () => resolve(r.result);
-    r.onerror = () => reject(r.error);
+    r.onsuccess = () => { const db = r.result; db.onclose = () => { conn = null; }; db.onversionchange = () => { db.close(); conn = null; }; resolve(db); };
+    r.onerror = () => { conn = null; reject(r.error); };
   });
+  return conn;
 }
 
 async function tx(mode, fn) {
   const db = await open();
   return new Promise((resolve, reject) => {
     const t = db.transaction(STORE, mode), store = t.objectStore(STORE), req = fn(store);
-    t.oncomplete = () => { db.close(); resolve(req.result); };
-    t.onerror = t.onabort = () => { db.close(); reject(t.error); };
+    t.oncomplete = () => resolve(req.result);
+    t.onerror = t.onabort = () => reject(t.error);
   });
 }
 

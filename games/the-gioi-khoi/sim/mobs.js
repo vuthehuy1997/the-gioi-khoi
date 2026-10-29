@@ -9,7 +9,8 @@ import { farmAI } from './animals.js';
 import { noNaturalSpawn } from './dungeon.js';
 import { WINDUP_FAST, WINDUP_SLOW, WINDUP_SLOW_CD, WINDUP_SLACK } from './rules.js';
 
-export const MOB_CAP = 40, PER_PLAYER_CAP = 12;
+const SHOT_WINDUP = 0.5;
+export const MOB_CAP = 40, PER_PLAYER_CAP = 12, SPAWN_SAFE_R = 24;
 
 // opts: { persist, tamed, dg } gán thẳng vào thực thể. persist (thú đã thuần, quái hầm): không bị xoá khi xa người chơi và không tính vào MOB_CAP/PER_PLAYER_CAP.
 export function spawnMob(g, type, x, y, z, opts = {}) {
@@ -83,6 +84,7 @@ function windupStep(g, e, d) {
   face(e, t.x - e.x, t.z - e.z);
   if (g.time < w.until) return;
   e.windup = null;
+  if (w.ranged) { if (g.world.lineClear(e.x, e.y + e.h * 0.8, e.z, t.x, t.y + 1.2, t.z)) shoot(g, e, t, d.shot); return; }      // bắn xa: giương cung rồi mới bắn
   const dist = Math.hypot(t.x - e.x, (t.y + 0.9) - (e.y + e.h / 2), t.z - e.z);
   if (dist <= a.range + WINDUP_SLACK + t.w / 2) {
     const r = g.hurtPlayer(t, a.dmg, e);
@@ -122,7 +124,7 @@ export const AI = {
         if (dd < 6) walk(g, e, -dx, -dz, d.speed); else if (dd > 12) walk(g, e, dx, dz, d.speed); else walk(g, e, -dz, dx, d.speed * 0.5);
         face(e, dx, dz);                                                                  // vừa lùi/đi vòng vừa nhìn mục tiêu
         const aligned = Math.abs(angDiff(yawTo(dx, dz), e.yaw)) < 0.5;
-        if (dd <= d.shot.range && aligned && g.time >= e.atkAt && g.world.lineClear(e.x, e.y + e.h * 0.8, e.z, t.x, t.y + 1.2, t.z)) { e.atkAt = g.time + d.shot.cd; shoot(g, e, t, d.shot); }
+        if (dd <= d.shot.range && aligned && g.time >= e.atkAt && g.world.lineClear(e.x, e.y + e.h * 0.8, e.z, t.x, t.y + 1.2, t.z)) { e.atkAt = g.time + d.shot.cd; e.windup = { until: g.time + SHOT_WINDUP, uid: t.uid, ranged: true }; e.vx = 0; e.vz = 0; g.emit(null, { t: 'windup', id: e.id, time: SHOT_WINDUP }); }
       } else if (P.goal) walk(g, e, P.goal.x - e.x, P.goal.z - e.z, d.speed);              // không có đường ngắm: tiến lên tìm góc bắn
     } else if (P.mode === 'curious' && P.goal) walk(g, e, P.goal.x - e.x, P.goal.z - e.z, d.speed * 0.55);
     else if (P.mode === 'search') lookAround(g, e, 1.3);
@@ -205,6 +207,7 @@ export function spawnTick(g, dt) {
     const sy = g.world.surfaceY(x, z);
     const free = id => id === B.AIR || isPlant(id);
     if (sy <= WATER_LEVEL || !free(g.world.get(x, sy + 1, z)) || !free(g.world.get(x, sy + 2, z))) continue;
+    if (Math.hypot(x - g.spawn.x, z - g.spawn.z) < SPAWN_SAFE_R) continue;     // điểm xuất phát/hồi sinh gốc: không sinh quái tự nhiên
     if (torchNear(g.world, x, sy, z)) continue;                // đuốc đuổi quái: không sinh quái trong 8 block quanh đuốc
     if (noNaturalSpawn(g, x, sy + 1, z)) continue;             // miệng hầm ngục và khối bao của hầm: không sinh quái tự nhiên
     const region = g.world.regionAt(x, z);

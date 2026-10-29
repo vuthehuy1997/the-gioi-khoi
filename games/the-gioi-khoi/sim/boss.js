@@ -35,6 +35,8 @@ function pickMove(g, e, d, t, dist) {
   return opts.length ? opts[Math.floor(g.rng() * opts.length)] : null;
 }
 
+const MELEE_WINDUP = 0.45, MELEE_WINDUP_SLOW = 0.6, MELEE_SLACK = 0.4;       // báo hiệu đòn cận chiến của boss (giây), dung sai tầm khi đòn chốt
+
 // blockable: false cho đập vùng và nhảy đập (khiên không chặn được, lăn vẫn né được).
 function damageNear(g, e, x, z, r, dmg, blockable = true) {
   for (const p of alive(g)) if (Math.hypot(p.x - x, p.z - z) <= r + p.w / 2 && Math.abs(p.y - e.y) < 3) {
@@ -49,7 +51,11 @@ function damageNear(g, e, x, z, r, dmg, blockable = true) {
 function startMove(g, e, d, name, t) {
   const m = d.moves[name], dm = m.dmg ? m.dmg * e.dmgMul * e.scaleDmg : 0;
   e.cd[name] = g.time + m.cd;
-  if (m.type === 'melee') { damageNear(g, e, e.x, e.z, m.range, dm); g.emit(null, { t: 'swing', id: e.id }); }
+  if (m.type === 'melee') {                                                        // đòn cận chiến có báo hiệu: đứng khựng rồi mới trúng, ai lùi/lăn ra khỏi tầm thì trượt
+    const ww = m.windup ?? (m.cd >= 1.4 ? MELEE_WINDUP_SLOW : MELEE_WINDUP);
+    e.act = { name, type: 'melee', until: g.time + ww, dmg: dm, r: m.range + MELEE_SLACK };
+    g.emit(null, { t: 'telegraph', id: e.id, x: e.x, z: e.z, r: m.range, time: ww });
+  }
   else if (m.type === 'volley') {
     const aim = Math.atan2(t.z - e.z, t.x - e.x), c = m.count;
     for (let i = 0; i < c; i++) {
@@ -80,7 +86,8 @@ function stepBossAI(g, e, d, dt) {
 
   if (e.act) {
     const a = e.act;
-    if (a.type === 'slam') { e.vx = e.vz = 0; if (g.time >= a.until) { damageNear(g, e, a.x, a.z, a.r, a.dmg, false); g.emit(null, { t: 'swing', id: e.id }); e.act = null; } }
+    if (a.type === 'melee') { e.vx = e.vz = 0; if (t) e.yaw = Math.atan2(e.x - t.x, e.z - t.z); if (g.time >= a.until) { damageNear(g, e, e.x, e.z, a.r, a.dmg); g.emit(null, { t: 'swing', id: e.id }); e.act = null; } }
+    else if (a.type === 'slam') { e.vx = e.vz = 0; if (g.time >= a.until) { damageNear(g, e, a.x, a.z, a.r, a.dmg, false); g.emit(null, { t: 'swing', id: e.id }); e.act = null; } }
     else if (a.type === 'leap') {
       if (a.phase === 'wind') { e.vx = e.vz = 0; if (g.time >= a.until) { const dx = a.tx - e.x, dz = a.tz - e.z, T = 0.7; e.vx = dx / T; e.vz = dz / T; e.vy = 9; a.phase = 'air'; a.t0 = g.time; } }
       else if (e.onGround && g.time - a.t0 > 0.25) { e.vx = e.vz = 0; damageNear(g, e, e.x, e.z, a.r, a.dmg, false); e.act = null; }

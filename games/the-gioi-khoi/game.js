@@ -66,6 +66,19 @@ let quality = (software && !store.get('tgk-quality-user') ? 'low' : store.get('t
 let level = presetOf(quality).level, maxLevel = level;
 const gov = { slow: 0, fast: 0 }, rawDts = []; let maxRadius = 6, wasOnGround = true, stepDist = 0, digSoundT = 0, loadingPhase = true;
 let S = null, game = null, local = null, view = null, ents = null, panels = null;
+// Gợi ý cho người mới: bước kế tiếp theo những gì đang có trong kho.
+let guideAcc = 0;
+function guideText(inv) {
+  const has = id => inv.reduce((n, s) => n + (s && s.id === id ? s.n : 0), 0), anyPick = inv.some(s => s && s.id.endsWith('_pick'));
+  if (!anyPick) {
+    if (has('log') + has('planks') < 5) return 'Bước 1: lại gần cái cây, giữ chuột trái để chặt thân gỗ (cần khoảng 5 khúc).';
+    if (!has('workbench')) return 'Bước 2: bấm E, chế Ván gỗ rồi chế Bàn chế tạo; chọn bàn trên thanh nhanh và bấm chuột phải để đặt.';
+    return 'Bước 3: đứng cạnh bàn chế tạo, bấm E, chế Gậy và Cuốc gỗ.';
+  }
+  if (!inv.some(s => s && (s.id === 'stone_pick' || s.id === 'iron_pick' || s.id === 'crystal_pick'))) return 'Bước 4: đào đá bằng cuốc gỗ, rồi chế Cuốc đá và Lò nung (đứng cạnh bàn). Nhớ ăn khi đói và tránh quái ban đêm.';
+  if (!has('iron_ingot')) return 'Bước 5: đào quặng sắt dưới lòng đất, nung thành thỏi sắt ở lò nung (cần than củi từ gỗ). Đuốc đuổi quái trong 8 block.';
+  return null;
+}
 const dgLeft = {}; let dgLast = null, dgPoll = 0, dgSound = new Map();                       // hầm ngục: số quái còn (từ sự kiện host), hầm đang ở, nhịp bẫy lần trước
 let pending = 1, paused = false, wasLocked = false, lastHit = 0, dig = null, digCooldown = 0, lastSel = -1;
 const keys = new Set(), mouse = { left: false, right: false };
@@ -163,7 +176,7 @@ const FAIL_TEXT = { poor: 'Không đủ xu.', 'inventory-full': 'Kho đồ đã 
   'need-key': 'Cần Chìa Hầm để mở cổng này.', 'need-boss-key': 'Cần Chìa Chủ Hầm để mở cổng này.', locked: 'Rương chưa mở được: hãy dọn sạch phòng canh gác trước.',
   bound: 'Chìa gắn với bạn, không cất vào rương được.', 'spike-up': 'Gai đang nhô lên: chờ gai hạ xuống rồi hãy đặt block.',
   missing: 'Bạn không có đủ món này.', full: 'Bạn đang no và đầy máu.', cooldown: 'Ăn chậm thôi.', unripe: 'Cây chưa chín.', 'not-hoe': 'Cần cầm cuốc đất.', 'not-soil': 'Cuốc chỉ cày được đất, cỏ, bùn, rêu.', 'not-seed': 'Cần cầm hạt giống.', 'not-farmland': 'Hạt cần đặt lên đất cày.',
-  'not-crop': 'Ở đó không có cây trồng.', 'not-food': 'Con vật không ăn món này.', busy: 'Con vật đang bận.', cap: 'Chuồng đã đầy (24/24).', young: 'Cừu non chưa cắt len được.', sheared: 'Cừu chưa mọc lại len.', 'not-shears': 'Cần cầm kéo.', 'no-target': 'Không có con vật nào ở đó.', 'cannot-craft': 'Chưa đủ nguyên liệu hoặc cần đứng gần bàn chế tạo.', blocked: 'Có vật cản ở đó.', floating: 'Cần đặt cạnh một block khác.', 'too-soon': 'Chưa thể hồi sinh ngay.', far: 'Ở quá xa NPC.' };
+  'not-crop': 'Ở đó không có cây trồng.', 'not-food': 'Con vật không ăn món này.', busy: 'Con vật đang bận.', cap: 'Chuồng đã đầy (24/24).', young: 'Cừu non chưa cắt len được.', sheared: 'Cừu chưa mọc lại len.', 'not-shears': 'Cần cầm kéo.', 'no-target': 'Không có con vật nào ở đó.', 'cannot-craft': 'Chưa đủ nguyên liệu hoặc cần đứng gần bàn chế tạo.', blocked: 'Có vật cản ở đó (người chơi hoặc quái đang đứng chỗ này).', floating: 'Hãy nhắm vào mặt của một block có sẵn để đặt block mới cạnh nó.', 'too-soon': 'Chưa thể hồi sinh ngay.', far: 'Ở quá xa NPC.' };
 // Cập nhật lạc quan cho khách: thấy kết quả ngay, hoàn tác nếu host từ chối (không phải chờ một vòng mạng).
 let pendingEdits = [];
 function optimistic(x, y, z, id) {
@@ -221,7 +234,7 @@ function handleEvent(ev) {
     case 'chat': hud.chat(ev.sys ? null : ev.name, ev.text, ev.sys); if (!ev.sys && ev.uid !== uid) sfx.play('pickup'); break;
     case 'region': regionName = ev.name; hud.setRegion(ev.name); break;
     case 'swing': { ents.swing('e:' + ev.id); const b = interp.es.find(e => e.id === ev.id); if (b && b.kind === 'boss' && Math.hypot(b.x - local.x, b.z - local.z) < 40) sfx.play('bossSwing'); break; }
-    case 'died': if (ev.uid === uid) sfx.play('die'); hud.toast(ev.uid === uid ? 'Bạn đã gục ngã.' : `${ev.name} đã gục ngã.`); hud.feed(`☠ ${ev.uid === uid ? 'Bạn' : ev.name} đã gục ngã`); break;
+    case 'died': if (ev.uid === uid) sfx.play('die'); const by = ev.by ? ` (${ev.by})` : ''; hud.toast(ev.uid === uid ? `Bạn đã gục ngã${ev.by ? ' vì ' + ev.by : ''}.` : `${ev.name} đã gục ngã${by}.`); hud.feed(`☠ ${ev.uid === uid ? 'Bạn' : ev.name} đã gục ngã${by}`); break;
     case 'killed': { const nm = MOBS[ev.type] ? MOBS[ev.type].name : 'quái'; const k = ev.by ? (ev.by === uid ? 'Bạn' : (interp.ps.find(p => p.uid === ev.by) || {}).name || 'Ai đó') : null; if (k) hud.feed(`⚔ ${k} hạ ${nm}`); break; }
     case 'fall': sfx.play('hurt'); if (SETTINGS.shake) camFx.tilt = 0.08; break;
     case 'boss-start': sfx.play('boss'); hud.toast(`${ev.name} xuất hiện!`); break;
@@ -596,6 +609,7 @@ function frameBody(dt) {
   if (GS.fps) { fpsAcc += dt; fpsN++; if (fpsAcc >= 0.5) { $('fps').textContent = Math.round(fpsN / fpsAcc) + ' FPS'; fpsAcc = 0; fpsN = 0; } }
   const boss = interp.es.filter(e => e.kind === 'boss').sort((a, b) => Math.hypot(a.x - local.x, a.z - local.z) - Math.hypot(b.x - local.x, b.z - local.z))[0];
   hud.setBoss(boss && Math.hypot(boss.x - local.x, boss.z - local.z) < 70 ? { name: BOSSES[boss.type].name, hp: boss.hp, maxHp: boss.maxHp, phase: boss.phase } : null);
+  guideAcc -= dt; if (guideAcc <= 0) { guideAcc = 1; hud.setGuide(guideText(S.you.inv)); }
   dgPoll -= dt; if (dgPoll <= 0) { dgPoll = 0.25; dungeonHud(); }
   { const tv = trapView(S.flags, S.world, S.time, local, 40); fx.setTraps(tv, nowS); trapSounds(tv); }
   const r = regionById(S.world.regionAt(local.x, local.z));
@@ -643,7 +657,9 @@ mountHomeLink($('stage'));
 
 $('name').value = store.get('tgk-name') || '';
 try { const m = sessionStorage.getItem('tgk-msg'); if (m) { $('err').textContent = m; sessionStorage.removeItem('tgk-msg'); } } catch (e) { /* bỏ qua */ }
-addEventListener('pagehide', () => { if (game && S && !S.closed) saveWorld('main', game.toSave()).catch(() => {}); });
+const saveNow = () => { if (game && S && !S.closed) saveWorld('main', game.toSave()).catch(() => {}); };
+addEventListener('pagehide', saveNow);
+document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') saveNow(); });      // đổi tab/đóng tab: sự kiện này đến sớm và đáng tin hơn pagehide
 requestAnimationFrame(loop);
 
 if (debugOn()) {
